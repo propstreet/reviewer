@@ -1,0 +1,25 @@
+name: AI Code Review
+on:
+  pull_request:
+    types: [opened, synchronize] # triggers on new PR and each commit
+
+jobs:
+  ai-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # fetch full history
+
+      # Make sure GITHUB_TOKEN has write permissions to create reviews
+      - name: Run AI Reviewer
+        uses: propstreet/reviewer@v1
+        with:
+          azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_REASONING_ENDPOINT }}
+          azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_REASONING_DEPLOYMENT }}
+          azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
+          diffMode: "last-commit" # or entire-pr
+          # diffMode: "entire-pr" # or last-commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
