@@ -9,11 +9,13 @@ async function run(): Promise<void> {
   try {
     // 1. Grab Inputs
     const azureOpenAIEndpoint = core.getInput("azureOpenAIEndpoint");
+    const azureOpenAIDeployment = core.getInput("azureOpenAIDeployment");
     const azureOpenAIKey = core.getInput("azureOpenAIKey");
+    const azureOpenAIVersion = core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
     const diffMode = core.getInput("diffMode") || "last-commit";
 
     // 2. Git Diff
-    // Make sure 'actions/checkout@v3' has run before this so there's a local .git
+    // Make sure 'actions/checkout@v3' has run before this so there's a local .git, ensure to fetch all history using fetch-depth: 0
     let diff = "";
     if (diffMode === "entire-pr") {
       // For entire PR, you'd compare the base commit to head
@@ -37,8 +39,10 @@ async function run(): Promise<void> {
 
     // 3. Call Azure OpenAI
     const client = new AzureOpenAI({
-      baseURL: azureOpenAIEndpoint,
+      endpoint: azureOpenAIEndpoint,
+      deployment: azureOpenAIDeployment,
       apiKey: azureOpenAIKey,
+      apiVersion: azureOpenAIVersion,
     });
 
     // Build your prompt. For GPT-4 style models:

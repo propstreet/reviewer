@@ -9,10 +9,16 @@ inputs:
   azureOpenAIEndpoint:
     description: 'Azure OpenAI endpoint (e.g., https://your-resource.openai.azure.com/openai/deployments/...)'
     required: true
+  azureOpenAIDeployment:
+    description: 'Azure OpenAI deployment (e.g., your-resource)'
+    required: true
   azureOpenAIKey:
     description: 'API key for Azure OpenAI'
     required: true
-  # Optionally accept more inputs, like "diffMode" (entire PR vs last commit)
+  azureOpenAIVersion:
+    description: 'Azure OpenAI version (e.g., 2024-12-01-preview)'
+    required: false
+    default: '2024-12-01-preview'
   diffMode:
     description: 'Either "last-commit" or "entire-pr"'
     required: false
