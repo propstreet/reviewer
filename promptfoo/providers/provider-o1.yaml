@@ -1,0 +1,5 @@
+id: azureopenai:chat:{{env.AZURE_OPENAI_O1_DEPLOYMENT}}
+label: o1
+config:
+  apiVersion: 2024-12-01-preview
+  o1: true

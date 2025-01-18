@@ -1,0 +1,15 @@
+diff --git a/src/example.ts b/src/example.ts
+index 1234567..89abcde 100644
+--- a/src/example.ts
++++ b/src/example.ts
+@@ -1,5 +1,9 @@
+ export class Calculator {
+     add(a: number, b: number): number {
+         return a + b;
+     }
++
++    // New subtraction method
++    subtract(a: number, b: number): any {
++        return a - b;
++    }
+ }

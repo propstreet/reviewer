@@ -11,31 +11,59 @@ async function run(): Promise<void> {
     const azureOpenAIEndpoint = core.getInput("azureOpenAIEndpoint");
     const azureOpenAIDeployment = core.getInput("azureOpenAIDeployment");
     const azureOpenAIKey = core.getInput("azureOpenAIKey");
-    const azureOpenAIVersion = core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
+    const azureOpenAIVersion =
+      core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
     const diffMode = core.getInput("diffMode") || "last-commit";
 
-    // 2. Git Diff
-    // Make sure 'actions/checkout@v3' has run before this so there's a local .git, ensure to fetch all history using fetch-depth: 0
+    // 2. Prepare local Git info
+    // Ensure 'actions/checkout@v3' with fetch-depth > 1 or 0 has run so HEAD~1 is available.
     let diff = "";
+    const commitCount = Number(execSync("git rev-list --count HEAD").toString().trim());
+
+    // (A) Diff
     if (diffMode === "entire-pr") {
-      // For entire PR, you'd compare the base commit to head
-      // but we rely on GitHub env variables:
-      // GITHUB_BASE_REF / GITHUB_HEAD_REF are branch names, not SHAs.
-      // GITHUB_SHA is the commit ref for the event.
-      // The approach can vary. We'll do a naive example:
-      // (In many real setups, you'd parse environment variables or use the GitHub API.)
-      diff = execSync(
-        `git diff origin/${process.env.GITHUB_BASE_REF}...HEAD`
-      ).toString();
+      // Compare PR base to HEAD
+      const baseRef = process.env.GITHUB_BASE_REF; // branch name
+      if (!baseRef) {
+        core.info("No GITHUB_BASE_REF found; defaulting to HEAD~1 if possible.");
+        if (commitCount > 1) {
+          diff = execSync("git diff HEAD~1 HEAD").toString();
+        }
+      } else {
+        diff = execSync(`git diff origin/${baseRef}...HEAD`).toString();
+      }
     } else {
-      // Default to just last commit
-      diff = execSync("git diff HEAD~1 HEAD").toString();
+      // last-commit mode
+      if (commitCount > 1) {
+        // If there's more than 1 commit, we can do HEAD~1
+        diff = execSync("git diff HEAD~1 HEAD").toString();
+      } else {
+        // Fallback: Only one commit in the branch—use entire PR diff or skip
+        core.info("Only one commit found; falling back to entire PR diff.");
+        const baseRef = process.env.GITHUB_BASE_REF;
+        if (baseRef) {
+          diff = execSync(`git diff origin/${baseRef}...HEAD`).toString();
+        }
+      }
     }
 
+    // Early exit if no diff
     if (!diff) {
       core.info("No diff found.");
       return;
     }
+
+    core.debug(`Diff: ${diff}`);
+
+    // (B) Last Commit Message
+    // Gets the commit message (subject + body) of HEAD
+    const commitMessage = execSync("git log -1 --pretty=format:%B HEAD")
+      .toString()
+      .trim();
+
+    core.info(`Commit Message: ${commitMessage}`);
+    core.info(`Diff Length: ${diff.length}`);
+    core.info("Calling Azure OpenAI...");
 
     // 3. Call Azure OpenAI
     const client = new AzureOpenAI({
@@ -45,7 +73,7 @@ async function run(): Promise<void> {
       apiVersion: azureOpenAIVersion,
     });
 
-    // Build your prompt. For GPT-4 style models:
+    // We'll add the commit message and diff in a single prompt:
     const completion = await client.beta.chat.completions.parse({
       model: "",
       messages: [
@@ -56,7 +84,13 @@ async function run(): Promise<void> {
         },
         {
           role: "user",
-          content: diff,
+          content: `
+Commit Message:
+${commitMessage}
+
+Diff:
+${diff}
+`,
         },
       ],
       response_format: zodResponseFormat(
@@ -65,6 +99,14 @@ async function run(): Promise<void> {
       ),
     });
 
+    core.debug(`Completion: ${JSON.stringify(completion)}`);
+
+    const finishReason = completion.choices[0].finish_reason;
+    if (finishReason !== "stop") {
+      core.setFailed(`Review request did not finish, got ${finishReason}`);
+      return;
+    }
+
     const response = completion.choices[0].message.parsed;
     if (!response?.comments || response.comments.length === 0) {
       core.info("No suggestions from AI.");
@@ -72,8 +114,6 @@ async function run(): Promise<void> {
     }
 
     // 4. Post Comments to the PR
-    //   We’ll create a single "review" with multiple comments.
-    //   If file/line are missing, we do a top-level comment.
     const token = process.env.GITHUB_TOKEN;
     if (!token) {
       core.setFailed("Missing GITHUB_TOKEN in environment.");

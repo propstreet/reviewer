@@ -1,0 +1,39 @@
+{
+    "type": "json_schema",
+    "json_schema": {
+        "name": "review_comments",
+        "strict": true,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "comments": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "file": {
+                                "type": "string"
+                            },
+                            "line": {
+                                "type": "integer"
+                            },
+                            "comment": {
+                                "type": "string"
+                            }
+                        },
+                        "required": [
+                            "file",
+                            "line",
+                            "comment"
+                        ],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "required": [
+                "comments"
+            ],
+            "additionalProperties": false
+        }
+    }
+}

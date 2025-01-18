@@ -1,0 +1,3 @@
+id: azureopenai:chat:{{env.AZURE_OPENAI_GPT4O_DEPLOYMENT}}
+config:
+  apiVersion: 2024-08-01-preview
