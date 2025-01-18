@@ -1,0 +1,22 @@
+{
+    "name": "ai-pr-reviewer",
+    "version": "1.0.0",
+    "description": "A GitHub Action that uses Azure OpenAI to generate PR comments.",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "tsc",
+        "package": "ncc build src/index.ts -o dist --license LICENSE"
+    },
+    "dependencies": {
+        "@actions/core": "^1.11.1",
+        "@actions/github": "^6.0.0",
+        "@azure/openai": "^2.0.0",
+        "openai": "^4.79.1"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "@vercel/ncc": "^0.38.3",
+        "typescript": "^5.7.3",
+        "zod": "^3.24.1"
+    }
+}
