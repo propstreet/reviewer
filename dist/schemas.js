@@ -10,5 +10,7 @@ exports.CodeReviewComment = zod_1.z.object({
     comment: zod_1.z.string(),
 });
 // Define an array of them
-exports.CodeReviewCommentArray = zod_1.z.array(exports.CodeReviewComment);
+exports.CodeReviewCommentArray = zod_1.z.object({
+    comments: zod_1.z.array(exports.CodeReviewComment),
+});
 //# sourceMappingURL=schemas.js.map
