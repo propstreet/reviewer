@@ -91,6 +91,7 @@ async function run(): Promise<void> {
     }> = [];
 
     for (const c of response.comments) {
+      core.info(`Commenting on ${c.file}:${c.line}: ${c.comment}`);
       reviewComments.push({
         path: c.file,
         line: c.line,
