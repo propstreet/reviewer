@@ -9,4 +9,6 @@ export const CodeReviewComment = z.object({
 });
 
 // Define an array of them
-export const CodeReviewCommentArray = z.array(CodeReviewComment);
+export const CodeReviewCommentArray = z.object({
+  comments: z.array(CodeReviewComment),
+});

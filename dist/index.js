@@ -40198,10 +40198,12 @@ async function run() {
     try {
         // 1. Grab Inputs
         const azureOpenAIEndpoint = core.getInput("azureOpenAIEndpoint");
+        const azureOpenAIDeployment = core.getInput("azureOpenAIDeployment");
         const azureOpenAIKey = core.getInput("azureOpenAIKey");
+        const azureOpenAIVersion = core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
         const diffMode = core.getInput("diffMode") || "last-commit";
         // 2. Git Diff
-        // Make sure 'actions/checkout@v3' has run before this so there's a local .git
+        // Make sure 'actions/checkout@v3' has run before this so there's a local .git, ensure to fetch all history using fetch-depth: 0
         let diff = "";
         if (diffMode === "entire-pr") {
             // For entire PR, you'd compare the base commit to head
@@ -40222,8 +40224,10 @@ async function run() {
         }
         // 3. Call Azure OpenAI
         const client = new openai_1.AzureOpenAI({
-            baseURL: azureOpenAIEndpoint,
+            endpoint: azureOpenAIEndpoint,
+            deployment: azureOpenAIDeployment,
             apiKey: azureOpenAIKey,
+            apiVersion: azureOpenAIVersion,
         });
         // Build your prompt. For GPT-4 style models:
         const completion = await client.beta.chat.completions.parse({
@@ -40240,8 +40244,8 @@ async function run() {
             ],
             response_format: (0, zod_1.zodResponseFormat)(schemas_1.CodeReviewCommentArray, "review_comments"),
         });
-        const aiComments = completion.choices[0].message.parsed;
-        if (!aiComments || aiComments.length === 0) {
+        const response = completion.choices[0].message.parsed;
+        if (!response?.comments || response.comments.length === 0) {
             core.info("No suggestions from AI.");
             return;
         }
@@ -40257,7 +40261,7 @@ async function run() {
         const { owner, repo, number: pull_number } = github.context.issue;
         // Build up the array of comments
         const reviewComments = [];
-        for (const c of aiComments) {
+        for (const c of response.comments) {
             reviewComments.push({
                 path: c.file,
                 line: c.line,
@@ -40298,7 +40302,9 @@ exports.CodeReviewComment = zod_1.z.object({
     comment: zod_1.z.string(),
 });
 // Define an array of them
-exports.CodeReviewCommentArray = zod_1.z.array(exports.CodeReviewComment);
+exports.CodeReviewCommentArray = zod_1.z.object({
+    comments: zod_1.z.array(exports.CodeReviewComment),
+});
 
 
 /***/ }),

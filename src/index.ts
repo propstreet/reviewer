@@ -65,8 +65,8 @@ async function run(): Promise<void> {
       ),
     });
 
-    const aiComments = completion.choices[0].message.parsed;
-    if (!aiComments || aiComments.length === 0) {
+    const response = completion.choices[0].message.parsed;
+    if (!response?.comments || response.comments.length === 0) {
       core.info("No suggestions from AI.");
       return;
     }
@@ -90,7 +90,7 @@ async function run(): Promise<void> {
       body: string;
     }> = [];
 
-    for (const c of aiComments) {
+    for (const c of response.comments) {
       reviewComments.push({
         path: c.file,
         line: c.line,
