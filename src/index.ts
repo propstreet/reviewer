@@ -147,8 +147,12 @@ ${diff}
       event: "COMMENT",
       comments: reviewComments,
     });
-  } catch (err: any) {
-    core.setFailed(err.message);
+  } catch (err) {
+    if (err instanceof Error) {
+      core.setFailed(err.message);
+    } else {
+      core.setFailed("An unknown error occurred.");
+    }
   }
 }
 
