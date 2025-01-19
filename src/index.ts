@@ -4,6 +4,7 @@ import { AzureOpenAI } from "openai";
 import { execSync } from "child_process";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { CodeReviewCommentArray } from "./schemas";
+import { isValidDiffMode, isValidSeverityLevel, isValidReasoningEffort } from "./validators";
 
 async function run(): Promise<void> {
   try {
@@ -13,19 +14,40 @@ async function run(): Promise<void> {
     const azureOpenAIKey = core.getInput("azureOpenAIKey");
     const azureOpenAIVersion =
       core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
+
     const diffMode = core.getInput("diffMode") || "last-commit";
+    if (!isValidDiffMode(diffMode)) {
+      core.setFailed(`Invalid diff mode: ${diffMode}`);
+      return;
+    }
+
+    const severityThreshold = core.getInput("severity") || "info";
+    if (!isValidSeverityLevel(severityThreshold)) {
+      core.setFailed(`Invalid severity: ${severityThreshold}`);
+      return;
+    }
+
+    const reasoningEffort = core.getInput("reasoningEffort") || "medium";
+    if (!isValidReasoningEffort(reasoningEffort)) {
+      core.setFailed(`Invalid reasoning effort: ${reasoningEffort}`);
+      return;
+    }
 
     // 2. Prepare local Git info
     // Ensure 'actions/checkout@v3' with fetch-depth > 1 or 0 has run so HEAD~1 is available.
     let diff = "";
-    const commitCount = Number(execSync("git rev-list --count HEAD").toString().trim());
+    const commitCount = Number(
+      execSync("git rev-list --count HEAD").toString().trim()
+    );
 
     // (A) Diff
     if (diffMode === "entire-pr") {
       // Compare PR base to HEAD
       const baseRef = process.env.GITHUB_BASE_REF; // branch name
       if (!baseRef) {
-        core.info("No GITHUB_BASE_REF found; defaulting to HEAD~1 if possible.");
+        core.info(
+          "No GITHUB_BASE_REF found; defaulting to HEAD~1 if possible."
+        );
         if (commitCount > 1) {
           diff = execSync("git diff HEAD~1 HEAD").toString();
         }
@@ -79,8 +101,12 @@ async function run(): Promise<void> {
       messages: [
         {
           role: "developer",
-          content:
-            "You are a helpful code reviewer. Review this diff and provide any suggestions as a JSON array. If you have no comments, return an empty array.",
+          content: `
+          You are a helpful code reviewer. Review this diff and provide any suggestions.
+          Each comment must include a severity: 'info', 'warning', or 'error'. Skip any comments with severity less than '${severityThreshold}'.
+          Only comment on lines that need improvement. Comments may be formatted as markdown.
+          If you have no comments, return an empty comments array. Respond in JSON format.
+          `,
         },
         {
           role: "user",
@@ -97,6 +123,7 @@ ${diff}
         CodeReviewCommentArray,
         "review_comments"
       ),
+      reasoning_effort: reasoningEffort,
     });
 
     core.debug(`Completion: ${JSON.stringify(completion)}`);
@@ -113,6 +140,8 @@ ${diff}
       return;
     }
 
+    core.info(`Got ${response.comments.length} suggestions from AI.`);
+
     // 4. Post Comments to the PR
     const token = process.env.GITHUB_TOKEN;
     if (!token) {
@@ -123,20 +152,37 @@ ${diff}
     const octokit = github.getOctokit(token);
     const { owner, repo, number: pull_number } = github.context.issue;
 
-    // Build up the array of comments
-    const reviewComments: Array<{
-      path: string;
-      line?: number;
-      body: string;
-    }> = [];
+    // Order of severity levels
+    const severityOrder = ["info", "warning", "error"];
+    const thresholdIndex = severityOrder.indexOf(severityThreshold);
 
-    for (const c of response.comments) {
-      core.info(`Commenting on ${c.file}:${c.line}: ${c.comment}`);
-      reviewComments.push({
-        path: c.file,
-        line: c.line,
-        body: c.comment,
+    // Build up the array of comments that meet or exceed the threshold
+    const reviewComments = response.comments
+      .filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex)
+      .map((c) => {
+        core.info(
+          `Comment on ${c.file}:${c.line} (severity: ${c.severity}): ${c.comment}`
+        );
+        return {
+          path: c.file,
+          line: c.line,
+          body: c.comment,
+        };
       });
+
+    // If some comments were filtered out
+    if (reviewComments.length !== response.comments.length) {
+      core.info(
+        `Filtered out ${
+          response.comments.length - reviewComments.length
+        } comments below severity threshold.`
+      );
+    }
+
+    // If no comments met the threshold
+    if (reviewComments.length === 0) {
+      core.info(`No comments at or above severity: ${severityThreshold}`);
+      return;
     }
 
     // Create a review with multiple comments

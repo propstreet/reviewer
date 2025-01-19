@@ -40194,6 +40194,7 @@ const openai_1 = __nccwpck_require__(2583);
 const child_process_1 = __nccwpck_require__(5317);
 const zod_1 = __nccwpck_require__(2156);
 const schemas_1 = __nccwpck_require__(9011);
+const validators_1 = __nccwpck_require__(3464);
 async function run() {
     try {
         // 1. Grab Inputs
@@ -40202,6 +40203,20 @@ async function run() {
         const azureOpenAIKey = core.getInput("azureOpenAIKey");
         const azureOpenAIVersion = core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
         const diffMode = core.getInput("diffMode") || "last-commit";
+        if (!(0, validators_1.isValidDiffMode)(diffMode)) {
+            core.setFailed(`Invalid diff mode: ${diffMode}`);
+            return;
+        }
+        const severityThreshold = core.getInput("severity") || "info";
+        if (!(0, validators_1.isValidSeverityLevel)(severityThreshold)) {
+            core.setFailed(`Invalid severity: ${severityThreshold}`);
+            return;
+        }
+        const reasoningEffort = core.getInput("reasoningEffort") || "medium";
+        if (!(0, validators_1.isValidReasoningEffort)(reasoningEffort)) {
+            core.setFailed(`Invalid reasoning effort: ${reasoningEffort}`);
+            return;
+        }
         // 2. Prepare local Git info
         // Ensure 'actions/checkout@v3' with fetch-depth > 1 or 0 has run so HEAD~1 is available.
         let diff = "";
@@ -40262,7 +40277,12 @@ async function run() {
             messages: [
                 {
                     role: "developer",
-                    content: "You are a helpful code reviewer. Review this diff and provide any suggestions as a JSON array. If you have no comments, return an empty array.",
+                    content: `
+          You are a helpful code reviewer. Review this diff and provide any suggestions.
+          Each comment must include a severity: 'info', 'warning', or 'error'. Skip any comments with severity less than '${severityThreshold}'.
+          Only comment on lines that need improvement. Comments may be formatted as markdown.
+          If you have no comments, return an empty comments array. Respond in JSON format.
+          `,
                 },
                 {
                     role: "user",
@@ -40276,6 +40296,7 @@ ${diff}
                 },
             ],
             response_format: (0, zod_1.zodResponseFormat)(schemas_1.CodeReviewCommentArray, "review_comments"),
+            reasoning_effort: reasoningEffort,
         });
         core.debug(`Completion: ${JSON.stringify(completion)}`);
         const finishReason = completion.choices[0].finish_reason;
@@ -40288,6 +40309,7 @@ ${diff}
             core.info("No suggestions from AI.");
             return;
         }
+        core.info(`Got ${response.comments.length} suggestions from AI.`);
         // 4. Post Comments to the PR
         const token = process.env.GITHUB_TOKEN;
         if (!token) {
@@ -40296,15 +40318,28 @@ ${diff}
         }
         const octokit = github.getOctokit(token);
         const { owner, repo, number: pull_number } = github.context.issue;
-        // Build up the array of comments
-        const reviewComments = [];
-        for (const c of response.comments) {
-            core.info(`Commenting on ${c.file}:${c.line}: ${c.comment}`);
-            reviewComments.push({
+        // Order of severity levels
+        const severityOrder = ["info", "warning", "error"];
+        const thresholdIndex = severityOrder.indexOf(severityThreshold);
+        // Build up the array of comments that meet or exceed the threshold
+        const reviewComments = response.comments
+            .filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex)
+            .map((c) => {
+            core.info(`Comment on ${c.file}:${c.line} (severity: ${c.severity}): ${c.comment}`);
+            return {
                 path: c.file,
                 line: c.line,
                 body: c.comment,
-            });
+            };
+        });
+        // If some comments were filtered out
+        if (reviewComments.length !== response.comments.length) {
+            core.info(`Filtered out ${response.comments.length - reviewComments.length} comments below severity threshold.`);
+        }
+        // If no comments met the threshold
+        if (reviewComments.length === 0) {
+            core.info(`No comments at or above severity: ${severityThreshold}`);
+            return;
         }
         // Create a review with multiple comments
         await octokit.rest.pulls.createReview({
@@ -40343,11 +40378,34 @@ exports.CodeReviewComment = zod_1.z.object({
     file: zod_1.z.string(),
     line: zod_1.z.number(),
     comment: zod_1.z.string(),
+    severity: zod_1.z.enum(["info", "warning", "error"]),
 });
 // Define an array of them
 exports.CodeReviewCommentArray = zod_1.z.object({
     comments: zod_1.z.array(exports.CodeReviewComment),
 });
+
+
+/***/ }),
+
+/***/ 3464:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isValidReasoningEffort = isValidReasoningEffort;
+exports.isValidSeverityLevel = isValidSeverityLevel;
+exports.isValidDiffMode = isValidDiffMode;
+function isValidReasoningEffort(reasoningEffort) {
+    return ["low", "medium", "high"].includes(reasoningEffort);
+}
+function isValidSeverityLevel(severity) {
+    return ["info", "warning", "error"].includes(severity);
+}
+function isValidDiffMode(diffMode) {
+    return ["last-commit", "entire-pr"].includes(diffMode);
+}
 
 
 /***/ }),

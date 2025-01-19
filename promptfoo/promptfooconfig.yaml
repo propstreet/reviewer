@@ -8,19 +8,51 @@ defaultTest:
     provider: file://providers/provider-gpt4o.yaml
 
 prompts:
-  - raw: file://./prompts/review.json
-    label: development-o1
+  - raw: file://./prompts/review-o1.json
+    label: review-o1
+    config:
+      response_format: file://./prompts/review-format.json
+  - raw: file://./prompts/review-gpt4o.json
+    label: review-gpt4o
     config:
       response_format: file://./prompts/review-format.json
 
 providers:
-  - id: file://providers/provider-o1.yaml
+  - id: azureopenai:chat:{{env.AZURE_OPENAI_GPT4O_DEPLOYMENT}}
+    label: gpt4o
+    config:
+      apiVersion: 2024-08-01-preview
     prompts:
-      - development-o1
+      - review-gpt4o
+  - id: azureopenai:chat:{{env.AZURE_OPENAI_O1_DEPLOYMENT}}
+    label: o1-low
+    config:
+      apiVersion: 2024-12-01-preview
+      reasoning_effort: "low"
+      o1: true
+    prompts:
+      - review-o1
+  - id: azureopenai:chat:{{env.AZURE_OPENAI_O1_DEPLOYMENT}}
+    label: o1-medium
+    config:
+      apiVersion: 2024-12-01-preview
+      reasoning_effort: "medium"
+      o1: true
+    prompts:
+      - review-o1
+  - id: azureopenai:chat:{{env.AZURE_OPENAI_O1_DEPLOYMENT}}
+    label: o1-high
+    config:
+      apiVersion: 2024-12-01-preview
+      reasoning_effort: "high"
+      o1: true
+    prompts:
+      - review-o1
 
 tests:
   - vars:
       commitMessage: "Add subtract method to calculator"
+      severityThreshold: "info"
       diff: file://./prompts/review-1.diff
     description: "Comment on use of any"
     options:
@@ -32,11 +64,24 @@ tests:
           {
             "required": ["comments"],
             "type": "object",
-            "properties":
-              {
-                "comments": { "type": "array", "minItems": 1 },
-              },
+            "properties": { "comments": { "type": "array", "minItems": 1 } },
           }
       - type: javascript
         value: |
-          output.comments[0].comment.includes("'any'") && output.comments[0].line === 9 && output.comments[0].file === "src/example.ts"
+          output.comments[0].comment.includes("'any'") && [7,8,9].some(l => l === output.comments[0].line) && output.comments[0].file === "src/example.ts" && output.comments[0].severity === "warning"
+  - vars:
+      commitMessage: "Add subtract method to calculator"
+      severityThreshold: "error"
+      diff: file://./prompts/review-1.diff
+    description: "No comments due to severity threshold"
+    options:
+      # Parse the JSON before all assertions
+      transform: JSON.parse(output)
+    assert:
+      - type: is-json
+        value:
+          {
+            "required": ["comments"],
+            "type": "object",
+            "properties": { "comments": { "type": "array", "maxItems": 0 } },
+          }

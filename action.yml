@@ -1,25 +1,33 @@
-name: 'AI PR Reviewer'
-description: 'Uses Azure OpenAI to review diffs, then posts code review comments on GitHub PRs.'
-author: 'Propstreet'
+name: "AI PR Reviewer"
+description: "Uses Azure OpenAI to review diffs, then posts code review comments on GitHub PRs."
+author: "Propstreet"
 runs:
-  using: 'node20'
-  main: 'dist/index.js'  # compiled output
+  using: "node20"
+  main: "dist/index.js" # compiled output
 
 inputs:
   azureOpenAIEndpoint:
-    description: 'Azure OpenAI endpoint (e.g., https://your-resource.openai.azure.com/openai/deployments/...)'
+    description: "Azure OpenAI endpoint (e.g., https://your-resource.openai.azure.com/openai/deployments/...)"
     required: true
   azureOpenAIDeployment:
-    description: 'Azure OpenAI deployment (e.g., your-resource)'
+    description: "Azure OpenAI deployment (e.g., your-resource)"
     required: true
   azureOpenAIKey:
-    description: 'API key for Azure OpenAI'
+    description: "API key for Azure OpenAI"
     required: true
   azureOpenAIVersion:
-    description: 'Azure OpenAI version (e.g., 2024-12-01-preview)'
+    description: "Azure OpenAI version (e.g., 2024-12-01-preview)"
     required: false
-    default: '2024-12-01-preview'
+    default: "2024-12-01-preview"
   diffMode:
     description: 'Either "last-commit" or "entire-pr"'
     required: false
-    default: 'last-commit'
+    default: "last-commit"
+  severity:
+    description: "Minimum severity level required to post a review comment (info, warning, or error)."
+    required: false
+    default: "info"
+  reasoningEffort:
+    description: "Reasoning effort level (low, medium, or high)."
+    required: false
+    default: "medium"

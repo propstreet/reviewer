@@ -6,9 +6,12 @@ on:
 jobs:
   ai-review:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - uses: actions/checkout@v3
         with:
+          ref: ${{ github.event.pull_request.head.sha }} # skip checking out merge commit
           fetch-depth: 0 # fetch full history
 
       # Make sure GITHUB_TOKEN has write permissions to create reviews
@@ -20,6 +23,7 @@ jobs:
           azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
           azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
           diffMode: "last-commit" # or entire-pr
-          # diffMode: "entire-pr" # or last-commit
+          severity: "info" # or "warning" or "error"
+          reasoningEffort: "high" # or "low" or "medium"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
