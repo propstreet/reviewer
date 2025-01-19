@@ -3,13 +3,13 @@ import * as github from "@actions/github";
 import { AzureOpenAI } from "openai";
 import { execSync } from "child_process";
 import { zodResponseFormat } from "openai/helpers/zod";
-import { CodeReviewCommentArray } from "./schemas";
+import { CodeReviewCommentArray } from "./schemas.js";
 import {
   isValidDiffMode,
   isValidSeverityLevel,
   isValidReasoningEffort,
-} from "./validators";
-import { findPositionInDiff } from "./diffparser";
+} from "./validators.js";
+import { findPositionInDiff } from "./diffparser.js";
 
 async function run(): Promise<void> {
   try {
