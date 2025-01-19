@@ -23,5 +23,6 @@ jobs:
           azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
           diffMode: "last-commit" # or entire-pr
           severity: "info" # or "warning" or "error"
+          reasoningEffort: "high" # or "low" or "medium"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

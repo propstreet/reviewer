@@ -4,6 +4,23 @@ import { AzureOpenAI } from "openai";
 import { execSync } from "child_process";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { CodeReviewCommentArray } from "./schemas";
+import { ChatCompletionReasoningEffort } from "openai/resources/index.mjs";
+
+function isValidReasoningEffort(reasoningEffort: string): reasoningEffort is ChatCompletionReasoningEffort {
+  return ["low", "medium", "high"].includes(reasoningEffort);
+}
+
+type SeverityLevel = "info" | "warning" | "error";
+
+function isValidSeverityLevel(severity: string): severity is SeverityLevel {
+  return ["info", "warning", "error"].includes(severity);
+}
+
+type DiffMode = "last-commit" | "entire-pr";
+
+function isValidDiffMode(diffMode: string): diffMode is DiffMode {
+  return ["last-commit", "entire-pr"].includes(diffMode);
+}
 
 async function run(): Promise<void> {
   try {
@@ -13,8 +30,24 @@ async function run(): Promise<void> {
     const azureOpenAIKey = core.getInput("azureOpenAIKey");
     const azureOpenAIVersion =
       core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
+
     const diffMode = core.getInput("diffMode") || "last-commit";
+    if (!isValidDiffMode(diffMode)) {
+      core.setFailed(`Invalid diff mode: ${diffMode}`);
+      return; 
+    }
+
     const severityThreshold = core.getInput("severity") || "info";
+    if (!isValidSeverityLevel(severityThreshold)) {
+      core.setFailed(`Invalid severity: ${severityThreshold}`);
+      return;
+    }
+    
+    const reasoningEffort = core.getInput("reasoningEffort") || "medium";
+    if (!isValidReasoningEffort(reasoningEffort)) {
+      core.setFailed(`Invalid reasoning effort: ${reasoningEffort}`);
+      return;
+    }
 
     // 2. Prepare local Git info
     // Ensure 'actions/checkout@v3' with fetch-depth > 1 or 0 has run so HEAD~1 is available.
@@ -102,6 +135,7 @@ ${diff}
         CodeReviewCommentArray,
         "review_comments"
       ),
+      reasoning_effort: reasoningEffort,
     });
 
     core.debug(`Completion: ${JSON.stringify(completion)}`);

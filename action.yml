@@ -27,3 +27,7 @@ inputs:
     description: 'Minimum severity level required to post a review comment (info, warning, or error).'
     required: false
     default: 'info'
+  reasoningEffort:
+    description: 'Reasoning effort level (low, medium, or high).'
+    required: false
+    default: 'medium'
