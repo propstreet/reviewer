@@ -40194,15 +40194,7 @@ const openai_1 = __nccwpck_require__(2583);
 const child_process_1 = __nccwpck_require__(5317);
 const zod_1 = __nccwpck_require__(2156);
 const schemas_1 = __nccwpck_require__(9011);
-function isValidReasoningEffort(reasoningEffort) {
-    return ["low", "medium", "high"].includes(reasoningEffort);
-}
-function isValidSeverityLevel(severity) {
-    return ["info", "warning", "error"].includes(severity);
-}
-function isValidDiffMode(diffMode) {
-    return ["last-commit", "entire-pr"].includes(diffMode);
-}
+const validators_1 = __nccwpck_require__(3464);
 async function run() {
     try {
         // 1. Grab Inputs
@@ -40211,17 +40203,17 @@ async function run() {
         const azureOpenAIKey = core.getInput("azureOpenAIKey");
         const azureOpenAIVersion = core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
         const diffMode = core.getInput("diffMode") || "last-commit";
-        if (!isValidDiffMode(diffMode)) {
+        if (!(0, validators_1.isValidDiffMode)(diffMode)) {
             core.setFailed(`Invalid diff mode: ${diffMode}`);
             return;
         }
         const severityThreshold = core.getInput("severity") || "info";
-        if (!isValidSeverityLevel(severityThreshold)) {
+        if (!(0, validators_1.isValidSeverityLevel)(severityThreshold)) {
             core.setFailed(`Invalid severity: ${severityThreshold}`);
             return;
         }
         const reasoningEffort = core.getInput("reasoningEffort") || "medium";
-        if (!isValidReasoningEffort(reasoningEffort)) {
+        if (!(0, validators_1.isValidReasoningEffort)(reasoningEffort)) {
             core.setFailed(`Invalid reasoning effort: ${reasoningEffort}`);
             return;
         }
@@ -40392,6 +40384,28 @@ exports.CodeReviewComment = zod_1.z.object({
 exports.CodeReviewCommentArray = zod_1.z.object({
     comments: zod_1.z.array(exports.CodeReviewComment),
 });
+
+
+/***/ }),
+
+/***/ 3464:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.isValidReasoningEffort = isValidReasoningEffort;
+exports.isValidSeverityLevel = isValidSeverityLevel;
+exports.isValidDiffMode = isValidDiffMode;
+function isValidReasoningEffort(reasoningEffort) {
+    return ["low", "medium", "high"].includes(reasoningEffort);
+}
+function isValidSeverityLevel(severity) {
+    return ["info", "warning", "error"].includes(severity);
+}
+function isValidDiffMode(diffMode) {
+    return ["last-commit", "entire-pr"].includes(diffMode);
+}
 
 
 /***/ }),

@@ -4,25 +4,7 @@ import { AzureOpenAI } from "openai";
 import { execSync } from "child_process";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { CodeReviewCommentArray } from "./schemas";
-import { ChatCompletionReasoningEffort } from "openai/resources/index.mjs";
-
-function isValidReasoningEffort(
-  reasoningEffort: string
-): reasoningEffort is ChatCompletionReasoningEffort {
-  return ["low", "medium", "high"].includes(reasoningEffort);
-}
-
-type SeverityLevel = "info" | "warning" | "error";
-
-function isValidSeverityLevel(severity: string): severity is SeverityLevel {
-  return ["info", "warning", "error"].includes(severity);
-}
-
-type DiffMode = "last-commit" | "entire-pr";
-
-function isValidDiffMode(diffMode: string): diffMode is DiffMode {
-  return ["last-commit", "entire-pr"].includes(diffMode);
-}
+import { isValidDiffMode, isValidSeverityLevel, isValidReasoningEffort } from "./validators";
 
 async function run(): Promise<void> {
   try {

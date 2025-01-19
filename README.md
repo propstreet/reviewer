@@ -28,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
+          ref: ${{ github.event.pull_request.head.sha }} # skip checking out merge commit
           fetch-depth: 0 # fetch full history
 
       - name: Run AI Reviewer
