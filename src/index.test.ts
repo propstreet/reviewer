@@ -41,11 +41,11 @@ describe("index", () => {
     (core.getInput as MockType).mockImplementation((name: string) => {
       switch (name) {
         case "azureOpenAIEndpoint":
-          return "https://test.openai.azure.com";
+          return "https://AZURE_ENDPOINT";
         case "azureOpenAIDeployment":
-          return "test-deployment";
+          return "AZURE_DEPLOYMENT";
         case "azureOpenAIKey":
-          return "test-key";
+          return "AZURE_API_KEY";
         case "azureOpenAIVersion":
           return "2024-12-01-preview";
         case "diffMode":

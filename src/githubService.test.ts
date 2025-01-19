@@ -12,9 +12,9 @@ vi.mock("@actions/github", () => ({
 
 describe("GitHubService", () => {
   const mockConfig: GitHubConfig = {
-    token: "test-token",
-    owner: "test-owner",
-    repo: "test-repo",
+    token: "GITHUB_TOKEN",
+    owner: "OWNER",
+    repo: "REPO",
     pullNumber: 1,
   };
 

@@ -17,9 +17,9 @@ vi.mock("openai", () => ({
 
 describe("AzureOpenAIService", () => {
   const mockConfig: AzureOpenAIConfig = {
-    endpoint: "https://test.openai.azure.com",
-    deployment: "test-deployment",
-    apiKey: "test-key",
+    endpoint: "https://AZURE_ENDPOINT",
+    deployment: "AZURE_DEPLOYMENT",
+    apiKey: "AZURE_API_KEY",
     apiVersion: "2024-12-01-preview",
   };
 
