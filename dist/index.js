@@ -40149,6 +40149,64 @@ exports.NEVER = parseUtil_1.INVALID;
 
 /***/ }),
 
+/***/ 847:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.findPositionInDiff = findPositionInDiff;
+/**
+ * Given a file patch, and a "target line" in the new file,
+ * return the 1-based diff "position" for that line.
+ * If not found, return null.
+ *
+ * Patch lines look like:
+ *   @@ -14,6 +14,7 @@ ...
+ *   - console.log("old");
+ *   + console.log("new code");
+ *   ...
+ * Lines that begin with `+` or ` ` count toward the "new file" line number.
+ */
+function findPositionInDiff(patch, newFileLine) {
+    let position = 0; // overall line index in the patch (1-based)
+    let currentNewLine = 0; // tracks the new file line as we parse
+    const lines = patch.split("\n");
+    for (const line of lines) {
+        position++;
+        // If it's a hunk header, parse the new-file line range.
+        //   e.g. "@@ -14,6 +14,7 @@"
+        //   means old start=14, old count=6, new start=14, new count=7
+        if (line.startsWith("@@ ")) {
+            // Extract after the "@@ -"
+            // Typically it's "-start,count +start,count @@"
+            // We'll do a quick parse
+            const m = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+            if (m) {
+                const start = parseInt(m[1], 10);
+                // If there's a chunk size, we might not necessarily need it here
+                currentNewLine = start - 1; // we'll increment on the next line
+            }
+            continue;
+        }
+        // If it's a removal line ("-something"), it does NOT affect new-file line numbers
+        if (line.startsWith("-")) {
+            continue;
+        }
+        // If it's an addition ("+something") or context (" something"),
+        // the new file line number increments
+        currentNewLine++;
+        // Check if we just hit the target line
+        if (currentNewLine === newFileLine) {
+            return position;
+        }
+    }
+    return null; // not found in this patch
+}
+
+
+/***/ }),
+
 /***/ 9407:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -40195,6 +40253,7 @@ const child_process_1 = __nccwpck_require__(5317);
 const zod_1 = __nccwpck_require__(2156);
 const schemas_1 = __nccwpck_require__(9011);
 const validators_1 = __nccwpck_require__(3464);
+const diffparser_1 = __nccwpck_require__(847);
 async function run() {
     try {
         // 1. Grab Inputs
@@ -40318,6 +40377,12 @@ ${diff}
         }
         const octokit = github.getOctokit(token);
         const { owner, repo, number: pull_number } = github.context.issue;
+        // 1. Fetch the PR files (and their patches)
+        const { data: changedFiles } = await octokit.rest.pulls.listFiles({
+            owner,
+            repo,
+            pull_number,
+        });
         // Order of severity levels
         const severityOrder = ["info", "warning", "error"];
         const thresholdIndex = severityOrder.indexOf(severityThreshold);
@@ -40326,9 +40391,28 @@ ${diff}
             .filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex)
             .map((c) => {
             core.info(`Comment on ${c.file}:${c.line} (severity: ${c.severity}): ${c.comment}`);
+            const fileInfo = changedFiles.find((f) => f.filename === c.file);
+            if (!fileInfo || !fileInfo.patch) {
+                // This file might not exist or doesn't have a patch (binary file, etc.)
+                // fallback to top-level or skip
+                return {
+                    path: c.file,
+                    body: `**File ${c.file} not found or no patch**: ${c.comment}`,
+                };
+            }
+            // 2. parse patch, find position
+            const pos = (0, diffparser_1.findPositionInDiff)(fileInfo.patch, c.line);
+            if (!pos) {
+                // We couldn't match that line in the patch
+                // fallback to top-level
+                return {
+                    path: c.file,
+                    body: `**Could not map line ${c.line} in ${c.file}**: ${c.comment}`,
+                };
+            }
             return {
                 path: c.file,
-                line: c.line,
+                position: pos,
                 body: c.comment,
             };
         });

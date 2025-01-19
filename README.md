@@ -23,8 +23,8 @@ jobs:
   ai-review:
     runs-on: ubuntu-latest
     permissions:
-      # Make sure GITHUB_TOKEN has write permissions to create reviews
-      pull-requests: write
+      contents: read
+      pull-requests: write # Make sure GITHUB_TOKEN has write permissions to create reviews
     steps:
       - uses: actions/checkout@v3
         with:
