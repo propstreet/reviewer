@@ -33,10 +33,10 @@ jobs:
       - name: Run AI Reviewer
         uses: propstreet/reviewer@v1
         with:
-          azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-          azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+          azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_REASONING_ENDPOINT }}
+          azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_REASONING_DEPLOYMENT }}
           azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
-          azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_VERSION }}
+          azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
           diffMode: "last-commit" # or entire-pr
           severity: "info" # or "warning" or "error"
           reasoningEffort: "medium" # or "low" or "high"
@@ -47,9 +47,9 @@ jobs:
 
 2. **Secrets**
 
-- AZURE_OPENAI_ENDPOINT should be your Azure OpenAI endpoint URL.
-- AZURE_OPENAI_DEPLOYMENT is your Azure OpenAI deployment name.
-- AZURE_OPENAI_VERSION is the version of the Azure OpenAI API.
+- AZURE_OPENAI_REASONING_ENDPOINT should be your Azure OpenAI endpoint URL to a reasoning model. (e.g. <https://my-o1-resource.openai.azure.com/openai/deployments/...>)
+- AZURE_OPENAI_REASONING_DEPLOYMENT is your Azure OpenAI deployment name for the reasoning model. (e.g. my-o1-deployment)
+- AZURE_OPENAI_REASONING_VERSION is the version of the Azure OpenAI API used for calling the reasoning model. (e.g. 2024-12-01-preview)
 - AZURE_OPENAI_API_KEY is your Azure OpenAI API key.
 - The GITHUB_TOKEN is automatically available, but ensure your workflow permission is set to “Read and write” so it can post PR reviews.
 

@@ -64,10 +64,7 @@ tests:
           {
             "required": ["comments"],
             "type": "object",
-            "properties":
-              {
-                "comments": { "type": "array", "minItems": 1 },
-              },
+            "properties": { "comments": { "type": "array", "minItems": 1 } },
           }
       - type: javascript
         value: |
@@ -86,8 +83,5 @@ tests:
           {
             "required": ["comments"],
             "type": "object",
-            "properties":
-              {
-                "comments": { "type": "array", "maxItems": 0 },
-              },
+            "properties": { "comments": { "type": "array", "maxItems": 0 } },
           }

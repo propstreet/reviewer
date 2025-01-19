@@ -6,7 +6,9 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { CodeReviewCommentArray } from "./schemas";
 import { ChatCompletionReasoningEffort } from "openai/resources/index.mjs";
 
-function isValidReasoningEffort(reasoningEffort: string): reasoningEffort is ChatCompletionReasoningEffort {
+function isValidReasoningEffort(
+  reasoningEffort: string
+): reasoningEffort is ChatCompletionReasoningEffort {
   return ["low", "medium", "high"].includes(reasoningEffort);
 }
 
@@ -34,7 +36,7 @@ async function run(): Promise<void> {
     const diffMode = core.getInput("diffMode") || "last-commit";
     if (!isValidDiffMode(diffMode)) {
       core.setFailed(`Invalid diff mode: ${diffMode}`);
-      return; 
+      return;
     }
 
     const severityThreshold = core.getInput("severity") || "info";
@@ -42,7 +44,7 @@ async function run(): Promise<void> {
       core.setFailed(`Invalid severity: ${severityThreshold}`);
       return;
     }
-    
+
     const reasoningEffort = core.getInput("reasoningEffort") || "medium";
     if (!isValidReasoningEffort(reasoningEffort)) {
       core.setFailed(`Invalid reasoning effort: ${reasoningEffort}`);
@@ -52,14 +54,18 @@ async function run(): Promise<void> {
     // 2. Prepare local Git info
     // Ensure 'actions/checkout@v3' with fetch-depth > 1 or 0 has run so HEAD~1 is available.
     let diff = "";
-    const commitCount = Number(execSync("git rev-list --count HEAD").toString().trim());
+    const commitCount = Number(
+      execSync("git rev-list --count HEAD").toString().trim()
+    );
 
     // (A) Diff
     if (diffMode === "entire-pr") {
       // Compare PR base to HEAD
       const baseRef = process.env.GITHUB_BASE_REF; // branch name
       if (!baseRef) {
-        core.info("No GITHUB_BASE_REF found; defaulting to HEAD~1 if possible.");
+        core.info(
+          "No GITHUB_BASE_REF found; defaulting to HEAD~1 if possible."
+        );
         if (commitCount > 1) {
           diff = execSync("git diff HEAD~1 HEAD").toString();
         }
