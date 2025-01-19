@@ -1,3 +1,12 @@
+/**
+ * Main entry point for the AI Pull Request Reviewer GitHub Action.
+ * This file orchestrates the process of:
+ * 1. Extracting PR diff and commit information
+ * 2. Sending the diff to Azure OpenAI for analysis
+ * 3. Processing the AI's response
+ * 4. Posting review comments back to the PR
+ */
+
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { AzureOpenAI } from "openai";
