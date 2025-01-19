@@ -19,12 +19,21 @@
                             },
                             "comment": {
                                 "type": "string"
+                            },
+                            "severity": {
+                                "type": "string",
+                                "enum": [
+                                    "info",
+                                    "warning",
+                                    "error"
+                                ]
                             }
                         },
                         "required": [
                             "file",
                             "line",
-                            "comment"
+                            "comment",
+                            "severity"
                         ],
                         "additionalProperties": false
                     }

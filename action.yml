@@ -23,3 +23,7 @@ inputs:
     description: 'Either "last-commit" or "entire-pr"'
     required: false
     default: 'last-commit'
+  severity:
+    description: 'Minimum severity level required to post a review comment (info, warning, or error).'
+    required: false
+    default: 'info'

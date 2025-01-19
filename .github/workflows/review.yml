@@ -6,6 +6,8 @@ on:
 jobs:
   ai-review:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - uses: actions/checkout@v3
         with:
@@ -20,6 +22,6 @@ jobs:
           azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
           azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
           diffMode: "last-commit" # or entire-pr
-          # diffMode: "entire-pr" # or last-commit
+          severity: "info" # or "warning" or "error"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -4,7 +4,7 @@
     "target": "ESNext",
     "sourceMap": true,
     "rootDir": "src",
-	"outDir": "dist",
+    "outDir": "out",
     "strict": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitReturns": true,

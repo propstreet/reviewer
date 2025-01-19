@@ -22,6 +22,9 @@ on:
 jobs:
   ai-review:
     runs-on: ubuntu-latest
+    permissions:
+      # Make sure GITHUB_TOKEN has write permissions to create reviews
+      pull-requests: write
     steps:
       - uses: actions/checkout@v3
         with:
@@ -35,7 +38,7 @@ jobs:
           azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
           azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_VERSION }}
           diffMode: "last-commit" # or entire-pr
-        # Make sure GITHUB_TOKEN has write permissions to create reviews
+          severity: "info" # or "warning" or "error"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
