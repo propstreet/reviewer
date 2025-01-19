@@ -3,8 +3,13 @@ import * as github from "@actions/github";
 import { AzureOpenAI } from "openai";
 import { execSync } from "child_process";
 import { zodResponseFormat } from "openai/helpers/zod";
-import { CodeReviewCommentArray } from "./schemas";
-import { isValidDiffMode, isValidSeverityLevel, isValidReasoningEffort } from "./validators";
+import { CodeReviewCommentArray } from "./schemas.js";
+import {
+  isValidDiffMode,
+  isValidSeverityLevel,
+  isValidReasoningEffort,
+} from "./validators.js";
+import { findPositionInDiff } from "./diffparser.js";
 
 async function run(): Promise<void> {
   try {
@@ -152,6 +157,13 @@ ${diff}
     const octokit = github.getOctokit(token);
     const { owner, repo, number: pull_number } = github.context.issue;
 
+    // 1. Fetch the PR files (and their patches)
+    const { data: changedFiles } = await octokit.rest.pulls.listFiles({
+      owner,
+      repo,
+      pull_number,
+    });
+
     // Order of severity levels
     const severityOrder = ["info", "warning", "error"];
     const thresholdIndex = severityOrder.indexOf(severityThreshold);
@@ -163,9 +175,31 @@ ${diff}
         core.info(
           `Comment on ${c.file}:${c.line} (severity: ${c.severity}): ${c.comment}`
         );
+
+        const fileInfo = changedFiles.find((f) => f.filename === c.file);
+        if (!fileInfo || !fileInfo.patch) {
+          // This file might not exist or doesn't have a patch (binary file, etc.)
+          // fallback to top-level or skip
+          return {
+            path: c.file,
+            body: `**File ${c.file} not found or no patch**: ${c.comment}`,
+          };
+        }
+
+        // 2. parse patch, find position
+        const pos = findPositionInDiff(fileInfo.patch, c.line);
+        if (!pos) {
+          // We couldn't match that line in the patch
+          // fallback to top-level
+          return {
+            path: c.file,
+            body: `**Could not map line ${c.line} in ${c.file}**: ${c.comment}`,
+          };
+        }
+
         return {
           path: c.file,
-          line: c.line,
+          position: pos,
           body: c.comment,
         };
       });

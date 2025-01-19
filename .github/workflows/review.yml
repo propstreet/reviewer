@@ -6,15 +6,12 @@ on:
 jobs:
   ai-review:
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     steps:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }} # skip checking out merge commit
           fetch-depth: 0 # fetch full history
 
-      # Make sure GITHUB_TOKEN has write permissions to create reviews
       - name: Run AI Reviewer
         uses: propstreet/reviewer@v1
         with:
@@ -26,4 +23,5 @@ jobs:
           severity: "info" # or "warning" or "error"
           reasoningEffort: "high" # or "low" or "medium"
         env:
+          # Make sure GITHUB_TOKEN has write permissions to create reviews
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
