@@ -1,6 +1,5 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { execSync } from "child_process";
 import {
   isValidDiffMode,
   isValidSeverityLevel,
@@ -11,63 +10,39 @@ import {
   type AzureOpenAIConfig,
   type ReviewPromptConfig,
 } from "./azureOpenAIService.js";
-import { GitHubService, type GitHubConfig } from "./githubService.js";
+import { GitHubService } from "./githubService.js";
 
-interface GitInfo {
-  diff: string;
-  commitMessage: string;
-}
+async function getDiff(
+  githubService: GitHubService,
+  diffMode: string
+): Promise<string | null> {
+  try {
+    const { commitMessage, patches } =
+      diffMode === "entire-pr"
+        ? await githubService.getEntirePRDiff()
+        : await githubService.getLastCommitDiff();
 
-function getGitInfo(diffMode: string): GitInfo | null {
-  const commitCount = Number(
-    execSync("git rev-list --count HEAD").toString().trim()
-  );
-
-  let diff = "";
-  // (A) Diff
-  if (diffMode === "entire-pr") {
-    // Compare PR base to HEAD
-    const baseRef = process.env.GITHUB_BASE_REF; // branch name
-    if (!baseRef) {
-      core.info("No GITHUB_BASE_REF found; defaulting to HEAD~1 if possible.");
-      if (commitCount > 1) {
-        diff = execSync("git diff HEAD~1 HEAD").toString();
-      }
-    } else {
-      diff = execSync(`git diff origin/${baseRef}...HEAD`).toString();
+    if (!patches.length) {
+      core.info("No patches returned from GitHub.");
+      return null;
     }
-  } else {
-    // last-commit mode
-    if (commitCount > 1) {
-      // If there's more than 1 commit, we can do HEAD~1
-      diff = execSync("git diff HEAD~1 HEAD").toString();
-    } else {
-      // Fallback: Only one commit in the branch—use entire PR diff or skip
-      core.info("Only one commit found; falling back to entire PR diff.");
-      const baseRef = process.env.GITHUB_BASE_REF;
-      if (baseRef) {
-        diff = execSync(`git diff origin/${baseRef}...HEAD`).toString();
-      }
-    }
-  }
 
-  // Early exit if no diff
-  if (!diff) {
-    core.info("No diff found.");
+    let diff = `# ${commitMessage}\n`;
+
+    diff += patches.map(
+      (p) => `\n## ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`
+    );
+
+    core.info(`Commit Message: ${commitMessage}`);
+    core.info(`Diff Length: ${diff.length}`);
+
+    return diff;
+  } catch (error) {
+    core.error(
+      `Failed to get git info: ${error instanceof Error ? error.message : String(error)}`
+    );
     return null;
   }
-
-  core.debug(`Diff: ${diff}`);
-
-  // (B) Last Commit Message
-  const commitMessage = execSync("git log -1 --pretty=format:%B HEAD")
-    .toString()
-    .trim();
-
-  core.info(`Commit Message: ${commitMessage}`);
-  core.info(`Diff Length: ${diff.length}`);
-
-  return { diff, commitMessage };
 }
 
 export async function run(): Promise<void> {
@@ -91,9 +66,23 @@ export async function run(): Promise<void> {
       return;
     }
 
-    // 2. Get Git Info
-    const gitInfo = getGitInfo(diffMode);
-    if (!gitInfo) {
+    // 2. Get Git Diff
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) {
+      core.setFailed("Missing GITHUB_TOKEN in environment.");
+      return;
+    }
+
+    const { owner, repo, number: pull_number } = github.context.issue;
+    const githubService = new GitHubService({
+      token,
+      owner,
+      repo,
+      pullNumber: pull_number,
+    });
+
+    const diff = await getDiff(githubService, diffMode);
+    if (!diff) {
       return;
     }
 
@@ -113,13 +102,7 @@ export async function run(): Promise<void> {
     const azureService = new AzureOpenAIService(azureConfig);
     core.info("Calling Azure OpenAI...");
 
-    const response = await azureService.runReviewPrompt(
-      {
-        commitMessage: gitInfo.commitMessage,
-        diff: gitInfo.diff,
-      },
-      reviewConfig
-    );
+    const response = await azureService.runReviewPrompt(diff, reviewConfig);
 
     if (!response?.comments || response.comments.length === 0) {
       core.info("No suggestions from AI.");
@@ -129,21 +112,6 @@ export async function run(): Promise<void> {
     core.info(`Got ${response.comments.length} suggestions from AI.`);
 
     // 4. Post Comments to PR
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) {
-      core.setFailed("Missing GITHUB_TOKEN in environment.");
-      return;
-    }
-
-    const { owner, repo, number: pull_number } = github.context.issue;
-    const githubConfig: GitHubConfig = {
-      token,
-      owner,
-      repo,
-      pullNumber: pull_number,
-    };
-
-    const githubService = new GitHubService(githubConfig);
     const result = await githubService.postReviewComments(
       response.comments,
       severityThreshold

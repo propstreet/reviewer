@@ -31,10 +31,8 @@ describe("AzureOpenAIService", () => {
     reasoningEffort: "medium",
   };
 
-  const mockInput = {
-    commitMessage: "test: add new feature",
-    diff: "diff --git a/test.ts b/test.ts\n+test line",
-  };
+  const mockInput =
+    "# test: add new feature\n\n```diff\n@@ -1,1 +1,1 @@\n-test\n+new feature\n```";
 
   beforeEach(() => {
     vi.clearAllMocks();
