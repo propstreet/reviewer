@@ -16,7 +16,7 @@ index abc1234..def5678 100644
 `;
 
     // The hunk says "+10,5", meaning new lines start at line 10 (and it has 5 new lines).
-    // Let’s break down the lines in the new file:
+    // Let's break down the lines in the new file:
     //
     // newFileLine=10 => " console.log(\"old line\");"
     // newFileLine=11 => " console.log(\"old line 2\");"
@@ -38,10 +38,10 @@ index abc1234..def5678 100644
     // 10: +console.log("new line");   (newFileLine=13)
     // 11: +console.log("new line 2"); (newFileLine=14) <-- We want this
     //
-    // So we ask findPositionInDiff for line=14, expecting it to return patch line=11.
+    // So we ask findPositionInDiff for line=14, expecting it to return patch position=5.
 
     const result = findPositionInDiff(patch, 14);
-    expect(result).toBe(11);
+    expect(result).toBe(5);
   });
 
   it("returns null if the new-file line does not exist in the patch", () => {
@@ -74,46 +74,22 @@ index abc1234..def5678 100644
  extra line
 `;
 
-    // First hunk: "@@ -2,3 +2,4 @@"
-    //   => new file lines start at 2, for 4 lines total
-    //   => lines (in new file):
-    //      #2 => " some"
-    //      #3 => "-some old" (skipped because it's removed)
-    //      #3 => "+some new" (the next new line)
-    //      #4 => " and more"
-    //
-    // So that hunk covers newFileLines 2..5 effectively. (2,3,4,5)
-    //   - #2 => " some"
-    //   - #3 => +some new
-    //   - #4 => " and more"  (the last line in that hunk)
-    //
-    // Second hunk: "@@ -10,2 +11,2 @@"
-    //   => new file lines start at 11, for 2 lines
-    //   => lines:
-    //      #11 => "-other old" (skipped, removed)
-    //      #11 => "+other new" => newFileLine=11
-    //      #12 => " extra line" => newFileLine=12
-    //
-    // Let’s say we want new-file line 12 => " extra line".
-    // That is the last line in the second hunk.
-    // Checking the patch lines:
-    //
-    // 1: (blank)
-    // 2: @@ -2,3 +2,4 @@
-    // 3:  some              (line #2 in new file)
-    // 4: -some old          (removed)
-    // 5: +some new          (line #3 in new file)
-    // 6:  and more          (line #4 in new file)
-    // 7: @@ -10,2 +11,3 @@
-    // 8: -other old         (removed)
-    // 9: +other new         (line #11 in new file)
-    // 10:  extra line       (line #12 in new file)
-    //
-    // So newFileLine=12 => patch line 10.
-    // We'll confirm we can get a non-null from findPositionInDiff(...,12).
+    // According to GitHub's specification:
+    // Position counting starts at 1 for the first line after the first @@.
+    // Let's count positions from the first @@ line:
+    // 1: (blank)                  [skip - before first @@]
+    // 2: @@ -2,3 +2,4 @@         [first @@ - start counting after this]
+    // 3:  some              [Position 1]
+    // 4: -some old          [Position 2]
+    // 5: +some new          [Position 3]
+    // 6:  and more          [Position 4]
+    // 7: @@ -10,2 +11,2 @@  [Position 5]
+    // 8: -other old         [Position 6]
+    // 9: +other new         [Position 7]
+    // 10:  extra line       [Position 8] <-- We want this one (newFileLine=12)
 
     const result = findPositionInDiff(patch, 12);
-    expect(result).toBe(10); // line #10 in the patch
+    expect(result).toBe(8); // Position 8 in the patch (8 lines after first @@)
   });
 
   it("skips lines that start with diff --git, index, --- or +++", () => {
@@ -130,30 +106,76 @@ index 1234567..7654321 100644
  line D
 `;
 
-    // Hunk says: "@@ -14,6 +14,7 @@" => new lines start at line 14 for 7 lines
-    // Let’s parse them:
-    // newFileLine=14 => " line A"
-    // newFileLine=15 => " line B"
-    // newFileLine=16 => "+line C"
-    // newFileLine=17 => " line D"
-    //
-    // We want the 3rd new-file line in that hunk => that's line #16 => the line that starts with "+"
-    // Checking patch lines:
-    // 1: (blank)
-    // 2: diff --git ...
-    // 3: index ...
-    // 4: --- a/bar.js
-    // 5: +++ b/bar.js
-    // 6: @@ -14,6 +14,7 @@
-    // 7: -removed line
-    // 8:  line A   (newFileLine=14)
-    // 9:  line B   (newFileLine=15)
-    // 10: +line C  (newFileLine=16) <-- 3rd new-file line
-    // 11:  line D  (newFileLine=17)
-    //
-    // So if we pass newFileLine=16 => we expect patch line=10, not null.
+    // According to GitHub's specification:
+    // Position counting starts at 1 for the first line after the first @@.
+    // Let's count positions from the first @@ line:
+    // 1: (blank)                  [skip - before first @@]
+    // 2: diff --git ...          [skip - before first @@]
+    // 3: index ...               [skip - before first @@]
+    // 4: --- a/bar.js            [skip - before first @@]
+    // 5: +++ b/bar.js            [skip - before first @@]
+    // 6: @@ -14,6 +14,7 @@      [first @@ - start counting after this]
+    // 7: -removed line           [Position 1]
+    // 8:  line A   (line 14)     [Position 2]
+    // 9:  line B   (line 15)     [Position 3]
+    // 10: +line C  (line 16)     [Position 4] <-- We want this one
+    // 11:  line D  (line 17)     [Position 5]
 
     const position = findPositionInDiff(patch, 16);
-    expect(position).toBe(10);
+    expect(position).toBe(4);
+  });
+
+  it("maintains continuous position counting across hunks per GitHub spec", () => {
+    const patch = `
+diff --git a/file.js b/file.js
+index abc123..def456 100644
+--- a/file.js
++++ b/file.js
+@@ -1,3 +1,4 @@
+ line one
+-old line
++new line
+ line three
+@@ -10,2 +11,3 @@
+ other content
++added line
+ final line`;
+
+    // According to GitHub's specification:
+    // "The position value equals the number of lines down from the first '@@' hunk header
+    // in the file. The line just below the '@@' line is position 1, the next line is
+    // position 2, and so on. The position in the diff continues to increase through
+    // lines of whitespace and additional hunks until the beginning of a new file."
+    //
+    // Let's count positions from the first @@ line:
+    // 1: diff --git ...       [skip - before first @@]
+    // 2: index ...            [skip - before first @@]
+    // 3: --- ...              [skip - before first @@]
+    // 4: +++ ...              [skip - before first @@]
+    // 5: @@ -1,3 +1,4 @@     [First @@ - start counting after this]
+    // 6:  line one           [Position 1]
+    // 7: -old line           [Position 2]
+    // 8: +new line           [Position 3]
+    // 9:  line three         [Position 4]
+    // 10: @@ -10,2 +11,3 @@  [Position 5]
+    // 11:  other content     [Position 6]
+    // 12: +added line        [Position 7]
+    // 13:  final line        [Position 8]
+
+    // Test positions across both hunks to verify continuous counting
+    const positions = [
+      { line: 1, expectedPosition: 1 }, // "line one" in first hunk
+      { line: 2, expectedPosition: 3 }, // "new line" in first hunk
+      { line: 3, expectedPosition: 4 }, // "line three" in first hunk
+      { line: 11, expectedPosition: 6 }, // "other content" in second hunk
+      { line: 12, expectedPosition: 7 }, // "added line" in second hunk
+      { line: 13, expectedPosition: 8 }, // "final line" in second hunk
+    ];
+
+    // Verify each position matches GitHub's specification
+    for (const { line, expectedPosition } of positions) {
+      const result = findPositionInDiff(patch, line);
+      expect(result).toBe(expectedPosition);
+    }
   });
 });
