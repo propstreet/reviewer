@@ -7,13 +7,8 @@ jobs:
   ai-review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.pull_request.head.sha }} # skip checking out merge commit
-          fetch-depth: 0 # fetch full history
-
       - name: Run AI Reviewer
-        uses: propstreet/reviewer@v1
+        uses: propstreet/reviewer@v2
         with:
           azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_REASONING_ENDPOINT }}
           azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_REASONING_DEPLOYMENT }}

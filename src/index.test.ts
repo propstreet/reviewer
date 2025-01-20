@@ -165,9 +165,7 @@ describe("index", () => {
     expect(GitHubService.prototype.postReviewComments).not.toHaveBeenCalled();
 
     // Verify appropriate message was logged
-    expect(core.info).toHaveBeenCalledWith(
-      "No patches found for last-commit mode."
-    );
+    expect(core.info).toHaveBeenCalledWith("No patches returned from GitHub.");
   });
 
   it("should handle invalid inputs", async () => {
@@ -193,8 +191,8 @@ describe("index", () => {
     await run();
 
     // Verify appropriate message was logged
-    expect(core.info).toHaveBeenCalledWith(
-      "No GitHub token found, returning null."
+    expect(core.setFailed).toHaveBeenCalledWith(
+      "Missing GITHUB_TOKEN in environment."
     );
   });
 

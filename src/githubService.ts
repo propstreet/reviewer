@@ -70,7 +70,7 @@ export class GitHubService {
         }
 
         // Find position in diff
-        const pos = this.findPositionInDiff(fileInfo.patch, c.line);
+        const pos = findPositionInDiff(fileInfo.patch, c.line);
         if (!pos) {
           // We couldn't match that line in the patch
           // fallback to top-level
@@ -109,11 +109,6 @@ export class GitHubService {
       commentsPosted: reviewComments.length,
       commentsFiltered: comments.length - reviewComments.length,
     };
-  }
-
-  private findPositionInDiff(patch: string, targetLine: number): number | null {
-    // Import findPositionInDiff from diffparser
-    return findPositionInDiff(patch, targetLine);
   }
 
   async getEntirePRDiff(): Promise<GitDiffResult> {
@@ -155,10 +150,12 @@ export class GitHubService {
     const lastCommit = commits[commits.length - 1];
     const lastCommitSha = lastCommit.sha;
     const parentSha = lastCommit.parents?.[0]?.sha;
+    const commitMessage = lastCommit.commit.message;
 
     if (!parentSha) {
-      // If there's no parent (first commit), return empty result
-      return { commitMessage: "", patches: [] };
+      // If there's no parent (first commit), use entire PR diff
+      const prDiff = await this.getEntirePRDiff();
+      return { commitMessage, patches: prDiff.patches };
     }
 
     const compareData = await this.octokit.rest.repos.compareCommits({
@@ -168,7 +165,6 @@ export class GitHubService {
       head: lastCommitSha,
     });
 
-    const commitMessage = lastCommit.commit.message;
     const patches = (compareData.data.files || []).map((file) => ({
       filename: file.filename,
       patch: file.patch || "",

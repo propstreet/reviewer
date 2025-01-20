@@ -10,57 +10,33 @@ import {
   type AzureOpenAIConfig,
   type ReviewPromptConfig,
 } from "./azureOpenAIService.js";
-import { GitHubService, type GitHubConfig } from "./githubService.js";
+import { GitHubService } from "./githubService.js";
 
-interface GitInfo {
-  diff: string;
-  commitMessage: string;
-}
-
-async function getGitInfo(diffMode: string): Promise<GitInfo | null> {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) {
-    core.info("No GitHub token found, returning null.");
-    return null;
-  }
-
-  const { owner, repo, number: pull_number } = github.context.issue;
-  const githubService = new GitHubService({
-    token,
-    owner,
-    repo,
-    pullNumber: pull_number,
-  });
-
+async function getDiff(
+  githubService: GitHubService,
+  diffMode: string
+): Promise<string | null> {
   try {
-    if (diffMode === "entire-pr") {
-      const { commitMessage, patches } = await githubService.getEntirePRDiff();
-      if (!patches.length) {
-        core.info("No patches found for entire-pr mode.");
-        return null;
-      }
-      const combinedDiff = patches
-        .map((p) => `File: ${p.filename}\n${p.patch}`)
-        .join("\n\n");
-      core.debug(`Diff: ${combinedDiff}`);
-      core.info(`Commit Message: ${commitMessage}`);
-      core.info(`Diff Length: ${combinedDiff.length}`);
-      return { diff: combinedDiff, commitMessage };
-    } else {
-      const { commitMessage, patches } =
-        await githubService.getLastCommitDiff();
-      if (!patches.length) {
-        core.info("No patches found for last-commit mode.");
-        return null;
-      }
-      const combinedDiff = patches
-        .map((p) => `File: ${p.filename}\n${p.patch}`)
-        .join("\n\n");
-      core.debug(`Diff: ${combinedDiff}`);
-      core.info(`Commit Message: ${commitMessage}`);
-      core.info(`Diff Length: ${combinedDiff.length}`);
-      return { diff: combinedDiff, commitMessage };
+    const { commitMessage, patches } =
+      diffMode === "entire-pr"
+        ? await githubService.getEntirePRDiff()
+        : await githubService.getLastCommitDiff();
+
+    if (!patches.length) {
+      core.info("No patches returned from GitHub.");
+      return null;
     }
+
+    let diff = `# ${commitMessage}\n`;
+
+    diff += patches.map(
+      (p) => `\n## ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`
+    );
+
+    core.info(`Commit Message: ${commitMessage}`);
+    core.info(`Diff Length: ${diff.length}`);
+
+    return diff;
   } catch (error) {
     core.error(
       `Failed to get git info: ${error instanceof Error ? error.message : String(error)}`
@@ -90,9 +66,23 @@ export async function run(): Promise<void> {
       return;
     }
 
-    // 2. Get Git Info
-    const gitInfo = await getGitInfo(diffMode);
-    if (!gitInfo) {
+    // 2. Get Git Diff
+    const token = process.env.GITHUB_TOKEN;
+    if (!token) {
+      core.setFailed("Missing GITHUB_TOKEN in environment.");
+      return;
+    }
+
+    const { owner, repo, number: pull_number } = github.context.issue;
+    const githubService = new GitHubService({
+      token,
+      owner,
+      repo,
+      pullNumber: pull_number,
+    });
+
+    const diff = await getDiff(githubService, diffMode);
+    if (!diff) {
       return;
     }
 
@@ -112,13 +102,7 @@ export async function run(): Promise<void> {
     const azureService = new AzureOpenAIService(azureConfig);
     core.info("Calling Azure OpenAI...");
 
-    const response = await azureService.runReviewPrompt(
-      {
-        commitMessage: gitInfo.commitMessage,
-        diff: gitInfo.diff,
-      },
-      reviewConfig
-    );
+    const response = await azureService.runReviewPrompt(diff, reviewConfig);
 
     if (!response?.comments || response.comments.length === 0) {
       core.info("No suggestions from AI.");
@@ -128,21 +112,6 @@ export async function run(): Promise<void> {
     core.info(`Got ${response.comments.length} suggestions from AI.`);
 
     // 4. Post Comments to PR
-    const token = process.env.GITHUB_TOKEN;
-    if (!token) {
-      core.setFailed("Missing GITHUB_TOKEN in environment.");
-      return;
-    }
-
-    const { owner, repo, number: pull_number } = github.context.issue;
-    const githubConfig: GitHubConfig = {
-      token,
-      owner,
-      repo,
-      pullNumber: pull_number,
-    };
-
-    const githubService = new GitHubService(githubConfig);
     const result = await githubService.postReviewComments(
       response.comments,
       severityThreshold

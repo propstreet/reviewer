@@ -15,11 +15,6 @@ export interface ReviewPromptConfig {
   reasoningEffort: ChatCompletionReasoningEffort;
 }
 
-export interface ReviewInput {
-  commitMessage: string;
-  diff: string;
-}
-
 export class AzureOpenAIService {
   private client: AzureOpenAI;
 
@@ -32,24 +27,20 @@ export class AzureOpenAIService {
     });
   }
 
-  async runReviewPrompt(input: ReviewInput, config: ReviewPromptConfig) {
+  async runReviewPrompt(diff: string, config: ReviewPromptConfig) {
     const completion = await this.client.beta.chat.completions.parse({
       model: "",
       messages: [
         {
           role: "developer",
-          content: `You are a helpful code reviewer. Review this diff and provide any suggestions.
+          content: `You are a helpful code reviewer. Review this pull request and provide any suggestions.
 Each comment must include a severity: 'info', 'warning', or 'error'. Skip any comments with severity less than '${config.severityThreshold}'.
 Only comment on lines that need improvement. Comments may be formatted as markdown.
 If you have no comments, return an empty comments array. Respond in JSON format.`,
         },
         {
           role: "user",
-          content: `Commit Message:
-${input.commitMessage}
-
-Diff:
-${input.diff}`,
+          content: diff,
         },
       ],
       response_format: zodResponseFormat(

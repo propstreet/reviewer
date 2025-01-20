@@ -4,10 +4,9 @@ This GitHub Action uses Azure OpenAI to automatically review pull request diffs 
 
 ## How It Works
 
-1. **Checks out your repository** (make sure you use `actions/checkout@v3` with an adequate `fetch-depth`).
-2. **Generates a Git diff** (either for the entire PR or just the last commit).
-3. **Sends the diff and the last commit message** to Azure OpenAI, asking for a structured JSON response.
-4. **Posts AI-generated review comments** on your pull request.
+1. **Generates a Git diff** (either for the entire PR or just the last commit).
+2. **Sends the diff and the last commit message** to Azure OpenAI, asking for a structured JSON response.
+3. **Posts AI-generated review comments** on your pull request.
 
 ## Usage
 
@@ -23,13 +22,9 @@ jobs:
   ai-review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.pull_request.head.sha }} # skip checking out merge commit
-          fetch-depth: 0 # fetch full history
 
       - name: Run AI Reviewer
-        uses: propstreet/reviewer@v1
+        uses: propstreet/reviewer@v2
         with:
           azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_REASONING_ENDPOINT }}
           azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_REASONING_DEPLOYMENT }}
