@@ -50060,68 +50060,69 @@ If you have no comments, return an empty comments array. Respond in JSON format.
 
 ;// CONCATENATED MODULE: ./src/diffparser.ts
 /**
- * findPositionInDiff:
- *   Maps "new file" line numbers to 1-based patch line positions,
- *   consistent with how GitHub diffs usually track them.
+ * Finds the line position of a specified line number (newFileLine) within a unified diff patch.
  *
- * Algorithm:
- * 1. We ignore everything until we see a hunk header line: "@@ -oldStart,oldCount +newStart,newCount @@"
- *    - Once we see a hunk header, set `currentNewLine = newStart - 1`.
- *    - Mark `inHunk = true` so we know subsequent lines are part of this hunk.
+ * Algorithm explanation:
+ * 1. Split the patch into lines and iterate through them.
+ * 2. Ignore lines until the first '@@' hunk header is encountered.
+ * 3. From that point on, increment a counter for each line that is an addition ("+") or unmodified line (" ").
+ * 4. If the counter matches the target newFileLine, the position returned is how many lines have passed
+ *    since the first '@@' hunk header.
  *
- * 2. Inside a hunk:
- *    - If line starts with '-', it's an old-file line => does not increment.
- *    - If line starts with '+' or ' ' (a space), it belongs to the new file => increment currentNewLine.
- *    - If currentNewLine matches `newFileLine`, return the patch line index (1-based).
+ * According to GitHub's specification:
+ * "The position value equals the number of lines down from the first '@@' hunk header
+ * in the file. The line just below the '@@' line is position 1, the next line is
+ * position 2, and so on. The position in the diff continues to increase through
+ * lines of whitespace and additional hunks until the beginning of a new file."
  *
- * 3. If we hit another "@@" line, that starts a new hunk (repeat step 1).
- * 4. Skip metadata lines ("diff --git", "index ", "--- ", "+++ ") outside hunks.
- *    (We also skip them if they're inside a hunk, which is rare, but just in case.)
- *
- * 5. If we never find newFileLine, return null.
+ * @param patch       Unified diff string
+ * @param newFileLine Line number in the "new" version of the file to locate
+ * @returns           Position in the diff, or null if not found
  */
 function findPositionInDiff(patch, newFileLine) {
-    let position = 0; // 1-based index of the current line in the patch
-    let currentNewLine = 0; // how many lines we've seen in the new file so far
-    let inHunk = false; // are we inside a recognized hunk?
+    // Split into lines
     const lines = patch.split("\n");
-    for (const line of lines) {
-        position++;
-        // 1) Hunk header check: "@@ -oldStart,oldCount +newStart,newCount @@"
+    // Tracks the current line number in the new file
+    let trackedNewLine = 0;
+    // Indicates if we've encountered the first "@@" hunk header
+    let hasFoundFirstHunk = false;
+    // Zero-based index of the line where the first "@@" occurs
+    let firstHunkLineIndex = -1;
+    // We'll iterate with a standard index for clarity
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        // When we reach a hunk header (e.g. "@@ -123,4 +567,8 @@")
         if (line.startsWith("@@ ")) {
             const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+            // If we parse it successfully, update our trackedNewLine
             if (match) {
                 const newStart = parseInt(match[1], 10);
-                currentNewLine = newStart - 1;
-                inHunk = true; // subsequent lines belong to this hunk
+                trackedNewLine = newStart - 1;
+                // Mark the index of this first hunk (for calculating offsets later)
+                if (!hasFoundFirstHunk) {
+                    hasFoundFirstHunk = true;
+                    firstHunkLineIndex = i;
+                }
             }
+            // Done processing this line, move on
             continue;
         }
-        // 2) If we're not in a hunk yet, skip everything else
-        //    (like "diff --git", "index ", or blank lines).
-        if (!inHunk) {
+        // Skip lines until we've encountered the first "@@" line
+        if (!hasFoundFirstHunk) {
             continue;
         }
-        // 3) Inside a hunk, skip lines that start with '-' (removed)
-        if (line.startsWith("-")) {
-            continue;
-        }
-        // 4) Also skip any patch metadata that might appear inside a hunk (rare but possible)
-        if (line.startsWith("diff --git ") ||
-            line.startsWith("index ") ||
-            line.startsWith("--- ") ||
-            line.startsWith("+++ ")) {
-            continue;
-        }
-        // 5) If the line starts with '+' or ' ' => it is a line in the new file
+        // For lines in the actual diff segment, we increment the tracked new-file line
+        // on lines that are added or unmodified ("+" or " ")
         if (line.startsWith("+") || line.startsWith(" ")) {
-            currentNewLine++;
-            if (currentNewLine === newFileLine) {
-                return position; // the 1-based index of this line in the patch
+            trackedNewLine++;
+            // When we hit the exact newFileLine, return how many lines we've progressed
+            // from the first hunk line.
+            if (trackedNewLine === newFileLine) {
+                return i - firstHunkLineIndex;
             }
         }
     }
-    // If we never matched newFileLine, return null
+    // If we exhaust the patch lines without matching newFileLine, return null
     return null;
 }
 
