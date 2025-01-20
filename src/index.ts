@@ -1,6 +1,5 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { execSync } from "child_process";
 import {
   isValidDiffMode,
   isValidSeverityLevel,
@@ -18,56 +17,56 @@ interface GitInfo {
   commitMessage: string;
 }
 
-function getGitInfo(diffMode: string): GitInfo | null {
-  const commitCount = Number(
-    execSync("git rev-list --count HEAD").toString().trim()
-  );
-
-  let diff = "";
-  // (A) Diff
-  if (diffMode === "entire-pr") {
-    // Compare PR base to HEAD
-    const baseRef = process.env.GITHUB_BASE_REF; // branch name
-    if (!baseRef) {
-      core.info("No GITHUB_BASE_REF found; defaulting to HEAD~1 if possible.");
-      if (commitCount > 1) {
-        diff = execSync("git diff HEAD~1 HEAD").toString();
-      }
-    } else {
-      diff = execSync(`git diff origin/${baseRef}...HEAD`).toString();
-    }
-  } else {
-    // last-commit mode
-    if (commitCount > 1) {
-      // If there's more than 1 commit, we can do HEAD~1
-      diff = execSync("git diff HEAD~1 HEAD").toString();
-    } else {
-      // Fallback: Only one commit in the branch—use entire PR diff or skip
-      core.info("Only one commit found; falling back to entire PR diff.");
-      const baseRef = process.env.GITHUB_BASE_REF;
-      if (baseRef) {
-        diff = execSync(`git diff origin/${baseRef}...HEAD`).toString();
-      }
-    }
-  }
-
-  // Early exit if no diff
-  if (!diff) {
-    core.info("No diff found.");
+async function getGitInfo(diffMode: string): Promise<GitInfo | null> {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    core.info("No GitHub token found, returning null.");
     return null;
   }
 
-  core.debug(`Diff: ${diff}`);
+  const { owner, repo, number: pull_number } = github.context.issue;
+  const githubService = new GitHubService({
+    token,
+    owner,
+    repo,
+    pullNumber: pull_number,
+  });
 
-  // (B) Last Commit Message
-  const commitMessage = execSync("git log -1 --pretty=format:%B HEAD")
-    .toString()
-    .trim();
-
-  core.info(`Commit Message: ${commitMessage}`);
-  core.info(`Diff Length: ${diff.length}`);
-
-  return { diff, commitMessage };
+  try {
+    if (diffMode === "entire-pr") {
+      const { commitMessage, patches } = await githubService.getEntirePRDiff();
+      if (!patches.length) {
+        core.info("No patches found for entire-pr mode.");
+        return null;
+      }
+      const combinedDiff = patches
+        .map((p) => `File: ${p.filename}\n${p.patch}`)
+        .join("\n\n");
+      core.debug(`Diff: ${combinedDiff}`);
+      core.info(`Commit Message: ${commitMessage}`);
+      core.info(`Diff Length: ${combinedDiff.length}`);
+      return { diff: combinedDiff, commitMessage };
+    } else {
+      const { commitMessage, patches } =
+        await githubService.getLastCommitDiff();
+      if (!patches.length) {
+        core.info("No patches found for last-commit mode.");
+        return null;
+      }
+      const combinedDiff = patches
+        .map((p) => `File: ${p.filename}\n${p.patch}`)
+        .join("\n\n");
+      core.debug(`Diff: ${combinedDiff}`);
+      core.info(`Commit Message: ${commitMessage}`);
+      core.info(`Diff Length: ${combinedDiff.length}`);
+      return { diff: combinedDiff, commitMessage };
+    }
+  } catch (error) {
+    core.error(
+      `Failed to get git info: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return null;
+  }
 }
 
 export async function run(): Promise<void> {
@@ -92,7 +91,7 @@ export async function run(): Promise<void> {
     }
 
     // 2. Get Git Info
-    const gitInfo = getGitInfo(diffMode);
+    const gitInfo = await getGitInfo(diffMode);
     if (!gitInfo) {
       return;
     }

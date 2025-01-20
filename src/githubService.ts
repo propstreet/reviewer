@@ -23,6 +23,14 @@ export interface ReviewResult {
   commentsFiltered?: number;
 }
 
+export interface GitDiffResult {
+  commitMessage: string;
+  patches: Array<{
+    filename: string;
+    patch: string;
+  }>;
+}
+
 export class GitHubService {
   private octokit: ReturnType<typeof github.getOctokit>;
   private config: GitHubConfig;
@@ -106,5 +114,66 @@ export class GitHubService {
   private findPositionInDiff(patch: string, targetLine: number): number | null {
     // Import findPositionInDiff from diffparser
     return findPositionInDiff(patch, targetLine);
+  }
+
+  async getEntirePRDiff(): Promise<GitDiffResult> {
+    const prDetails = await this.octokit.rest.pulls.get({
+      owner: this.config.owner,
+      repo: this.config.repo,
+      pull_number: this.config.pullNumber,
+    });
+    const prTitle = prDetails.data.title;
+    const prBody = prDetails.data.body ?? "";
+    const commitMessage = `${prTitle}\n\n${prBody}`.trim();
+
+    const fileList = await this.octokit.rest.pulls.listFiles({
+      owner: this.config.owner,
+      repo: this.config.repo,
+      pull_number: this.config.pullNumber,
+    });
+
+    const patches = fileList.data.map((file) => ({
+      filename: file.filename,
+      patch: file.patch || "",
+    }));
+
+    return { commitMessage, patches };
+  }
+
+  async getLastCommitDiff(): Promise<GitDiffResult> {
+    const commitsResponse = await this.octokit.rest.pulls.listCommits({
+      owner: this.config.owner,
+      repo: this.config.repo,
+      pull_number: this.config.pullNumber,
+    });
+
+    const commits = commitsResponse.data;
+    if (commits.length === 0) {
+      return { commitMessage: "", patches: [] };
+    }
+
+    const lastCommit = commits[commits.length - 1];
+    const lastCommitSha = lastCommit.sha;
+    const parentSha = lastCommit.parents?.[0]?.sha;
+
+    if (!parentSha) {
+      // If there's no parent (first commit), return empty result
+      return { commitMessage: "", patches: [] };
+    }
+
+    const compareData = await this.octokit.rest.repos.compareCommits({
+      owner: this.config.owner,
+      repo: this.config.repo,
+      base: parentSha,
+      head: lastCommitSha,
+    });
+
+    const commitMessage = lastCommit.commit.message;
+    const patches = (compareData.data.files || []).map((file) => ({
+      filename: file.filename,
+      patch: file.patch || "",
+    }));
+
+    return { commitMessage, patches };
   }
 }

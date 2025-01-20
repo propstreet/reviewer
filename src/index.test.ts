@@ -1,6 +1,5 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { execSync } from "child_process";
 import { AzureOpenAIService } from "./azureOpenAIService.js";
 import { GitHubService } from "./githubService.js";
 
@@ -28,7 +27,6 @@ type MockType = ReturnType<typeof vi.fn>;
 // Mock dependencies
 vi.mock("@actions/core");
 vi.mock("@actions/github");
-vi.mock("child_process");
 vi.mock("./azureOpenAIService.js");
 vi.mock("./githubService.js");
 
@@ -58,18 +56,15 @@ describe("index", () => {
       }
     });
 
-    // Mock execSync for git commands
-    (execSync as MockType).mockImplementation((cmd: string) => {
-      if (cmd === "git rev-list --count HEAD") {
-        return "2";
-      }
-      if (cmd === "git diff HEAD~1 HEAD") {
-        return "test diff";
-      }
-      if (cmd === "git log -1 --pretty=format:%B HEAD") {
-        return "test commit";
-      }
-      return "";
+    // Mock GitHubService methods
+    vi.mocked(GitHubService.prototype.getEntirePRDiff).mockResolvedValue({
+      commitMessage: "Test PR Title\n\nTest PR Body",
+      patches: [{ filename: "test.ts", patch: "test diff" }],
+    });
+
+    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockResolvedValue({
+      commitMessage: "test commit",
+      patches: [{ filename: "test.ts", patch: "test diff" }],
     });
 
     // Mock github context
@@ -152,12 +147,14 @@ describe("index", () => {
   });
 
   it("should handle no diff found", async () => {
-    // Mock execSync to return empty diff
-    (execSync as MockType).mockImplementation((cmd: string) => {
-      if (cmd === "git rev-list --count HEAD") {
-        return "2";
-      }
-      return "";
+    // Mock GitHubService to return empty patches
+    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockResolvedValue({
+      commitMessage: "",
+      patches: [],
+    });
+    vi.mocked(GitHubService.prototype.getEntirePRDiff).mockResolvedValue({
+      commitMessage: "",
+      patches: [],
     });
 
     const { run } = await import("./index.js");
@@ -168,7 +165,9 @@ describe("index", () => {
     expect(GitHubService.prototype.postReviewComments).not.toHaveBeenCalled();
 
     // Verify appropriate message was logged
-    expect(core.info).toHaveBeenCalledWith("No diff found.");
+    expect(core.info).toHaveBeenCalledWith(
+      "No patches found for last-commit mode."
+    );
   });
 
   it("should handle invalid inputs", async () => {
@@ -190,28 +189,44 @@ describe("index", () => {
   it("should handle missing GITHUB_TOKEN", async () => {
     delete process.env.GITHUB_TOKEN;
 
-    // Mock Azure OpenAI response
-    const mockAzureResponse = {
-      comments: [
-        {
-          file: "test.ts",
-          line: 1,
-          comment: "Test comment",
-          severity: "info" as const,
-        },
-      ],
-    };
+    const { run } = await import("./index.js");
+    await run();
 
-    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue(
-      mockAzureResponse
+    // Verify appropriate message was logged
+    expect(core.info).toHaveBeenCalledWith(
+      "No GitHub token found, returning null."
+    );
+  });
+
+  it("should handle GitHub API errors", async () => {
+    // Mock API error
+    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockRejectedValue(
+      new Error("API Error")
     );
 
     const { run } = await import("./index.js");
     await run();
 
-    // Verify error was reported
-    expect(core.setFailed).toHaveBeenCalledWith(
-      "Missing GITHUB_TOKEN in environment."
+    // Verify error was logged
+    expect(core.error).toHaveBeenCalledWith(
+      "Failed to get git info: API Error"
     );
+  });
+
+  it("should handle entire-pr mode", async () => {
+    // Mock diffMode input
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "diffMode") {
+        return "entire-pr";
+      }
+      return "";
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    // Verify entire-pr API was called
+    expect(GitHubService.prototype.getEntirePRDiff).toHaveBeenCalled();
+    expect(GitHubService.prototype.getLastCommitDiff).not.toHaveBeenCalled();
   });
 });
