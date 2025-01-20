@@ -1,4 +1,3 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { execSync } from "child_process";
@@ -36,7 +35,7 @@ vi.mock("./githubService.js");
 describe("index", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
+
     // Mock core.getInput
     (core.getInput as MockType).mockImplementation((name: string) => {
       switch (name) {
@@ -82,7 +81,7 @@ describe("index", () => {
       },
       repo: {
         owner: "test-owner",
-        repo: "test-repo"
+        repo: "test-repo",
       },
       payload: {},
       eventName: "pull_request",
@@ -96,7 +95,7 @@ describe("index", () => {
       runId: 1,
       apiUrl: "https://api.github.com",
       serverUrl: "https://github.com",
-      graphqlUrl: "https://api.github.com/graphql"
+      graphqlUrl: "https://api.github.com/graphql",
     } as Context;
 
     // Set GITHUB_TOKEN
@@ -128,8 +127,12 @@ describe("index", () => {
     };
 
     // Setup service mocks
-    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue(mockAzureResponse);
-    vi.mocked(GitHubService.prototype.postReviewComments).mockResolvedValue(mockGitHubResponse);
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue(
+      mockAzureResponse
+    );
+    vi.mocked(GitHubService.prototype.postReviewComments).mockResolvedValue(
+      mockGitHubResponse
+    );
 
     // Import and run the index file
     const { run } = await import("./index.js");
@@ -199,12 +202,16 @@ describe("index", () => {
       ],
     };
 
-    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue(mockAzureResponse);
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue(
+      mockAzureResponse
+    );
 
     const { run } = await import("./index.js");
     await run();
 
     // Verify error was reported
-    expect(core.setFailed).toHaveBeenCalledWith("Missing GITHUB_TOKEN in environment.");
+    expect(core.setFailed).toHaveBeenCalledWith(
+      "Missing GITHUB_TOKEN in environment."
+    );
   });
 });

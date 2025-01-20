@@ -6,7 +6,11 @@ import {
   isValidSeverityLevel,
   isValidReasoningEffort,
 } from "./validators.js";
-import { AzureOpenAIService, type AzureOpenAIConfig, type ReviewPromptConfig } from "./azureOpenAIService.js";
+import {
+  AzureOpenAIService,
+  type AzureOpenAIConfig,
+  type ReviewPromptConfig,
+} from "./azureOpenAIService.js";
 import { GitHubService, type GitHubConfig } from "./githubService.js";
 
 interface GitInfo {
@@ -25,9 +29,7 @@ function getGitInfo(diffMode: string): GitInfo | null {
     // Compare PR base to HEAD
     const baseRef = process.env.GITHUB_BASE_REF; // branch name
     if (!baseRef) {
-      core.info(
-        "No GITHUB_BASE_REF found; defaulting to HEAD~1 if possible."
-      );
+      core.info("No GITHUB_BASE_REF found; defaulting to HEAD~1 if possible.");
       if (commitCount > 1) {
         diff = execSync("git diff HEAD~1 HEAD").toString();
       }
@@ -142,7 +144,10 @@ export async function run(): Promise<void> {
     };
 
     const githubService = new GitHubService(githubConfig);
-    const result = await githubService.postReviewComments(response.comments, severityThreshold);
+    const result = await githubService.postReviewComments(
+      response.comments,
+      severityThreshold
+    );
 
     if (result.skipped) {
       if (result.reason) {
@@ -151,7 +156,9 @@ export async function run(): Promise<void> {
     } else if (result.commentsPosted) {
       core.info(`Posted ${result.commentsPosted} comments`);
       if (result.commentsFiltered && result.commentsFiltered > 0) {
-        core.info(`Filtered out ${result.commentsFiltered} comments below severity threshold.`);
+        core.info(
+          `Filtered out ${result.commentsFiltered} comments below severity threshold.`
+        );
       }
     }
   } catch (err) {

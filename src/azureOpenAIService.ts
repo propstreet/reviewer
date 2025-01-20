@@ -32,31 +32,24 @@ export class AzureOpenAIService {
     });
   }
 
-  async runReviewPrompt(
-    input: ReviewInput,
-    config: ReviewPromptConfig
-  ) {
+  async runReviewPrompt(input: ReviewInput, config: ReviewPromptConfig) {
     const completion = await this.client.beta.chat.completions.parse({
       model: "",
       messages: [
         {
           role: "developer",
-          content: `
-          You are a helpful code reviewer. Review this diff and provide any suggestions.
-          Each comment must include a severity: 'info', 'warning', or 'error'. Skip any comments with severity less than '${config.severityThreshold}'.
-          Only comment on lines that need improvement. Comments may be formatted as markdown.
-          If you have no comments, return an empty comments array. Respond in JSON format.
-          `,
+          content: `You are a helpful code reviewer. Review this diff and provide any suggestions.
+Each comment must include a severity: 'info', 'warning', or 'error'. Skip any comments with severity less than '${config.severityThreshold}'.
+Only comment on lines that need improvement. Comments may be formatted as markdown.
+If you have no comments, return an empty comments array. Respond in JSON format.`,
         },
         {
           role: "user",
-          content: `
-Commit Message:
+          content: `Commit Message:
 ${input.commitMessage}
 
 Diff:
-${input.diff}
-`,
+${input.diff}`,
         },
       ],
       response_format: zodResponseFormat(
@@ -67,7 +60,9 @@ ${input.diff}
     });
 
     if (completion.choices[0].finish_reason !== "stop") {
-      throw new Error(`Review request did not finish, got ${completion.choices[0].finish_reason}`);
+      throw new Error(
+        `Review request did not finish, got ${completion.choices[0].finish_reason}`
+      );
     }
 
     return completion.choices[0].message.parsed;

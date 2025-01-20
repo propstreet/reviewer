@@ -37777,10 +37777,28 @@ module.exports = /*#__PURE__*/JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45
 /************************************************************************/
 var __webpack_exports__ = {};
 
+// EXPORTS
+__nccwpck_require__.d(__webpack_exports__, {
+  e: () => (/* binding */ run)
+});
+
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
 var core = __nccwpck_require__(7484);
 // EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
 var github = __nccwpck_require__(3228);
+// EXTERNAL MODULE: external "child_process"
+var external_child_process_ = __nccwpck_require__(5317);
+;// CONCATENATED MODULE: ./src/validators.ts
+function isValidReasoningEffort(reasoningEffort) {
+    return ["low", "medium", "high"].includes(reasoningEffort);
+}
+function isValidSeverityLevel(severity) {
+    return ["info", "warning", "error"].includes(severity);
+}
+function isValidDiffMode(diffMode) {
+    return ["last-commit", "entire-pr"].includes(diffMode);
+}
+
 ;// CONCATENATED MODULE: ./node_modules/openai/internal/qs/formats.mjs
 const default_format = 'RFC3986';
 const formatters = {
@@ -44163,8 +44181,6 @@ const API_KEY_SENTINEL = '<Missing Key>';
 
 /* harmony default export */ const openai = ((/* unused pure expression or super */ null && (OpenAI)));
 //# sourceMappingURL=index.mjs.map
-// EXTERNAL MODULE: external "child_process"
-var external_child_process_ = __nccwpck_require__(5317);
 ;// CONCATENATED MODULE: ./node_modules/zod/lib/index.mjs
 var util;
 (function (util) {
@@ -50004,15 +50020,48 @@ const CodeReviewCommentArray = z.object({
     comments: z.array(CodeReviewComment),
 });
 
-;// CONCATENATED MODULE: ./src/validators.ts
-function isValidReasoningEffort(reasoningEffort) {
-    return ["low", "medium", "high"].includes(reasoningEffort);
-}
-function isValidSeverityLevel(severity) {
-    return ["info", "warning", "error"].includes(severity);
-}
-function isValidDiffMode(diffMode) {
-    return ["last-commit", "entire-pr"].includes(diffMode);
+;// CONCATENATED MODULE: ./src/azureOpenAIService.ts
+
+
+
+class AzureOpenAIService {
+    client;
+    constructor(config) {
+        this.client = new AzureOpenAI({
+            endpoint: config.endpoint,
+            deployment: config.deployment,
+            apiKey: config.apiKey,
+            apiVersion: config.apiVersion,
+        });
+    }
+    async runReviewPrompt(input, config) {
+        const completion = await this.client.beta.chat.completions.parse({
+            model: "",
+            messages: [
+                {
+                    role: "developer",
+                    content: `You are a helpful code reviewer. Review this diff and provide any suggestions.
+Each comment must include a severity: 'info', 'warning', or 'error'. Skip any comments with severity less than '${config.severityThreshold}'.
+Only comment on lines that need improvement. Comments may be formatted as markdown.
+If you have no comments, return an empty comments array. Respond in JSON format.`,
+                },
+                {
+                    role: "user",
+                    content: `Commit Message:
+${input.commitMessage}
+
+Diff:
+${input.diff}`,
+                },
+            ],
+            response_format: zodResponseFormat(CodeReviewCommentArray, "review_comments"),
+            reasoning_effort: config.reasoningEffort,
+        });
+        if (completion.choices[0].finish_reason !== "stop") {
+            throw new Error(`Review request did not finish, got ${completion.choices[0].finish_reason}`);
+        }
+        return completion.choices[0].message.parsed;
+    }
 }
 
 ;// CONCATENATED MODULE: ./src/diffparser.ts
@@ -50082,6 +50131,82 @@ function findPositionInDiff(patch, newFileLine) {
     return null;
 }
 
+;// CONCATENATED MODULE: ./src/githubService.ts
+
+
+class GitHubService {
+    octokit;
+    config;
+    constructor(config) {
+        this.octokit = github.getOctokit(config.token);
+        this.config = config;
+    }
+    async postReviewComments(comments, severityThreshold) {
+        // Fetch the PR files to get their patches
+        const { data: changedFiles } = await this.octokit.rest.pulls.listFiles({
+            owner: this.config.owner,
+            repo: this.config.repo,
+            pull_number: this.config.pullNumber,
+        });
+        // Order of severity levels
+        const severityOrder = ["info", "warning", "error"];
+        const thresholdIndex = severityOrder.indexOf(severityThreshold);
+        // Build up the array of comments that meet or exceed the threshold
+        const reviewComments = comments
+            .filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex)
+            .map((c) => {
+            const fileInfo = changedFiles.find((f) => f.filename === c.file);
+            if (!fileInfo || !fileInfo.patch) {
+                // This file might not exist or doesn't have a patch (binary file, etc.)
+                // fallback to top-level or skip
+                return {
+                    path: c.file,
+                    body: `**File ${c.file} not found or no patch**: ${c.comment}`,
+                };
+            }
+            // Find position in diff
+            const pos = this.findPositionInDiff(fileInfo.patch, c.line);
+            if (!pos) {
+                // We couldn't match that line in the patch
+                // fallback to top-level
+                return {
+                    path: c.file,
+                    body: `**Could not map line ${c.line} in ${c.file}**: ${c.comment}`,
+                };
+            }
+            return {
+                path: c.file,
+                position: pos,
+                body: c.comment,
+            };
+        });
+        // If no comments met the threshold
+        if (reviewComments.length === 0) {
+            return {
+                skipped: true,
+                reason: `No comments at or above severity: ${severityThreshold}`,
+            };
+        }
+        // Create a review with multiple comments
+        await this.octokit.rest.pulls.createReview({
+            owner: this.config.owner,
+            repo: this.config.repo,
+            pull_number: this.config.pullNumber,
+            event: "COMMENT",
+            comments: reviewComments,
+        });
+        return {
+            skipped: false,
+            commentsPosted: reviewComments.length,
+            commentsFiltered: comments.length - reviewComments.length,
+        };
+    }
+    findPositionInDiff(patch, targetLine) {
+        // Import findPositionInDiff from diffparser
+        return findPositionInDiff(patch, targetLine);
+    }
+}
+
 ;// CONCATENATED MODULE: ./src/index.ts
 
 
@@ -50089,15 +50214,55 @@ function findPositionInDiff(patch, newFileLine) {
 
 
 
-
-
+function getGitInfo(diffMode) {
+    const commitCount = Number((0,external_child_process_.execSync)("git rev-list --count HEAD").toString().trim());
+    let diff = "";
+    // (A) Diff
+    if (diffMode === "entire-pr") {
+        // Compare PR base to HEAD
+        const baseRef = process.env.GITHUB_BASE_REF; // branch name
+        if (!baseRef) {
+            core.info("No GITHUB_BASE_REF found; defaulting to HEAD~1 if possible.");
+            if (commitCount > 1) {
+                diff = (0,external_child_process_.execSync)("git diff HEAD~1 HEAD").toString();
+            }
+        }
+        else {
+            diff = (0,external_child_process_.execSync)(`git diff origin/${baseRef}...HEAD`).toString();
+        }
+    }
+    else {
+        // last-commit mode
+        if (commitCount > 1) {
+            // If there's more than 1 commit, we can do HEAD~1
+            diff = (0,external_child_process_.execSync)("git diff HEAD~1 HEAD").toString();
+        }
+        else {
+            // Fallback: Only one commit in the branch—use entire PR diff or skip
+            core.info("Only one commit found; falling back to entire PR diff.");
+            const baseRef = process.env.GITHUB_BASE_REF;
+            if (baseRef) {
+                diff = (0,external_child_process_.execSync)(`git diff origin/${baseRef}...HEAD`).toString();
+            }
+        }
+    }
+    // Early exit if no diff
+    if (!diff) {
+        core.info("No diff found.");
+        return null;
+    }
+    core.debug(`Diff: ${diff}`);
+    // (B) Last Commit Message
+    const commitMessage = (0,external_child_process_.execSync)("git log -1 --pretty=format:%B HEAD")
+        .toString()
+        .trim();
+    core.info(`Commit Message: ${commitMessage}`);
+    core.info(`Diff Length: ${diff.length}`);
+    return { diff, commitMessage };
+}
 async function run() {
     try {
-        // 1. Grab Inputs
-        const azureOpenAIEndpoint = core.getInput("azureOpenAIEndpoint");
-        const azureOpenAIDeployment = core.getInput("azureOpenAIDeployment");
-        const azureOpenAIKey = core.getInput("azureOpenAIKey");
-        const azureOpenAIVersion = core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
+        // 1. Validate Inputs
         const diffMode = core.getInput("diffMode") || "last-commit";
         if (!isValidDiffMode(diffMode)) {
             core.setFailed(`Invalid diff mode: ${diffMode}`);
@@ -50113,163 +50278,59 @@ async function run() {
             core.setFailed(`Invalid reasoning effort: ${reasoningEffort}`);
             return;
         }
-        // 2. Prepare local Git info
-        // Ensure 'actions/checkout@v3' with fetch-depth > 1 or 0 has run so HEAD~1 is available.
-        let diff = "";
-        const commitCount = Number((0,external_child_process_.execSync)("git rev-list --count HEAD").toString().trim());
-        // (A) Diff
-        if (diffMode === "entire-pr") {
-            // Compare PR base to HEAD
-            const baseRef = process.env.GITHUB_BASE_REF; // branch name
-            if (!baseRef) {
-                core.info("No GITHUB_BASE_REF found; defaulting to HEAD~1 if possible.");
-                if (commitCount > 1) {
-                    diff = (0,external_child_process_.execSync)("git diff HEAD~1 HEAD").toString();
-                }
-            }
-            else {
-                diff = (0,external_child_process_.execSync)(`git diff origin/${baseRef}...HEAD`).toString();
-            }
-        }
-        else {
-            // last-commit mode
-            if (commitCount > 1) {
-                // If there's more than 1 commit, we can do HEAD~1
-                diff = (0,external_child_process_.execSync)("git diff HEAD~1 HEAD").toString();
-            }
-            else {
-                // Fallback: Only one commit in the branch—use entire PR diff or skip
-                core.info("Only one commit found; falling back to entire PR diff.");
-                const baseRef = process.env.GITHUB_BASE_REF;
-                if (baseRef) {
-                    diff = (0,external_child_process_.execSync)(`git diff origin/${baseRef}...HEAD`).toString();
-                }
-            }
-        }
-        // Early exit if no diff
-        if (!diff) {
-            core.info("No diff found.");
+        // 2. Get Git Info
+        const gitInfo = getGitInfo(diffMode);
+        if (!gitInfo) {
             return;
         }
-        core.debug(`Diff: ${diff}`);
-        // (B) Last Commit Message
-        // Gets the commit message (subject + body) of HEAD
-        const commitMessage = (0,external_child_process_.execSync)("git log -1 --pretty=format:%B HEAD")
-            .toString()
-            .trim();
-        core.info(`Commit Message: ${commitMessage}`);
-        core.info(`Diff Length: ${diff.length}`);
+        // 3. Setup Azure OpenAI Service
+        const azureConfig = {
+            endpoint: core.getInput("azureOpenAIEndpoint"),
+            deployment: core.getInput("azureOpenAIDeployment"),
+            apiKey: core.getInput("azureOpenAIKey"),
+            apiVersion: core.getInput("azureOpenAIVersion") || "2024-12-01-preview",
+        };
+        const reviewConfig = {
+            severityThreshold,
+            reasoningEffort,
+        };
+        const azureService = new AzureOpenAIService(azureConfig);
         core.info("Calling Azure OpenAI...");
-        // 3. Call Azure OpenAI
-        const client = new AzureOpenAI({
-            endpoint: azureOpenAIEndpoint,
-            deployment: azureOpenAIDeployment,
-            apiKey: azureOpenAIKey,
-            apiVersion: azureOpenAIVersion,
-        });
-        // We'll add the commit message and diff in a single prompt:
-        const completion = await client.beta.chat.completions.parse({
-            model: "",
-            messages: [
-                {
-                    role: "developer",
-                    content: `
-          You are a helpful code reviewer. Review this diff and provide any suggestions.
-          Each comment must include a severity: 'info', 'warning', or 'error'. Skip any comments with severity less than '${severityThreshold}'.
-          Only comment on lines that need improvement. Comments may be formatted as markdown.
-          If you have no comments, return an empty comments array. Respond in JSON format.
-          `,
-                },
-                {
-                    role: "user",
-                    content: `
-Commit Message:
-${commitMessage}
-
-Diff:
-${diff}
-`,
-                },
-            ],
-            response_format: zodResponseFormat(CodeReviewCommentArray, "review_comments"),
-            reasoning_effort: reasoningEffort,
-        });
-        core.debug(`Completion: ${JSON.stringify(completion)}`);
-        const finishReason = completion.choices[0].finish_reason;
-        if (finishReason !== "stop") {
-            core.setFailed(`Review request did not finish, got ${finishReason}`);
-            return;
-        }
-        const response = completion.choices[0].message.parsed;
+        const response = await azureService.runReviewPrompt({
+            commitMessage: gitInfo.commitMessage,
+            diff: gitInfo.diff,
+        }, reviewConfig);
         if (!response?.comments || response.comments.length === 0) {
             core.info("No suggestions from AI.");
             return;
         }
         core.info(`Got ${response.comments.length} suggestions from AI.`);
-        // 4. Post Comments to the PR
+        // 4. Post Comments to PR
         const token = process.env.GITHUB_TOKEN;
         if (!token) {
             core.setFailed("Missing GITHUB_TOKEN in environment.");
             return;
         }
-        const octokit = github.getOctokit(token);
         const { owner, repo, number: pull_number } = github.context.issue;
-        // 1. Fetch the PR files (and their patches)
-        const { data: changedFiles } = await octokit.rest.pulls.listFiles({
+        const githubConfig = {
+            token,
             owner,
             repo,
-            pull_number,
-        });
-        // Order of severity levels
-        const severityOrder = ["info", "warning", "error"];
-        const thresholdIndex = severityOrder.indexOf(severityThreshold);
-        // Build up the array of comments that meet or exceed the threshold
-        const reviewComments = response.comments
-            .filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex)
-            .map((c) => {
-            core.info(`Comment on ${c.file}:${c.line} (severity: ${c.severity}): ${c.comment}`);
-            const fileInfo = changedFiles.find((f) => f.filename === c.file);
-            if (!fileInfo || !fileInfo.patch) {
-                // This file might not exist or doesn't have a patch (binary file, etc.)
-                // fallback to top-level or skip
-                return {
-                    path: c.file,
-                    body: `**File ${c.file} not found or no patch**: ${c.comment}`,
-                };
+            pullNumber: pull_number,
+        };
+        const githubService = new GitHubService(githubConfig);
+        const result = await githubService.postReviewComments(response.comments, severityThreshold);
+        if (result.skipped) {
+            if (result.reason) {
+                core.info(result.reason);
             }
-            // 2. parse patch, find position
-            const pos = findPositionInDiff(fileInfo.patch, c.line);
-            if (!pos) {
-                // We couldn't match that line in the patch
-                // fallback to top-level
-                return {
-                    path: c.file,
-                    body: `**Could not map line ${c.line} in ${c.file}**: ${c.comment}`,
-                };
+        }
+        else if (result.commentsPosted) {
+            core.info(`Posted ${result.commentsPosted} comments`);
+            if (result.commentsFiltered && result.commentsFiltered > 0) {
+                core.info(`Filtered out ${result.commentsFiltered} comments below severity threshold.`);
             }
-            return {
-                path: c.file,
-                position: pos,
-                body: c.comment,
-            };
-        });
-        // If some comments were filtered out
-        if (reviewComments.length !== response.comments.length) {
-            core.info(`Filtered out ${response.comments.length - reviewComments.length} comments below severity threshold.`);
         }
-        // If no comments met the threshold
-        if (reviewComments.length === 0) {
-            core.info(`No comments at or above severity: ${severityThreshold}`);
-            return;
-        }
-        // Create a review with multiple comments
-        await octokit.rest.pulls.createReview({
-            owner,
-            repo,
-            pull_number,
-            event: "COMMENT",
-            comments: reviewComments,
-        });
     }
     catch (err) {
         if (err instanceof Error) {
@@ -50282,3 +50343,5 @@ ${diff}
 }
 run();
 
+var __webpack_exports__run = __webpack_exports__.e;
+export { __webpack_exports__run as run };

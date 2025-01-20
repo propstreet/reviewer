@@ -32,7 +32,10 @@ export class GitHubService {
     this.config = config;
   }
 
-  async postReviewComments(comments: z.infer<typeof CodeReviewComment>[], severityThreshold: string) {
+  async postReviewComments(
+    comments: z.infer<typeof CodeReviewComment>[],
+    severityThreshold: string
+  ) {
     // Fetch the PR files to get their patches
     const { data: changedFiles } = await this.octokit.rest.pulls.listFiles({
       owner: this.config.owner,
@@ -78,7 +81,10 @@ export class GitHubService {
 
     // If no comments met the threshold
     if (reviewComments.length === 0) {
-      return { skipped: true, reason: `No comments at or above severity: ${severityThreshold}` };
+      return {
+        skipped: true,
+        reason: `No comments at or above severity: ${severityThreshold}`,
+      };
     }
 
     // Create a review with multiple comments

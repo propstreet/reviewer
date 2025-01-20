@@ -1,5 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
-import { AzureOpenAIService, type AzureOpenAIConfig, type ReviewPromptConfig } from "./azureOpenAIService.js";
+import {
+  AzureOpenAIService,
+  type AzureOpenAIConfig,
+  type ReviewPromptConfig,
+} from "./azureOpenAIService.js";
 import { AzureOpenAI } from "openai";
 
 // Mock the OpenAI client
@@ -77,7 +80,8 @@ describe("AzureOpenAIService", () => {
         };
       };
     };
-    ((service as unknown) as MockClient).client.beta.chat.completions.parse = parseMock;
+    (service as unknown as MockClient).client.beta.chat.completions.parse =
+      parseMock;
 
     const result = await service.runReviewPrompt(mockInput, mockReviewConfig);
 
@@ -110,10 +114,11 @@ describe("AzureOpenAIService", () => {
         };
       };
     };
-    ((service as unknown) as MockClient).client.beta.chat.completions.parse = parseMock;
+    (service as unknown as MockClient).client.beta.chat.completions.parse =
+      parseMock;
 
-    await expect(service.runReviewPrompt(mockInput, mockReviewConfig))
-      .rejects
-      .toThrow("Review request did not finish, got length");
+    await expect(
+      service.runReviewPrompt(mockInput, mockReviewConfig)
+    ).rejects.toThrow("Review request did not finish, got length");
   });
 });

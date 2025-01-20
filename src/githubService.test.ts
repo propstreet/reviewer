@@ -1,4 +1,3 @@
-import { describe, it, expect, vi } from "vitest";
 import { GitHubService, type GitHubConfig } from "./githubService.js";
 import * as github from "@actions/github";
 
@@ -104,7 +103,10 @@ describe("GitHubService", () => {
     (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
     const service = new GitHubService(mockConfig);
-    const reviewResult = await service.postReviewComments(mockComments, "error");
+    const reviewResult = await service.postReviewComments(
+      mockComments,
+      "error"
+    );
 
     expect(reviewResult).toEqual({
       skipped: true,
@@ -142,12 +144,14 @@ describe("GitHubService", () => {
       commentsPosted: 1,
       commentsFiltered: 0,
     });
-    expect(mockCreateReview).toHaveBeenCalledWith(expect.objectContaining({
-      comments: expect.arrayContaining([
-        expect.objectContaining({
-          body: expect.stringContaining("File test.ts not found or no patch"),
-        }),
-      ]),
-    }));
+    expect(mockCreateReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        comments: expect.arrayContaining([
+          expect.objectContaining({
+            body: expect.stringContaining("File test.ts not found or no patch"),
+          }),
+        ]),
+      })
+    );
   });
 });

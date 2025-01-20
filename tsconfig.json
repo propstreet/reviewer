@@ -4,7 +4,6 @@
     "moduleResolution": "nodenext",
     "target": "ESNext",
     "sourceMap": true,
-    "rootDir": "src",
     "outDir": "out",
     "strict": true,
     "forceConsistentCasingInFileNames": true,
@@ -13,6 +12,4 @@
     "noUnusedParameters": true,
     "types": ["vitest/globals"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules"]
 }
