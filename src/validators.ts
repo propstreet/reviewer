@@ -18,3 +18,8 @@ export function isValidSeverityLevel(
 export function isValidDiffMode(diffMode: string): diffMode is DiffMode {
   return ["last-commit", "entire-pr"].includes(diffMode);
 }
+
+export function isValidTokenLimit(limit: string): boolean {
+  const num = parseInt(limit, 10);
+  return !isNaN(num) && num > 0;
+}
