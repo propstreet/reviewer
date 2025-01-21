@@ -72,8 +72,10 @@ async function getDiff(
     }
 
     const diff = diffHeader + finalDiff;
+    const tokenCount = isWithinTokenLimit(diff, tokenLimit);
+
     core.info(`Commit Message: ${commitMessage}`);
-    core.info(`Diff Length: ${diff.length}`);
+    core.info(`Diff Length: ${diff.length}, Token Count: ${tokenCount}`);
     core.info(
       `Patches Used: ${patchesUsed}, Patches Skipped: ${patchesSkipped}`
     );

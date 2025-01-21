@@ -108,11 +108,14 @@ describe("index", () => {
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
   it("should handle successful review flow", async () => {
-    // Mock isWithinTokenLimit to allow diff processing
+    // Mock isWithinTokenLimit to allow diff processing and return token count
     const { isWithinTokenLimit } = await import("gpt-tokenizer");
     vi.mocked(isWithinTokenLimit).mockImplementation(
-      (_input: unknown, _tokenLimit: number) => 100 // Return token count when within limit
+      (_input: unknown, _tokenLimit: number) => 1234 // Return specific token count for verification
     );
+
+    // Verify token count is logged
+    const infoSpy = vi.spyOn(core, "info");
 
     // Mock Azure OpenAI response
     const mockAzureResponse = {
@@ -156,6 +159,11 @@ describe("index", () => {
 
     // Verify no errors were reported
     expect(core.setFailed).not.toHaveBeenCalled();
+
+    // Verify token count was logged correctly
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Token Count: 1234")
+    );
   });
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -191,6 +199,7 @@ describe("index", () => {
   it("should handle some patches within token limit", async () => {
     // Mock isWithinTokenLimit to simulate selective patch inclusion
     const { isWithinTokenLimit } = await import("gpt-tokenizer");
+    const infoSpy = vi.spyOn(core, "info");
 
     vi.mocked(isWithinTokenLimit).mockImplementation(
       (input: unknown, _tokenLimit: number) => {
@@ -198,7 +207,15 @@ describe("index", () => {
         if (typeof input === "string" && input.includes("large.ts")) {
           return false;
         }
-        return 1000; // Return token count for accepted patches
+        // Return specific token count for final diff verification
+        if (
+          typeof input === "string" &&
+          input.includes("small1.ts") &&
+          input.includes("small2.ts")
+        ) {
+          return 5678; // Return token count for final combined diff
+        }
+        return 1000; // Return token count for individual patch checks
       }
     );
 
@@ -221,6 +238,11 @@ describe("index", () => {
     );
     // Verify Azure OpenAI service was called (since some patches fit)
     expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalled();
+
+    // Verify token count was logged correctly for final diff
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Token Count: 5678")
+    );
   });
 
   it("should handle no diff found", async () => {
