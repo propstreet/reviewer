@@ -4,7 +4,9 @@ import {
   isValidDiffMode,
   isValidSeverityLevel,
   isValidReasoningEffort,
+  isValidTokenLimit,
 } from "./validators.js";
+import { isWithinTokenLimit } from "gpt-tokenizer";
 import {
   AzureOpenAIService,
   type AzureOpenAIConfig,
@@ -14,7 +16,8 @@ import { GitHubService } from "./githubService.js";
 
 async function getDiff(
   githubService: GitHubService,
-  diffMode: string
+  diffMode: string,
+  tokenLimit: number
 ): Promise<string | null> {
   try {
     const { commitMessage, patches } =
@@ -27,14 +30,53 @@ async function getDiff(
       return null;
     }
 
-    let diff = `# ${commitMessage}\n`;
+    const diffHeader = `# ${commitMessage}\n`;
+    let finalDiff = "";
+    let patchesUsed = 0;
+    let patchesSkipped = 0;
 
-    diff += patches.map(
-      (p) => `\n## ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`
-    );
+    for (const p of patches) {
+      const patchBlock = `\n## ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`;
+      // Check if we can add this patch without exceeding limit
+      const combinedPreview = diffHeader + finalDiff + patchBlock;
+      // isWithinTokenLimit returns false if limit exceeded
+      const check = isWithinTokenLimit(combinedPreview, tokenLimit);
+      if (!check) {
+        // If this patch can't fit
+        if (patchesUsed === 0) {
+          // If even the first patch doesn't fit, log warning and skip LLM
+          core.warning(
+            `First patch (${p.filename}) is too large, skipping AI completion.`
+          );
+          return null;
+        } else {
+          // Otherwise skip adding this patch
+          patchesSkipped++;
+          continue;
+        }
+      }
+      // If within limit, add it
+      finalDiff += patchBlock;
+      patchesUsed++;
+    }
 
+    if (patchesSkipped > 0) {
+      core.warning(
+        `${patchesSkipped} patches did not fit within tokenLimit = ${tokenLimit}.`
+      );
+    }
+
+    // If no patches fit at all
+    if (patchesUsed === 0) {
+      return null;
+    }
+
+    const diff = diffHeader + finalDiff;
     core.info(`Commit Message: ${commitMessage}`);
     core.info(`Diff Length: ${diff.length}`);
+    core.info(
+      `Patches Used: ${patchesUsed}, Patches Skipped: ${patchesSkipped}`
+    );
 
     return diff;
   } catch (error) {
@@ -66,6 +108,13 @@ export async function run(): Promise<void> {
       return;
     }
 
+    const tokenLimitInput = core.getInput("tokenLimit") || "200000";
+    if (!isValidTokenLimit(tokenLimitInput)) {
+      core.setFailed(`Invalid token limit: ${tokenLimitInput}`);
+      return;
+    }
+    const tokenLimit = parseInt(tokenLimitInput, 10);
+
     // 2. Get Git Diff
     const token = process.env.GITHUB_TOKEN;
     if (!token) {
@@ -81,7 +130,7 @@ export async function run(): Promise<void> {
       pullNumber: pull_number,
     });
 
-    const diff = await getDiff(githubService, diffMode);
+    const diff = await getDiff(githubService, diffMode, tokenLimit);
     if (!diff) {
       return;
     }

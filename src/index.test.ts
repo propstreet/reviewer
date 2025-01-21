@@ -29,6 +29,9 @@ vi.mock("@actions/core");
 vi.mock("@actions/github");
 vi.mock("./azureOpenAIService.js");
 vi.mock("./githubService.js");
+vi.mock("gpt-tokenizer", () => ({
+  isWithinTokenLimit: vi.fn(),
+}));
 
 describe("index", () => {
   beforeEach(() => {
@@ -51,6 +54,8 @@ describe("index", () => {
           return "info";
         case "reasoningEffort":
           return "medium";
+        case "tokenLimit":
+          return "200000";
         default:
           return "";
       }
@@ -101,7 +106,14 @@ describe("index", () => {
     delete process.env.GITHUB_TOKEN;
   });
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   it("should handle successful review flow", async () => {
+    // Mock isWithinTokenLimit to allow diff processing
+    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 100 // Return token count when within limit
+    );
+
     // Mock Azure OpenAI response
     const mockAzureResponse = {
       comments: [
@@ -144,6 +156,71 @@ describe("index", () => {
 
     // Verify no errors were reported
     expect(core.setFailed).not.toHaveBeenCalled();
+  });
+
+  /* eslint-disable @typescript-eslint/no-unused-vars */
+  it("should handle patches exceeding token limit", async () => {
+    // Mock isWithinTokenLimit to simulate token limit exceeded
+    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => {
+        // Simulate first patch being too large
+        return false; // Return false when exceeding token limit
+      }
+    );
+
+    // Mock GitHubService to return some patches
+    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockResolvedValue({
+      commitMessage: "test commit",
+      patches: [{ filename: "large.ts", patch: "very large diff" }],
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    // Verify warning was logged
+    expect(core.warning).toHaveBeenCalledWith(
+      "First patch (large.ts) is too large, skipping AI completion."
+    );
+    // Verify Azure OpenAI service was not called
+    expect(AzureOpenAIService.prototype.runReviewPrompt).not.toHaveBeenCalled();
+  });
+
+  /* eslint-disable @typescript-eslint/no-unused-vars */
+  it("should handle some patches within token limit", async () => {
+    // Mock isWithinTokenLimit to simulate selective patch inclusion
+    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (input: unknown, _tokenLimit: number) => {
+        // Accept first two patches, reject the third
+        if (typeof input === "string" && input.includes("large.ts")) {
+          return false;
+        }
+        return 1000; // Return token count for accepted patches
+      }
+    );
+
+    // Mock GitHubService to return multiple patches
+    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockResolvedValue({
+      commitMessage: "test commit",
+      patches: [
+        { filename: "small1.ts", patch: "small diff 1" },
+        { filename: "small2.ts", patch: "small diff 2" },
+        { filename: "large.ts", patch: "very large diff" },
+      ],
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    // Verify warning about skipped patches
+    expect(core.warning).toHaveBeenCalledWith(
+      "1 patches did not fit within tokenLimit = 200000."
+    );
+    // Verify Azure OpenAI service was called (since some patches fit)
+    expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalled();
   });
 
   it("should handle no diff found", async () => {
