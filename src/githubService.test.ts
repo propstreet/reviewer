@@ -210,10 +210,7 @@ describe("GitHubService", () => {
 
       const mockListCommits = vi.fn().mockResolvedValue({
         status: 200,
-        data: [
-          { sha: "commit1" },
-          { sha: "commit2" },
-        ],
+        data: [{ sha: "commit1" }, { sha: "commit2" }],
       });
 
       const mockOctokit = {
@@ -234,10 +231,7 @@ describe("GitHubService", () => {
         pull_number: 123,
         title: "Test PR",
         body: "PR description",
-        commits: [
-          { sha: "commit1" },
-          { sha: "commit2" },
-        ],
+        commits: [{ sha: "commit1" }, { sha: "commit2" }],
       });
 
       expect(mockGet).toHaveBeenCalledExactlyOnceWith({
