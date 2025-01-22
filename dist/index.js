@@ -49360,9 +49360,17 @@ function zodFunction(options) {
 
 // Define a single comment
 const CodeReviewComment = z.object({
-    file: z.string(),
-    line: z.number(),
-    comment: z.string(),
+    sha: z.string({ description: "The SHA of the commit needing a comment." }),
+    file: z.string({
+        description: "The relative path to the file that necessitates a comment.",
+    }),
+    line: z.number({
+        description: "The line of the blob in the pull request diff that the comment applies to.",
+    }),
+    side: z.enum(["LEFT", "RIGHT"], {
+        description: "In a split diff view, the side of the diff that the pull request's changes appear on. Can be LEFT or RIGHT. Use LEFT for deletions that appear in red. Use RIGHT for additions that appear in green or unchanged lines that appear in white and are shown for context.",
+    }),
+    comment: z.string({ description: "The text of the review comment." }),
     severity: z.enum(["info", "warning", "error"]),
 });
 // Define an array of them
@@ -49384,20 +49392,20 @@ class AzureOpenAIService {
             apiVersion: config.apiVersion,
         });
     }
-    async runReviewPrompt(diff, config) {
+    async runReviewPrompt(prompt, config) {
         const completion = await this.client.beta.chat.completions.parse({
             model: "",
             messages: [
                 {
                     role: "developer",
                     content: `You are a helpful code reviewer. Review this pull request and provide any suggestions.
-Each comment must include a severity: 'info', 'warning', or 'error'.
+Each comment must include the associated commit sha, file, line, side and severity: 'info', 'warning', or 'error'.
 Only comment on lines that need improvement. Comments may be formatted as markdown.
 If you have no comments, return an empty comments array. Respond in JSON format.`,
                 },
                 {
                     role: "user",
-                    content: diff,
+                    content: prompt,
                 },
             ],
             response_format: zodResponseFormat(CodeReviewCommentArray, "review_comments"),
@@ -49509,32 +49517,59 @@ class GitHubService {
             comments: review.map((c) => ({
                 path: c.file,
                 line: c.line,
+                side: c.side,
                 body: c.comment,
             })),
         });
     }
-    async postReviewComments(comments, changesThreshold, commitSha, patches) {
+    async postReviewComments(comments, changesThreshold, commits) {
         // Order of severity levels
         const severityOrder = ["info", "warning", "error"];
         const thresholdIndex = severityOrder.indexOf(changesThreshold);
         // Separate comments that are outside the diff patch
         const issueComments = [];
-        const validComments = comments.filter((c) => {
-            if (!patches || !this.verifyCommentLineInPatch(c.file, c.line, patches)) {
+        // group comments by commit
+        const commentsByCommit = comments.reduce((acc, c) => {
+            const commit = commits.find((d) => d.commit.sha === c.sha);
+            if (!commit) {
+                core.warning(`No commit found for sha: ${c.sha}`);
                 issueComments.push(c);
-                return false;
+                return acc;
             }
-            return true;
-        });
-        // Build up the array of comments that meet or exceed the threshold to require changes
-        const reviewChanges = validComments.filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex);
-        if (reviewChanges.length) {
-            await this.createReview("REQUEST_CHANGES", reviewChanges, commitSha);
-        }
-        // The remaining comments will be posted as informational comments
-        const reviewComments = validComments.filter((c) => !reviewChanges.includes(c));
-        if (reviewComments.length) {
-            await this.createReview("COMMENT", reviewComments, commitSha);
+            if (!this.verifyCommentLineInPatch(c.file, c.line, commit.patches)) {
+                core.debug(`Comment ${c.comment} is out of range for ${c.file}:${c.line}`);
+                issueComments.push(c);
+                return acc;
+            }
+            const group = acc.find((g) => g.sha === c.sha);
+            if (group) {
+                group.comments.push(c);
+            }
+            else {
+                acc.push({
+                    sha: c.sha,
+                    commit,
+                    comments: [c],
+                });
+            }
+            return acc;
+        }, []);
+        const allChanges = [];
+        const allComments = [];
+        // process each sha separately
+        for (const group of commentsByCommit) {
+            // Build up the array of comments that meet or exceed the threshold to require changes
+            const groupChanges = group.comments.filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex);
+            if (groupChanges.length) {
+                await this.createReview("REQUEST_CHANGES", groupChanges, group.sha);
+                allChanges.push(...groupChanges);
+            }
+            // The remaining comments will be posted as informational comments
+            const groupComments = group.comments.filter((c) => !groupChanges.includes(c));
+            if (groupComments.length) {
+                await this.createReview("COMMENT", groupComments, group.sha);
+                allComments.push(...groupComments);
+            }
         }
         // Post fallback comments as issue comments
         for (const comment of issueComments) {
@@ -49546,65 +49581,82 @@ class GitHubService {
             });
         }
         return {
-            reviewChanges: reviewChanges.length,
-            reviewComments: reviewComments.length,
+            reviewChanges: allChanges.length,
+            reviewComments: allComments.length,
             issueComments: issueComments.length,
         };
     }
-    async getEntirePRDiff() {
-        const prDetails = await this.octokit.rest.pulls.get({
+    async getPrDetails() {
+        const prResponse = await this.octokit.rest.pulls.get({
             owner: this.config.owner,
             repo: this.config.repo,
             pull_number: this.config.pullNumber,
         });
-        const prTitle = prDetails.data.title;
-        const prBody = prDetails.data.body ?? "";
-        const commitMessage = `${prTitle}\n\n${prBody}`.trim();
-        const fileList = await this.octokit.rest.pulls.listFiles({
-            owner: this.config.owner,
-            repo: this.config.repo,
-            pull_number: this.config.pullNumber,
-        });
-        const patches = fileList.data.map((file) => ({
-            filename: file.filename,
-            patch: file.patch || "",
-        }));
-        return { commitMessage, patches };
-    }
-    async getLastCommitDiff() {
+        if (prResponse.status !== 200) {
+            throw new Error(`Failed to list commits for pr #${this.config.pullNumber}, status: ${prResponse.status}`);
+        }
         const commitsResponse = await this.octokit.rest.pulls.listCommits({
             owner: this.config.owner,
             repo: this.config.repo,
             pull_number: this.config.pullNumber,
         });
-        const commits = commitsResponse.data;
-        if (commits.length === 0) {
-            return null;
+        if (commitsResponse.status !== 200) {
+            throw new Error(`Failed to list commits for pr #${this.config.pullNumber}, status: ${commitsResponse.status}`);
         }
-        const lastCommit = commits[commits.length - 1];
-        const lastCommitSha = lastCommit.sha;
-        const parentSha = lastCommit.parents?.[0]?.sha;
-        const commitMessage = lastCommit.commit.message;
-        if (!parentSha) {
-            // If there's no parent (first commit), use entire PR diff
-            const prDiff = await this.getEntirePRDiff();
+        return {
+            pull_number: prResponse.data.number,
+            title: prResponse.data.title,
+            body: prResponse.data.body,
+            commits: commitsResponse.data.map((c) => ({ sha: c.sha })),
+        };
+    }
+    async compareCommits(baseSha, headSha) {
+        try {
+            const response = await this.octokit.rest.repos.compareCommitsWithBasehead({
+                owner: this.config.owner,
+                repo: this.config.repo,
+                basehead: `${baseSha}...${headSha}`,
+            });
+            if (response.status !== 200) {
+                throw new Error(`Failed to compare commit head ${headSha} to base ${baseSha}, status: ${response.status}`);
+            }
+            const patches = (response.data.files || [])
+                .filter((file) => !!file.patch && file.patch.length > 0)
+                .map((file) => ({
+                filename: file.filename,
+                patch: file.patch,
+            }));
+            return patches;
+        }
+        catch (error) {
+            throw new Error(`Failed to compare commits: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+    async getCommitDetails(sha) {
+        try {
+            const response = await this.octokit.rest.repos.getCommit({
+                owner: this.config.owner,
+                repo: this.config.repo,
+                ref: sha,
+            });
+            if (response.status !== 200) {
+                throw new Error(`Failed to get commit details for ${sha}, status: ${response.status}`);
+            }
+            const patches = (response.data.files || [])
+                .filter((file) => !!file.patch && file.patch.length > 0)
+                .map((file) => ({
+                filename: file.filename,
+                patch: file.patch,
+            }));
             return {
-                commitSha: lastCommitSha,
-                commitMessage,
-                patches: prDiff.patches,
+                sha,
+                message: response.data.commit.message,
+                patches,
             };
         }
-        const compareData = await this.octokit.rest.repos.compareCommits({
-            owner: this.config.owner,
-            repo: this.config.repo,
-            base: parentSha,
-            head: lastCommitSha,
-        });
-        const patches = (compareData.data.files || []).map((file) => ({
-            filename: file.filename,
-            patch: file.patch || "",
-        }));
-        return { commitSha: lastCommitSha, commitMessage, patches };
+        catch (error) {
+            throw new Error(`Failed to get commit details: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 }
 
@@ -49614,56 +49666,78 @@ class GitHubService {
 
 
 
-async function getDiff(githubService, diffMode, tokenLimit) {
-    try {
-        const diff = diffMode === "entire-pr"
-            ? await githubService.getEntirePRDiff()
-            : await githubService.getLastCommitDiff();
-        if (!diff?.patches || diff.patches.length === 0) {
-            core.info("No patches returned from GitHub.");
-            return null;
+async function packCommit(accumulated, commit, tokenLimit) {
+    core.debug(`Packing commit: ${commit.sha}`);
+    let commitBlock = `\n## ${commit.message}\n`;
+    const skippedPatches = [];
+    const usedPatches = [];
+    for (const p of commit.patches) {
+        core.debug(`Packing patch: ${p.filename}`);
+        const patchBlock = `\n### ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`;
+        // Check if we can add this patch without exceeding limit
+        const combinedPreview = accumulated + commitBlock + patchBlock;
+        // isWithinTokenLimit returns false if limit exceeded
+        const check = isWithinTokenLimit(combinedPreview, tokenLimit);
+        if (!check) {
+            // Skip adding this patch
+            core.debug(`Skipping patch ${p.filename} due to token limit.`);
+            skippedPatches.push(p);
+            continue;
         }
-        const diffHeader = `# ${diff.commitMessage}\n`;
-        let finalDiff = "";
-        const skippedPatches = [];
-        const usedPatches = [];
-        for (const p of diff.patches) {
-            const patchBlock = `\n## ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`;
-            // Check if we can add this patch without exceeding limit
-            const combinedPreview = diffHeader + finalDiff + patchBlock;
-            // isWithinTokenLimit returns false if limit exceeded
-            const check = isWithinTokenLimit(combinedPreview, tokenLimit);
-            if (!check) {
-                // Skip adding this patch
-                skippedPatches.push(p);
-                continue;
-            }
-            // If within limit, add it
-            finalDiff += patchBlock;
-            usedPatches.push(p);
-        }
-        if (usedPatches.length === 0) {
-            core.warning("No patches fit within token limit.");
-            return null;
-        }
-        else if (skippedPatches.length > 0) {
-            core.warning(`${skippedPatches.length} patches did not fit within tokenLimit = ${tokenLimit}.`);
-        }
-        const combined = diffHeader + finalDiff;
-        const tokenCount = isWithinTokenLimit(combined, tokenLimit);
-        core.info(`Commit Message: ${diff.commitMessage}`);
-        core.info(`Diff Length: ${combined.length}, Token Count: ${tokenCount}`);
-        core.info(`Patches Used: ${usedPatches.length}, Patches Skipped: ${skippedPatches.length}`);
-        return {
-            combined,
-            commitSha: diff.commitSha,
-            patches: usedPatches,
-        };
+        // If within limit, add it
+        core.debug(`Adding patch ${p.filename} to commit block.`);
+        commitBlock += patchBlock;
+        usedPatches.push(p);
     }
-    catch (error) {
-        core.error(`Failed to get git info: ${error instanceof Error ? error.message : String(error)}`);
+    if (usedPatches.length === 0) {
+        core.warning("No patches fit within token limit.");
         return null;
     }
+    else if (skippedPatches.length > 0) {
+        core.warning(`${skippedPatches.length} patches did not fit within tokenLimit = ${tokenLimit}.`);
+    }
+    return {
+        block: commitBlock,
+        usedPatches,
+        skippedPatches,
+    };
+}
+async function buildPrompt(githubService, diffMode, tokenLimit) {
+    const prDetails = await githubService.getPrDetails();
+    core.debug(`Loaded PR #${prDetails.pull_number} with ${prDetails.commits.length} commits.`);
+    const commitsToInclude = diffMode === "entire-pr" ? prDetails.commits : prDetails.commits.slice(-1);
+    if (commitsToInclude.length === 0) {
+        core.info("No commits found to review.");
+        return null;
+    }
+    core.info(`Building prompt for PR #${prDetails.pull_number}: ${prDetails.title}`);
+    let prompt = `# ${prDetails.title}\n`;
+    if (prDetails.body) {
+        prompt += `\n${prDetails.body}\n`;
+    }
+    const packedCommits = [];
+    for (const c of commitsToInclude) {
+        core.debug(`Processing commit: ${c.sha}`);
+        const commitDetails = await githubService.getCommitDetails(c.sha);
+        core.debug(`Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`);
+        const packed = await packCommit(prompt, commitDetails, tokenLimit);
+        if (!packed) {
+            core.warning(`Could not pack commit ${c.sha} within token limit.`);
+            break;
+        }
+        core.debug(`Patches Used: ${packed.usedPatches.length}, Patches Skipped: ${packed.skippedPatches.length}`);
+        core.info(`Packed commit ${c.sha} with ${packed.usedPatches.length} patches into prompt.`);
+        core.info(`Commit message: ${commitDetails.message}`);
+        prompt += packed.block;
+        packedCommits.push({ commit: commitDetails, patches: packed.usedPatches });
+    }
+    // final token count check
+    const tokenCount = isWithinTokenLimit(prompt, tokenLimit);
+    core.info(`Total Prompt Length: ${prompt.length}, Token Count: ${tokenCount}`);
+    return {
+        prompt,
+        commits: packedCommits,
+    };
 }
 async function review(options) {
     const { owner, repo, number: pull_number } = github.context.issue;
@@ -49673,8 +49747,9 @@ async function review(options) {
         repo,
         pullNumber: pull_number,
     });
-    const diff = await getDiff(githubService, options.diffMode, options.tokenLimit);
-    if (!diff) {
+    const pr = await buildPrompt(githubService, options.diffMode, options.tokenLimit);
+    if (!pr || !pr.commits || pr.commits.length === 0) {
+        core.info("No commits found to review.");
         return;
     }
     // 3. Setup Azure OpenAI Service
@@ -49686,7 +49761,7 @@ async function review(options) {
     };
     const azureService = new AzureOpenAIService(azureConfig);
     core.info("Calling Azure OpenAI...");
-    const response = await azureService.runReviewPrompt(diff.combined, {
+    const response = await azureService.runReviewPrompt(pr.prompt, {
         reasoningEffort: options.reasoningEffort,
     });
     if (!response?.comments || response.comments.length === 0) {
@@ -49695,7 +49770,7 @@ async function review(options) {
     }
     core.info(`Got ${response.comments.length} suggestions from AI.`);
     // 4. Post Comments to PR
-    const result = await githubService.postReviewComments(response.comments, options.changesThreshold, diff.commitSha, diff.patches);
+    const result = await githubService.postReviewComments(response.comments, options.changesThreshold, pr.commits);
     core.info(`Posted ${result.reviewComments} comments and requested ${result.reviewChanges} changes.`);
 }
 

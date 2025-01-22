@@ -23,7 +23,7 @@ type Context = {
 };
 
 // Mock types
-type MockType = ReturnType<typeof vi.fn>;
+//type MockType = ReturnType<typeof vi.fn>;
 
 // Mock dependencies
 vi.mock("@actions/core");
@@ -47,14 +47,21 @@ describe("reviewer", () => {
     vi.clearAllMocks();
 
     // Mock GitHubService methods
-    vi.mocked(GitHubService.prototype.getEntirePRDiff).mockResolvedValue({
-      commitMessage: "Test PR Title\n\nTest PR Body",
-      patches: [{ filename: "pr.ts", patch: "pr diff" }],
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "test-sha",
+      message: "test commit",
+      patches: [{ filename: "commit.ts", patch: "commit diff" }],
     });
 
-    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockResolvedValue({
-      commitMessage: "test commit",
-      patches: [{ filename: "commit.ts", patch: "commit diff" }],
+    vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({
+      pull_number: 1,
+      title: "test title",
+      body: "test body",
+      commits: [
+        {
+          sha: "test-sha",
+        },
+      ],
     });
 
     // Mock github context
@@ -99,8 +106,10 @@ describe("reviewer", () => {
     const mockAzureResponse = {
       comments: [
         {
+          sha: "test-sha",
           file: "test.ts",
           line: 1,
+          side: "RIGHT" as const,
           comment: "Test comment",
           severity: "info" as const,
         },
@@ -133,8 +142,26 @@ describe("reviewer", () => {
     expect(GitHubService.prototype.postReviewComments).toHaveBeenCalledWith(
       mockAzureResponse.comments,
       "error",
-      undefined,
-      [{ filename: "commit.ts", patch: "commit diff" }]
+      [
+        {
+          commit: {
+            message: "test commit",
+            patches: [
+              {
+                filename: "commit.ts",
+                patch: "commit diff",
+              },
+            ],
+            sha: "test-sha",
+          },
+          patches: [
+            {
+              filename: "commit.ts",
+              patch: "commit diff",
+            },
+          ],
+        },
+      ]
     );
 
     // Verify no errors were reported
@@ -159,8 +186,9 @@ describe("reviewer", () => {
     );
 
     // Mock GitHubService to return some patches
-    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockResolvedValue({
-      commitMessage: "test commit",
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "test-sha",
+      message: "test commit",
       patches: [{ filename: "large.ts", patch: "very large diff" }],
     });
 
@@ -201,8 +229,9 @@ describe("reviewer", () => {
     );
 
     // Mock GitHubService to return multiple patches
-    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockResolvedValue({
-      commitMessage: "test commit",
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "test-sha",
+      message: "test commit",
       patches: [
         { filename: "small1.ts", patch: "small diff 1" },
         { filename: "small2.ts", patch: "small diff 2" },
@@ -229,12 +258,9 @@ describe("reviewer", () => {
 
   it("should handle no diff found", async () => {
     // Mock GitHubService to return empty patches
-    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockResolvedValue({
-      commitMessage: "",
-      patches: [],
-    });
-    vi.mocked(GitHubService.prototype.getEntirePRDiff).mockResolvedValue({
-      commitMessage: "",
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "test-sha",
+      message: "",
       patches: [],
     });
 
@@ -247,7 +273,7 @@ describe("reviewer", () => {
     expect(GitHubService.prototype.postReviewComments).not.toHaveBeenCalled();
 
     // Verify appropriate message was logged
-    expect(core.info).toHaveBeenCalledWith("No patches returned from GitHub.");
+    expect(core.info).toHaveBeenCalledWith("No commits found to review.");
   });
 
   it("should handle empty AI response", async () => {
@@ -258,8 +284,9 @@ describe("reviewer", () => {
     );
 
     // Mock successful diff retrieval
-    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockResolvedValue({
-      commitMessage: "test commit",
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "test-sha",
+      message: "test commit",
       patches: [{ filename: "test.ts", patch: "test diff" }],
     });
 
@@ -286,49 +313,36 @@ describe("reviewer", () => {
 
   it("should handle GitHub API errors", async () => {
     // Mock API error
-    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockRejectedValue(
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockRejectedValue(
       new Error("API Error")
     );
 
     // Import and run the reviewer
     const { review } = await import("./reviewer.js");
-    await review(reviewOptions);
 
-    // Verify error was logged
-    expect(core.error).toHaveBeenCalledWith(
-      "Failed to get git info: API Error"
-    );
+    await expect(async () => {
+      await review(reviewOptions);
+    }).rejects.toThrow("API Error");
   });
 
-  it("should handle non-Error objects in getDiff error", async () => {
-    // Mock GitHub service to throw a non-Error object
-    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockRejectedValue(42);
+  // it("should handle entire-pr mode", async () => {
+  //   // Mock diffMode input
+  //   (core.getInput as MockType).mockImplementation((name: string) => {
+  //     if (name === "diffMode") {
+  //       return "entire-pr";
+  //     }
+  //     return "";
+  //   });
 
-    // Import and run the reviewer
-    const { review } = await import("./reviewer.js");
-    await review(reviewOptions);
+  //   // Import and run the reviewer
+  //   const { review } = await import("./reviewer.js");
+  //   await review({
+  //     ...reviewOptions,
+  //     diffMode: "entire-pr",
+  //   });
 
-    expect(core.error).toHaveBeenCalledWith("Failed to get git info: 42");
-  });
-
-  it("should handle entire-pr mode", async () => {
-    // Mock diffMode input
-    (core.getInput as MockType).mockImplementation((name: string) => {
-      if (name === "diffMode") {
-        return "entire-pr";
-      }
-      return "";
-    });
-
-    // Import and run the reviewer
-    const { review } = await import("./reviewer.js");
-    await review({
-      ...reviewOptions,
-      diffMode: "entire-pr",
-    });
-
-    // Verify entire-pr API was called
-    expect(GitHubService.prototype.getEntirePRDiff).toHaveBeenCalled();
-    expect(GitHubService.prototype.getLastCommitDiff).not.toHaveBeenCalled();
-  });
+  //   // Verify entire-pr API was called
+  //   expect(GitHubService.prototype.getEntirePRDiff).toHaveBeenCalled();
+  //   expect(GitHubService.prototype.getLastCommitDetails).not.toHaveBeenCalled();
+  // });
 });
