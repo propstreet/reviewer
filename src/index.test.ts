@@ -71,7 +71,7 @@ describe("index", () => {
     );
   });
 
-  it("should handle invalid inputs", async () => {
+  it("should handle invalid diffMode", async () => {
     // Mock invalid diffMode
     (core.getInput as MockType).mockImplementation((name: string) => {
       if (name === "diffMode") {
@@ -85,6 +85,48 @@ describe("index", () => {
 
     // Verify error was reported
     expect(core.setFailed).toHaveBeenCalledWith("Invalid diff mode: invalid");
+  });
+
+  it("should handle invalid severity", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "diffMode") return "last-commit";
+      if (name === "severity") return "invalid-severity";
+      return "";
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledWith("Invalid severity: invalid-severity");
+  });
+
+  it("should handle invalid reasoningEffort", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "diffMode") return "last-commit";
+      if (name === "severity") return "error";
+      if (name === "reasoningEffort") return "invalid-effort";
+      return "";
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledWith("Invalid reasoning effort: invalid-effort");
+  });
+
+  it("should handle invalid tokenLimit", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "diffMode") return "last-commit";
+      if (name === "severity") return "error";
+      if (name === "reasoningEffort") return "medium";
+      if (name === "tokenLimit") return "not-a-number";
+      return "";
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledWith("Invalid token limit: not-a-number");
   });
 
   it("should handle missing GITHUB_TOKEN", async () => {
