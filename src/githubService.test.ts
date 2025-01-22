@@ -99,7 +99,9 @@ describe("GitHubService", () => {
       const service = new GitHubService(mockConfig);
       const result = await service.getEntirePRDiff();
 
-      expect(result.commitMessage).toBe("Sample PR Title\n\nSample PR Description");
+      expect(result.commitMessage).toBe(
+        "Sample PR Title\n\nSample PR Description"
+      );
       expect(result.patches).toHaveLength(2);
       expect(result.patches[0]).toEqual({
         filename: "file1.ts",
@@ -389,5 +391,42 @@ describe("GitHubService", () => {
       expect(result?.patches[1].patch).toBe("");
       expect(result?.patches[2].patch).toBe("");
     });
+  });
+
+  it("should handle undefined files in compare result", async () => {
+    const mockListCommits = vi.fn().mockResolvedValue({
+      data: [
+        {
+          sha: "lastCommitSha",
+          parents: [{ sha: "parentSha" }],
+          commit: { message: "Last commit" },
+        },
+      ],
+    });
+
+    const mockCompareCommits = vi.fn().mockResolvedValue({
+      data: {
+        // files property is undefined
+      },
+    });
+
+    const mockOctokit = {
+      rest: {
+        pulls: {
+          listCommits: mockListCommits,
+        },
+        repos: {
+          compareCommits: mockCompareCommits,
+        },
+      },
+    };
+
+    (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+    const service = new GitHubService(mockConfig);
+    const result = await service.getLastCommitDiff();
+
+    expect(result).not.toBeNull();
+    expect(result?.patches).toHaveLength(0);
   });
 });

@@ -97,7 +97,9 @@ describe("index", () => {
     const { run } = await import("./index.js");
     await run();
 
-    expect(core.setFailed).toHaveBeenCalledWith("Invalid severity: invalid-severity");
+    expect(core.setFailed).toHaveBeenCalledWith(
+      "Invalid severity: invalid-severity"
+    );
   });
 
   it("should handle invalid reasoningEffort", async () => {
@@ -111,7 +113,9 @@ describe("index", () => {
     const { run } = await import("./index.js");
     await run();
 
-    expect(core.setFailed).toHaveBeenCalledWith("Invalid reasoning effort: invalid-effort");
+    expect(core.setFailed).toHaveBeenCalledWith(
+      "Invalid reasoning effort: invalid-effort"
+    );
   });
 
   it("should handle invalid tokenLimit", async () => {
@@ -126,7 +130,9 @@ describe("index", () => {
     const { run } = await import("./index.js");
     await run();
 
-    expect(core.setFailed).toHaveBeenCalledWith("Invalid token limit: not-a-number");
+    expect(core.setFailed).toHaveBeenCalledWith(
+      "Invalid token limit: not-a-number"
+    );
   });
 
   it("should handle missing GITHUB_TOKEN", async () => {
@@ -139,5 +145,23 @@ describe("index", () => {
     expect(core.setFailed).toHaveBeenCalledWith(
       "Missing GITHUB_TOKEN in environment."
     );
+  });
+
+  it("should handle non-Error objects in catch", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "diffMode") return "last-commit";
+      if (name === "severity") return "error";
+      if (name === "reasoningEffort") return "medium";
+      if (name === "tokenLimit") return "200000";
+      return "";
+    });
+
+    const { review } = await import("./reviewer.js");
+    vi.mocked(review).mockRejectedValue(42); // Throw a number instead of an Error
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledWith("An unknown error occurred.");
   });
 });

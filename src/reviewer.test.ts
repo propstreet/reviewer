@@ -298,6 +298,19 @@ describe("reviewer", () => {
     );
   });
 
+  it("should handle non-Error objects in getDiff error", async () => {
+    // Mock GitHub service to throw a non-Error object
+    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockRejectedValue(42);
+
+    // Import and run the reviewer
+    const { review } = await import("./reviewer.js");
+    await review(reviewOptions);
+
+    expect(core.error).toHaveBeenCalledWith(
+      "Failed to get git info: 42"
+    );
+  });
+
   it("should handle entire-pr mode", async () => {
     // Mock diffMode input
     (core.getInput as MockType).mockImplementation((name: string) => {
