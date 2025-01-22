@@ -1,3 +1,4 @@
+import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { CodeReviewComment } from "./schemas.js";
 import { z } from "zod";
@@ -17,110 +18,75 @@ export interface ReviewComment {
   body: string;
 }
 
-export interface ReviewResult {
-  skipped: boolean;
-  reason?: string;
-  commentsPosted?: number;
-  commentsFiltered?: number;
-}
+export type PatchInfo = {
+  filename: string;
+  patch: string;
+};
 
 export interface GitDiffResult {
   commitSha?: string;
   commitMessage: string;
-  patches: Array<{
-    filename: string;
-    patch: string;
-  }>;
+  patches: PatchInfo[];
 }
 
 export class GitHubService {
   private octokit: ReturnType<typeof github.getOctokit>;
   private config: GitHubConfig;
 
-  /**
-   * Verifies if a given line number exists in the patch for a file
-   * @param filename The name of the file to check
-   * @param line The line number to verify
-   * @param patches Array of patches to search through
-   * @returns true if the line exists in the patch, false otherwise
-   */
-  private verifyCommentLineInPatch(
-    filename: string,
-    line: number,
-    patches: Array<{ filename: string; patch: string }>
-  ): boolean {
-    const target = patches.find((p) => p.filename === filename);
-    if (!target) {
-      console.log(`No patch found for file: ${filename}`);
-      return false;
-    }
-    const position = findPositionInDiff(target.patch, line);
-    console.log(`Position for ${filename}:${line} = ${position}`);
-    return position !== null;
-  }
-
   constructor(config: GitHubConfig) {
     this.octokit = github.getOctokit(config.token);
     this.config = config;
   }
 
+  private verifyCommentLineInPatch(
+    filename: string,
+    line: number,
+    patches: PatchInfo[]
+  ): boolean {
+    const target = patches.find((p) => p.filename === filename);
+    if (!target) {
+      core.warning(`No patch found for file: ${filename}`);
+      return false;
+    }
+    const position = findPositionInDiff(target.patch, line);
+    core.debug(`Position for ${filename}:${line} = ${position}`);
+    return position !== null;
+  }
+
   private async createReview(
     event: "REQUEST_CHANGES" | "COMMENT",
     review: z.infer<typeof CodeReviewComment>[],
-    commit_id?: string,
-    patches?: Array<{ filename: string; patch: string }>
+    commit_id?: string
   ) {
-    // If we don't have patches, we can't calculate positions
-    if (!patches) {
-      return;
-    }
-
-    const comments = review
-      .map((c) => {
-        const patch = patches.find((p) => p.filename === c.file);
-        const position = patch ? findPositionInDiff(patch.patch, c.line) : null;
-
-        // Skip comments that don't have a valid position
-        if (position === null) {
-          return null;
-        }
-
-        return {
-          path: c.file,
-          position,
-          body: c.comment,
-        };
-      })
-      .filter((c): c is NonNullable<typeof c> => c !== null);
-
-    // Only create review if we have valid comments
-    if (comments.length > 0) {
-      await this.octokit.rest.pulls.createReview({
-        owner: this.config.owner,
-        repo: this.config.repo,
-        pull_number: this.config.pullNumber,
-        commit_id: commit_id,
-        event: event,
-        comments,
-      });
-    }
+    await this.octokit.rest.pulls.createReview({
+      owner: this.config.owner,
+      repo: this.config.repo,
+      pull_number: this.config.pullNumber,
+      commit_id: commit_id,
+      event: event,
+      comments: review.map((c) => ({
+        path: c.file,
+        line: c.line,
+        body: c.comment,
+      })),
+    });
   }
 
   async postReviewComments(
     comments: z.infer<typeof CodeReviewComment>[],
     changesThreshold: SeverityLevel,
     commitSha?: string,
-    patches?: Array<{ filename: string; patch: string }>
+    patches?: PatchInfo[]
   ) {
     // Order of severity levels
     const severityOrder = ["info", "warning", "error"];
     const thresholdIndex = severityOrder.indexOf(changesThreshold);
 
     // Separate comments that are outside the diff patch
-    const fallbackIssueComments: z.infer<typeof CodeReviewComment>[] = [];
+    const issueComments: z.infer<typeof CodeReviewComment>[] = [];
     const validComments = comments.filter((c) => {
       if (!patches || !this.verifyCommentLineInPatch(c.file, c.line, patches)) {
-        fallbackIssueComments.push(c);
+        issueComments.push(c);
         return false;
       }
       return true;
@@ -132,12 +98,7 @@ export class GitHubService {
     );
 
     if (reviewChanges.length) {
-      await this.createReview(
-        "REQUEST_CHANGES",
-        reviewChanges,
-        commitSha,
-        patches
-      );
+      await this.createReview("REQUEST_CHANGES", reviewChanges, commitSha);
     }
 
     // The remaining comments will be posted as informational comments
@@ -146,11 +107,11 @@ export class GitHubService {
     );
 
     if (reviewComments.length) {
-      await this.createReview("COMMENT", reviewComments, commitSha, patches);
+      await this.createReview("COMMENT", reviewComments, commitSha);
     }
 
     // Post fallback comments as issue comments
-    for (const comment of fallbackIssueComments) {
+    for (const comment of issueComments) {
       await this.octokit.rest.issues.createComment({
         owner: this.config.owner,
         repo: this.config.repo,
@@ -160,8 +121,9 @@ export class GitHubService {
     }
 
     return {
-      changesPosted: reviewChanges.length,
-      commentsPosted: reviewComments.length + fallbackIssueComments.length,
+      reviewChanges: reviewChanges.length,
+      reviewComments: reviewComments.length,
+      issueComments: issueComments.length,
     };
   }
 

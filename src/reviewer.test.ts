@@ -109,8 +109,9 @@ describe("reviewer", () => {
 
     // Mock GitHub response
     const mockGitHubResponse = {
-      commentsPosted: 1,
-      changesPosted: 0,
+      reviewChanges: 0,
+      reviewComments: 1,
+      issueComments: 0,
     };
 
     // Setup service mocks

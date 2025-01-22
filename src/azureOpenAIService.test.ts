@@ -40,7 +40,7 @@ describe("AzureOpenAIService", () => {
   it("should initialize with correct configuration", () => {
     const service = new AzureOpenAIService(mockConfig);
     expect(service).toBeInstanceOf(AzureOpenAIService);
-    expect(AzureOpenAI).toHaveBeenCalledWith(mockConfig);
+    expect(AzureOpenAI).toHaveBeenCalledExactlyOnceWith(mockConfig);
   });
 
   it("should handle successful review prompt", async () => {

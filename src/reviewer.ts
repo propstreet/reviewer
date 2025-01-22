@@ -7,7 +7,7 @@ import {
   type ReasoningEffort,
   type AzureOpenAIConfig,
 } from "./azureOpenAIService.js";
-import { GitHubService } from "./githubService.js";
+import { GitHubService, PatchInfo } from "./githubService.js";
 
 async function getDiff(
   githubService: GitHubService,
@@ -27,9 +27,8 @@ async function getDiff(
 
     const diffHeader = `# ${diff.commitMessage}\n`;
     let finalDiff = "";
-    let patchesUsed = 0;
-    let patchesSkipped = 0;
-    const usedPatches: Array<{ filename: string; patch: string }> = [];
+    const skippedPatches: PatchInfo[] = [];
+    const usedPatches: PatchInfo[] = [];
 
     for (const p of diff.patches) {
       const patchBlock = `\n## ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`;
@@ -39,21 +38,20 @@ async function getDiff(
       const check = isWithinTokenLimit(combinedPreview, tokenLimit);
       if (!check) {
         // Skip adding this patch
-        patchesSkipped++;
+        skippedPatches.push(p);
         continue;
       }
       // If within limit, add it
       finalDiff += patchBlock;
-      patchesUsed++;
       usedPatches.push(p);
     }
 
-    if (patchesUsed === 0) {
+    if (usedPatches.length === 0) {
       core.warning("No patches fit within token limit.");
       return null;
-    } else if (patchesSkipped > 0) {
+    } else if (skippedPatches.length > 0) {
       core.warning(
-        `${patchesSkipped} patches did not fit within tokenLimit = ${tokenLimit}.`
+        `${skippedPatches.length} patches did not fit within tokenLimit = ${tokenLimit}.`
       );
     }
 
@@ -63,7 +61,7 @@ async function getDiff(
     core.info(`Commit Message: ${diff.commitMessage}`);
     core.info(`Diff Length: ${combined.length}, Token Count: ${tokenCount}`);
     core.info(
-      `Patches Used: ${patchesUsed}, Patches Skipped: ${patchesSkipped}`
+      `Patches Used: ${usedPatches.length}, Patches Skipped: ${skippedPatches.length}`
     );
 
     return {
@@ -136,6 +134,6 @@ export async function review(options: ReviewOptions) {
   );
 
   core.info(
-    `Posted ${result.commentsPosted} comments and requested ${result.changesPosted} changes.`
+    `Posted ${result.reviewComments} comments and requested ${result.reviewChanges} changes.`
   );
 }

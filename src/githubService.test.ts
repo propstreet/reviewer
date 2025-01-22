@@ -5,6 +5,7 @@ import * as github from "@actions/github";
 type MockType = ReturnType<typeof vi.fn>;
 
 // Mock the GitHub client
+vi.mock("@actions/core");
 vi.mock("@actions/github", () => ({
   getOctokit: vi.fn(),
 }));
@@ -45,7 +46,7 @@ describe("GitHubService", () => {
   it("should initialize with correct configuration", () => {
     const service = new GitHubService(mockConfig);
     expect(service).toBeInstanceOf(GitHubService);
-    expect(github.getOctokit).toHaveBeenCalledWith(mockConfig.token);
+    expect(github.getOctokit).toHaveBeenCalledExactlyOnceWith(mockConfig.token);
   });
 
   it("should handle successful review comments posting", async () => {
@@ -79,56 +80,54 @@ describe("GitHubService", () => {
     const reviewResult = await service.postReviewComments(
       mockComments,
       "warning",
-      undefined,
+      "sha",
       patches
     );
 
     expect(reviewResult).toEqual({
-      changesPosted: 1,
-      commentsPosted: 2,
+      reviewChanges: 1,
+      reviewComments: 1,
+      issueComments: 1,
     });
 
     // Verify that createReview was called with the correct parameters
+    expect(mockCreateReview).toHaveBeenCalledTimes(2);
     expect(mockCreateReview).toHaveBeenCalledWith({
       owner: mockConfig.owner,
       repo: mockConfig.repo,
       pull_number: mockConfig.pullNumber,
-      commit_id: undefined,
+      commit_id: "sha",
       event: "REQUEST_CHANGES",
       comments: [
         {
           path: "first.ts",
-          position: 1,
+          line: 1,
           body: "First comment",
+        },
+      ],
+    });
+    expect(mockCreateReview).toHaveBeenCalledWith({
+      owner: mockConfig.owner,
+      repo: mockConfig.repo,
+      pull_number: mockConfig.pullNumber,
+      commit_id: "sha",
+      event: "COMMENT",
+      comments: [
+        {
+          path: "second.ts",
+          line: 2,
+          body: "Second comment",
         },
       ],
     });
 
     // Verify that out-of-range comment was posted as issue comment
-    expect(mockCreateComment).toHaveBeenCalledWith({
+    expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
       owner: mockConfig.owner,
       repo: mockConfig.repo,
       issue_number: mockConfig.pullNumber,
       body: "Comment on line 10 of file first.ts: Out of range comment",
     });
-
-    // Verify that createReview was called with the correct parameters
-    expect(mockCreateReview).toHaveBeenCalledWith({
-      owner: mockConfig.owner,
-      repo: mockConfig.repo,
-      pull_number: mockConfig.pullNumber,
-      commit_id: undefined,
-      event: "REQUEST_CHANGES",
-      comments: [
-        {
-          path: "first.ts",
-          position: expect.any(Number),
-          body: "First comment",
-        },
-      ],
-    });
-
-    expect(mockCreateReview).toHaveBeenCalled();
   });
 
   describe("getEntirePRDiff", () => {
@@ -174,13 +173,13 @@ describe("GitHubService", () => {
         patch: "diff for file2",
       });
 
-      expect(mockGet).toHaveBeenCalledWith({
+      expect(mockGet).toHaveBeenCalledExactlyOnceWith({
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         pull_number: mockConfig.pullNumber,
       });
 
-      expect(mockListFiles).toHaveBeenCalledWith({
+      expect(mockListFiles).toHaveBeenCalledExactlyOnceWith({
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         pull_number: mockConfig.pullNumber,
@@ -331,13 +330,13 @@ describe("GitHubService", () => {
         patch: "diff for file1",
       });
 
-      expect(mockListCommits).toHaveBeenCalledWith({
+      expect(mockListCommits).toHaveBeenCalledExactlyOnceWith({
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         pull_number: mockConfig.pullNumber,
       });
 
-      expect(mockCompareCommits).toHaveBeenCalledWith({
+      expect(mockCompareCommits).toHaveBeenCalledExactlyOnceWith({
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         base: "parentSha",
