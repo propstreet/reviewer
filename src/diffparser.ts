@@ -15,7 +15,7 @@
  * lines of whitespace and additional hunks until the beginning of a new file."
  *
  * @param patch       Unified diff string
- * @param newFileLine Line number in the "new" version of the file to locate
+ * @param targetLine  Line number in the "side" of the file to locate
  * @param side        Side of the diff to search for the line
  * @returns           Position in the diff, or null if not found
  */
