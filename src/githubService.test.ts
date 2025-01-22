@@ -19,9 +19,15 @@ describe("GitHubService", () => {
 
   const mockComments = [
     {
-      file: "test.ts",
+      file: "first.ts",
       line: 1,
-      comment: "Test comment",
+      comment: "First comment",
+      severity: "warning" as const,
+    },
+    {
+      file: "second.ts",
+      line: 2,
+      comment: "Second comment",
       severity: "info" as const,
     },
   ];
@@ -37,65 +43,12 @@ describe("GitHubService", () => {
   });
 
   it("should handle successful review comments posting", async () => {
-    const mockListFiles = vi.fn().mockResolvedValue({
-      data: [
-        {
-          filename: "test.ts",
-          patch: "@@ -1,1 +1,2 @@\n line1\n+line2",
-        },
-      ],
-    });
-
     const mockCreateReview = vi.fn().mockResolvedValue({});
 
     const mockOctokit = {
       rest: {
         pulls: {
-          listFiles: mockListFiles,
           createReview: mockCreateReview,
-        },
-      },
-    };
-
-    (github.getOctokit as MockType).mockReturnValue(mockOctokit);
-
-    const service = new GitHubService(mockConfig);
-    const reviewResult = await service.postReviewComments(mockComments, "info");
-
-    expect(reviewResult).toEqual({
-      skipped: false,
-      commentsPosted: 1,
-      commentsFiltered: 0,
-    });
-
-    expect(mockListFiles).toHaveBeenCalledWith({
-      owner: mockConfig.owner,
-      repo: mockConfig.repo,
-      pull_number: mockConfig.pullNumber,
-    });
-
-    expect(mockCreateReview).toHaveBeenCalled();
-    expect(reviewResult).toEqual({
-      skipped: false,
-      commentsPosted: 1,
-      commentsFiltered: 0,
-    });
-  });
-
-  it("should skip when no comments meet severity threshold", async () => {
-    const mockListFiles = vi.fn().mockResolvedValue({
-      data: [
-        {
-          filename: "test.ts",
-          patch: "@@ -1,1 +1,2 @@\n line1\n+line2",
-        },
-      ],
-    });
-
-    const mockOctokit = {
-      rest: {
-        pulls: {
-          listFiles: mockListFiles,
         },
       },
     };
@@ -105,53 +58,14 @@ describe("GitHubService", () => {
     const service = new GitHubService(mockConfig);
     const reviewResult = await service.postReviewComments(
       mockComments,
-      "error"
+      "warning"
     );
 
     expect(reviewResult).toEqual({
-      skipped: true,
-      reason: "No comments at or above severity: error",
-    });
-  });
-
-  it("should handle missing file patches", async () => {
-    const mockListFiles = vi.fn().mockResolvedValue({
-      data: [
-        {
-          filename: "test.ts",
-          // No patch provided
-        },
-      ],
-    });
-
-    const mockCreateReview = vi.fn().mockResolvedValue({});
-
-    const mockOctokit = {
-      rest: {
-        pulls: {
-          listFiles: mockListFiles,
-          createReview: mockCreateReview,
-        },
-      },
-    };
-
-    (github.getOctokit as MockType).mockReturnValue(mockOctokit);
-
-    const service = new GitHubService(mockConfig);
-    const reviewResult = await service.postReviewComments(mockComments, "info");
-    expect(reviewResult).toEqual({
-      skipped: false,
+      changesPosted: 1,
       commentsPosted: 1,
-      commentsFiltered: 0,
     });
-    expect(mockCreateReview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        comments: expect.arrayContaining([
-          expect.objectContaining({
-            body: expect.stringContaining("File test.ts not found or no patch"),
-          }),
-        ]),
-      })
-    );
+
+    expect(mockCreateReview).toHaveBeenCalled();
   });
 });
