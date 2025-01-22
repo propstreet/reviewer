@@ -164,4 +164,22 @@ describe("index", () => {
 
     expect(core.setFailed).toHaveBeenCalledWith("An unknown error occurred.");
   });
+
+  it("should handle Error objects with message in catch", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "diffMode") return "last-commit";
+      if (name === "severity") return "error";
+      if (name === "reasoningEffort") return "medium";
+      if (name === "tokenLimit") return "200000";
+      return "";
+    });
+
+    const { review } = await import("./reviewer.js");
+    vi.mocked(review).mockRejectedValue(new Error("Test error message")); // Throw an Error with message
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledWith("Test error message");
+  });
 });
