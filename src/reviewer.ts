@@ -29,6 +29,7 @@ async function getDiff(
     let finalDiff = "";
     let patchesUsed = 0;
     let patchesSkipped = 0;
+    const usedPatches: Array<{ filename: string; patch: string }> = [];
 
     for (const p of diff.patches) {
       const patchBlock = `\n## ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`;
@@ -44,6 +45,7 @@ async function getDiff(
       // If within limit, add it
       finalDiff += patchBlock;
       patchesUsed++;
+      usedPatches.push(p);
     }
 
     if (patchesUsed === 0) {
@@ -67,6 +69,7 @@ async function getDiff(
     return {
       combined,
       commitSha: diff.commitSha,
+      patches: usedPatches,
     };
   } catch (error) {
     core.error(
@@ -128,7 +131,8 @@ export async function review(options: ReviewOptions) {
   const result = await githubService.postReviewComments(
     response.comments,
     options.changesThreshold,
-    diff.commitSha
+    diff.commitSha,
+    diff.patches
   );
 
   core.info(

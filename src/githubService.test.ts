@@ -30,6 +30,12 @@ describe("GitHubService", () => {
       comment: "Second comment",
       severity: "info" as const,
     },
+    {
+      file: "first.ts",
+      line: 10,
+      comment: "Out of range comment",
+      severity: "info" as const,
+    },
   ];
 
   beforeEach(() => {
@@ -44,11 +50,15 @@ describe("GitHubService", () => {
 
   it("should handle successful review comments posting", async () => {
     const mockCreateReview = vi.fn().mockResolvedValue({});
+    const mockCreateComment = vi.fn().mockResolvedValue({});
 
     const mockOctokit = {
       rest: {
         pulls: {
           createReview: mockCreateReview,
+        },
+        issues: {
+          createComment: mockCreateComment,
         },
       },
     };
@@ -56,14 +66,62 @@ describe("GitHubService", () => {
     (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
     const service = new GitHubService(mockConfig);
+    const patches = [
+      { 
+        filename: "first.ts", 
+        patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line"
+      },
+      { 
+        filename: "second.ts", 
+        patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line"
+      },
+    ];
     const reviewResult = await service.postReviewComments(
       mockComments,
-      "warning"
+      "warning",
+      undefined,
+      patches
     );
 
     expect(reviewResult).toEqual({
       changesPosted: 1,
-      commentsPosted: 1,
+      commentsPosted: 2,
+    });
+
+    // Verify that createReview was called with the correct parameters
+    expect(mockCreateReview).toHaveBeenCalledWith({
+      owner: mockConfig.owner,
+      repo: mockConfig.repo,
+      pull_number: mockConfig.pullNumber,
+      commit_id: undefined,
+      event: "REQUEST_CHANGES",
+      comments: [{
+        path: "first.ts",
+        position: 1,
+        body: "First comment"
+      }]
+    });
+
+    // Verify that out-of-range comment was posted as issue comment
+    expect(mockCreateComment).toHaveBeenCalledWith({
+      owner: mockConfig.owner,
+      repo: mockConfig.repo,
+      issue_number: mockConfig.pullNumber,
+      body: "Comment on line 10 of file first.ts: Out of range comment"
+    });
+
+    // Verify that createReview was called with the correct parameters
+    expect(mockCreateReview).toHaveBeenCalledWith({
+      owner: mockConfig.owner,
+      repo: mockConfig.repo,
+      pull_number: mockConfig.pullNumber,
+      commit_id: undefined,
+      event: "REQUEST_CHANGES",
+      comments: [{
+        path: "first.ts",
+        position: expect.any(Number),
+        body: "First comment"
+      }]
     });
 
     expect(mockCreateReview).toHaveBeenCalled();

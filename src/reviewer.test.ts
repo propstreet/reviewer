@@ -132,7 +132,8 @@ describe("reviewer", () => {
     expect(GitHubService.prototype.postReviewComments).toHaveBeenCalledWith(
       mockAzureResponse.comments,
       "error",
-      undefined
+      undefined,
+      [{ filename: "commit.ts", patch: "commit diff" }]
     );
 
     // Verify no errors were reported
