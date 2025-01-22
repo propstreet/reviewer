@@ -101,7 +101,7 @@ describe("GitHubService", () => {
           position: 1,
           body: "First comment",
         },
-      ]
+      ],
     });
 
     // Verify that out-of-range comment was posted as issue comment
@@ -109,7 +109,7 @@ describe("GitHubService", () => {
       owner: mockConfig.owner,
       repo: mockConfig.repo,
       issue_number: mockConfig.pullNumber,
-      body: "Comment on line 10 of file first.ts: Out of range comment"
+      body: "Comment on line 10 of file first.ts: Out of range comment",
     });
 
     // Verify that createReview was called with the correct parameters
@@ -125,7 +125,7 @@ describe("GitHubService", () => {
           position: expect.any(Number),
           body: "First comment",
         },
-      ]
+      ],
     });
 
     expect(mockCreateReview).toHaveBeenCalled();
