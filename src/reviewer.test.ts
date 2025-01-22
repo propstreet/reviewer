@@ -306,9 +306,7 @@ describe("reviewer", () => {
     const { review } = await import("./reviewer.js");
     await review(reviewOptions);
 
-    expect(core.error).toHaveBeenCalledWith(
-      "Failed to get git info: 42"
-    );
+    expect(core.error).toHaveBeenCalledWith("Failed to get git info: 42");
   });
 
   it("should handle entire-pr mode", async () => {
