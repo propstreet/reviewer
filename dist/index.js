@@ -35477,7 +35477,7 @@ function wrappy (fn, cb) {
 /***/ }),
 
 /***/ 6253:
-/***/ ((module, __webpack_exports__, __nccwpck_require__) => {
+/***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
 
 // EXPORTS
@@ -49775,7 +49775,6 @@ async function review(options) {
 }
 
 ;// CONCATENATED MODULE: ./src/index.ts
-/* module decorator */ module = __nccwpck_require__.hmd(module);
 
 
 
@@ -49829,7 +49828,7 @@ async function run() {
     }
 }
 // Only call run if we are not in a test environment
-if (__nccwpck_require__.c[__nccwpck_require__.s] === module) {
+if (__nccwpck_require__.c[__nccwpck_require__.s]) {
     run();
 }
 
@@ -52006,8 +52005,8 @@ module.exports = /*#__PURE__*/JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45
 /******/ 	}
 /******/ 	// Create a new module (and put it into the cache)
 /******/ 	var module = __webpack_module_cache__[moduleId] = {
-/******/ 		id: moduleId,
-/******/ 		loaded: false,
+/******/ 		// no module.id needed
+/******/ 		// no module.loaded needed
 /******/ 		exports: {}
 /******/ 	};
 /******/ 
@@ -52019,9 +52018,6 @@ module.exports = /*#__PURE__*/JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45
 /******/ 	} finally {
 /******/ 		if(threw) delete __webpack_module_cache__[moduleId];
 /******/ 	}
-/******/ 
-/******/ 	// Flag the module as loaded
-/******/ 	module.loaded = true;
 /******/ 
 /******/ 	// Return the exports of the module
 /******/ 	return module.exports;
@@ -52065,21 +52061,6 @@ module.exports = /*#__PURE__*/JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45
 /******/ 	__nccwpck_require__.u = (chunkId) => {
 /******/ 		// return url for filenames based on template
 /******/ 		return "" + chunkId + ".index.js";
-/******/ 	};
-/******/ })();
-/******/ 
-/******/ /* webpack/runtime/harmony module decorator */
-/******/ (() => {
-/******/ 	__nccwpck_require__.hmd = (module) => {
-/******/ 		module = Object.create(module);
-/******/ 		if (!module.children) module.children = [];
-/******/ 		Object.defineProperty(module, 'exports', {
-/******/ 			enumerable: true,
-/******/ 			set: () => {
-/******/ 				throw new Error('ES Modules may not assign module.exports or exports.*, Use ESM export syntax, instead: ' + module.id);
-/******/ 			}
-/******/ 		});
-/******/ 		return module;
 /******/ 	};
 /******/ })();
 /******/ 
