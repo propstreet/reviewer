@@ -60,7 +60,9 @@ export class GitHubService {
     review: z.infer<typeof CodeReviewComment>[],
     sha: string
   ) {
-    core.debug(`Creating ${event} review for ${sha} with ${review.length} comments`);
+    core.debug(
+      `Creating ${event} review for ${sha} with ${review.length} comments`
+    );
     await this.octokit.rest.pulls.createReview({
       owner: this.config.owner,
       repo: this.config.repo,
