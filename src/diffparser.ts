@@ -15,17 +15,20 @@
  * lines of whitespace and additional hunks until the beginning of a new file."
  *
  * @param patch       Unified diff string
- * @param newFileLine Line number in the "new" version of the file to locate
+ * @param targetLine  Line number in the "side" of the file to locate
+ * @param side        Side of the diff to search for the line
  * @returns           Position in the diff, or null if not found
  */
 export function findPositionInDiff(
   patch: string,
-  newFileLine: number
+  targetLine: number,
+  side: "LEFT" | "RIGHT"
 ): number | null {
   // Split into lines
   const lines = patch.split("\n");
 
-  // Tracks the current line number in the new file
+  // Tracks the current line number in the old file and new file
+  let trackedOldLine = 0;
   let trackedNewLine = 0;
 
   // Indicates if we've encountered the first "@@" hunk header
@@ -34,48 +37,61 @@ export function findPositionInDiff(
   // Zero-based index of the line where the first "@@" occurs
   let firstHunkLineIndex = -1;
 
-  // We'll iterate with a standard index for clarity
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // When we reach a hunk header (e.g. "@@ -123,4 +567,8 @@")
+    // Detect a hunk header, e.g. "@@ -123,4 +567,8 @@"
     if (line.startsWith("@@ ")) {
-      const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
-
-      // If we parse it successfully, update our trackedNewLine
+      // Attempt to parse the old/new line starts
+      const match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
       if (match) {
-        const newStart = parseInt(match[1], 10);
+        // We only care about the starting line numbers, ignoring lengths for this purpose
+        const oldStart = parseInt(match[1], 10);
+        const newStart = parseInt(match[3], 10);
+
+        trackedOldLine = oldStart - 1;
         trackedNewLine = newStart - 1;
 
-        // Mark the index of this first hunk (for calculating offsets later)
         if (!hasFoundFirstHunk) {
           hasFoundFirstHunk = true;
           firstHunkLineIndex = i;
         }
       }
 
-      // Done processing this line, move on
       continue;
     }
 
-    // Skip lines until we've encountered the first "@@" line
+    // Skip lines until we've encountered the first "@@"
     if (!hasFoundFirstHunk) {
       continue;
     }
 
-    // For lines in the actual diff segment, we increment the tracked new-file line
-    // on lines that are added or unmodified ("+" or " ")
-    if (line.startsWith("+") || line.startsWith(" ")) {
-      trackedNewLine++;
+    // In a unified diff:
+    //   - lines starting with " " appear in both old and new
+    //   - lines starting with "-" only appear in old
+    //   - lines starting with "+" only appear in new
 
-      // When we hit the exact newFileLine, return how many lines we've progressed
-      // from the first hunk line.
-      if (trackedNewLine === newFileLine) {
-        return i - firstHunkLineIndex;
-      }
+    if (line.startsWith(" ")) {
+      // Unmodified line on both sides
+      trackedOldLine++;
+      trackedNewLine++;
+    } else if (line.startsWith("-")) {
+      // Deleted line, only on old (LEFT)
+      trackedOldLine++;
+    } else if (line.startsWith("+")) {
+      // Added line, only on new (RIGHT)
+      trackedNewLine++;
+    }
+
+    // Check if we've hit the target line for the requested side
+    if (side === "LEFT" && trackedOldLine === targetLine) {
+      return i - firstHunkLineIndex;
+    }
+    if (side === "RIGHT" && trackedNewLine === targetLine) {
+      return i - firstHunkLineIndex;
     }
   }
 
-  // If we exhaust the patch lines without matching newFileLine, return null
+  // If we exhaust the patch lines without matching targetLine, return null
   return null;
 }
