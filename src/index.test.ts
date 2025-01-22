@@ -63,7 +63,7 @@ describe("index", () => {
     expect(review).toHaveBeenCalledWith({
       githubToken: "test-token",
       diffMode: "last-commit",
-      tokenLimit: 200000,
+      tokenLimit: 50000,
       changesThreshold: "error",
       reasoningEffort: "medium",
     });
