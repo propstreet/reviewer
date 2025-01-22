@@ -49437,52 +49437,68 @@ If you have no comments, return an empty comments array. Respond in JSON format.
  *
  * @param patch       Unified diff string
  * @param newFileLine Line number in the "new" version of the file to locate
+ * @param side        Side of the diff to search for the line
  * @returns           Position in the diff, or null if not found
  */
-function findPositionInDiff(patch, newFileLine) {
+function findPositionInDiff(patch, targetLine, side) {
     // Split into lines
     const lines = patch.split("\n");
-    // Tracks the current line number in the new file
+    // Tracks the current line number in the old file and new file
+    let trackedOldLine = 0;
     let trackedNewLine = 0;
     // Indicates if we've encountered the first "@@" hunk header
     let hasFoundFirstHunk = false;
     // Zero-based index of the line where the first "@@" occurs
     let firstHunkLineIndex = -1;
-    // We'll iterate with a standard index for clarity
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        // When we reach a hunk header (e.g. "@@ -123,4 +567,8 @@")
+        // Detect a hunk header, e.g. "@@ -123,4 +567,8 @@"
         if (line.startsWith("@@ ")) {
-            const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
-            // If we parse it successfully, update our trackedNewLine
+            // Attempt to parse the old/new line starts
+            const match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
             if (match) {
-                const newStart = parseInt(match[1], 10);
+                // We only care about the starting line numbers, ignoring lengths for this purpose
+                const oldStart = parseInt(match[1], 10);
+                const newStart = parseInt(match[3], 10);
+                trackedOldLine = oldStart - 1;
                 trackedNewLine = newStart - 1;
-                // Mark the index of this first hunk (for calculating offsets later)
                 if (!hasFoundFirstHunk) {
                     hasFoundFirstHunk = true;
                     firstHunkLineIndex = i;
                 }
             }
-            // Done processing this line, move on
             continue;
         }
-        // Skip lines until we've encountered the first "@@" line
+        // Skip lines until we've encountered the first "@@"
         if (!hasFoundFirstHunk) {
             continue;
         }
-        // For lines in the actual diff segment, we increment the tracked new-file line
-        // on lines that are added or unmodified ("+" or " ")
-        if (line.startsWith("+") || line.startsWith(" ")) {
+        // In a unified diff:
+        //   - lines starting with " " appear in both old and new
+        //   - lines starting with "-" only appear in old
+        //   - lines starting with "+" only appear in new
+        if (line.startsWith(" ")) {
+            // Unmodified line on both sides
+            trackedOldLine++;
             trackedNewLine++;
-            // When we hit the exact newFileLine, return how many lines we've progressed
-            // from the first hunk line.
-            if (trackedNewLine === newFileLine) {
-                return i - firstHunkLineIndex;
-            }
+        }
+        else if (line.startsWith("-")) {
+            // Deleted line, only on old (LEFT)
+            trackedOldLine++;
+        }
+        else if (line.startsWith("+")) {
+            // Added line, only on new (RIGHT)
+            trackedNewLine++;
+        }
+        // Check if we've hit the target line for the requested side
+        if (side === "LEFT" && trackedOldLine === targetLine) {
+            return i - firstHunkLineIndex;
+        }
+        if (side === "RIGHT" && trackedNewLine === targetLine) {
+            return i - firstHunkLineIndex;
         }
     }
-    // If we exhaust the patch lines without matching newFileLine, return null
+    // If we exhaust the patch lines without matching targetLine, return null
     return null;
 }
 
@@ -49497,22 +49513,23 @@ class GitHubService {
         this.octokit = github.getOctokit(config.token);
         this.config = config;
     }
-    verifyCommentLineInPatch(filename, line, patches) {
+    verifyCommentLineInPatch(filename, line, side, patches) {
         const target = patches.find((p) => p.filename === filename);
         if (!target) {
             core.warning(`No patch found for file: ${filename}`);
             return false;
         }
-        const position = findPositionInDiff(target.patch, line);
-        core.debug(`Position for ${filename}:${line} = ${position}`);
+        const position = findPositionInDiff(target.patch, line, side);
+        core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
         return position !== null;
     }
-    async createReview(event, review, commit_id) {
+    async createReview(event, review, sha) {
+        core.debug(`Creating ${event} review for ${sha} with ${review.length} comments`);
         await this.octokit.rest.pulls.createReview({
             owner: this.config.owner,
             repo: this.config.repo,
             pull_number: this.config.pullNumber,
-            commit_id: commit_id,
+            commit_id: sha,
             event: event,
             comments: review.map((c) => ({
                 path: c.file,
@@ -49536,8 +49553,8 @@ class GitHubService {
                 issueComments.push(c);
                 return acc;
             }
-            if (!this.verifyCommentLineInPatch(c.file, c.line, commit.patches)) {
-                core.debug(`Comment ${c.comment} is out of range for ${c.file}:${c.line}`);
+            if (!this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches)) {
+                core.warning(`Comment ${c.comment} is out of range for ${c.file}:${c.line}:${c.side}`);
                 issueComments.push(c);
                 return acc;
             }
@@ -49577,7 +49594,7 @@ class GitHubService {
                 owner: this.config.owner,
                 repo: this.config.repo,
                 issue_number: this.config.pullNumber,
-                body: `Comment on line ${comment.line} of file ${comment.file}: ${comment.comment}`,
+                body: `Comment on line ${comment.line} (${comment.side}) of file ${comment.file}: ${comment.comment}`,
             });
         }
         return {
@@ -49673,7 +49690,7 @@ function packCommit(accumulated, commit, tokenLimit) {
     const usedPatches = [];
     for (const p of commit.patches) {
         core.debug(`Packing patch: ${p.filename}`);
-        const patchBlock = `\n### ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`;
+        const patchBlock = `\n### ${p.filename} (sha: ${commit.sha})\n\`\`\`diff\n${p.patch}\n\`\`\`\n`;
         // Check if we can add this patch without exceeding limit
         const combinedPreview = accumulated + commitBlock + patchBlock;
         // isWithinTokenLimit returns false if limit exceeded

@@ -31,7 +31,7 @@ describe("GitHubService", () => {
       sha: "sha1",
       file: "second.ts",
       line: 2,
-      side: "LEFT" as const,
+      side: "RIGHT" as const,
       comment: "Second comment",
       severity: "info" as const,
     },
@@ -127,7 +127,7 @@ describe("GitHubService", () => {
         {
           path: "second.ts",
           line: 2,
-          side: "LEFT",
+          side: "RIGHT",
           body: "Second comment",
         },
       ],
@@ -138,7 +138,7 @@ describe("GitHubService", () => {
       owner: mockConfig.owner,
       repo: mockConfig.repo,
       issue_number: mockConfig.pullNumber,
-      body: "Comment on line 10 of file first.ts: Out of range comment",
+      body: "Comment on line 10 (RIGHT) of file first.ts: Out of range comment",
     });
   });
 

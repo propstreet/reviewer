@@ -136,7 +136,10 @@ describe("reviewer", () => {
     await review(reviewOptions);
 
     // Verify Azure OpenAI service was called
-    expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalled();
+    expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalledWith(
+      expect.stringMatching(/commit\.ts \(sha:\s+test-sha\).*commit diff/s),
+      { reasoningEffort: "low" }
+    );
 
     // Verify GitHub service was called
     expect(GitHubService.prototype.postReviewComments).toHaveBeenCalledWith(

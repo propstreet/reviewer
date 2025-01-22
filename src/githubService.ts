@@ -42,6 +42,7 @@ export class GitHubService {
   private verifyCommentLineInPatch(
     filename: string,
     line: number,
+    side: "LEFT" | "RIGHT",
     patches: PatchInfo[]
   ): boolean {
     const target = patches.find((p) => p.filename === filename);
@@ -49,21 +50,22 @@ export class GitHubService {
       core.warning(`No patch found for file: ${filename}`);
       return false;
     }
-    const position = findPositionInDiff(target.patch, line);
-    core.debug(`Position for ${filename}:${line} = ${position}`);
+    const position = findPositionInDiff(target.patch, line, side);
+    core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
     return position !== null;
   }
 
   private async createReview(
     event: "REQUEST_CHANGES" | "COMMENT",
     review: z.infer<typeof CodeReviewComment>[],
-    commit_id?: string
+    sha: string
   ) {
+    core.debug(`Creating ${event} review for ${sha} with ${review.length} comments`);
     await this.octokit.rest.pulls.createReview({
       owner: this.config.owner,
       repo: this.config.repo,
       pull_number: this.config.pullNumber,
-      commit_id: commit_id,
+      commit_id: sha,
       event: event,
       comments: review.map((c) => ({
         path: c.file,
@@ -96,9 +98,11 @@ export class GitHubService {
           return acc;
         }
 
-        if (!this.verifyCommentLineInPatch(c.file, c.line, commit.patches)) {
-          core.debug(
-            `Comment ${c.comment} is out of range for ${c.file}:${c.line}`
+        if (
+          !this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches)
+        ) {
+          core.warning(
+            `Comment ${c.comment} is out of range for ${c.file}:${c.line}:${c.side}`
           );
           issueComments.push(c);
           return acc;
@@ -158,7 +162,7 @@ export class GitHubService {
         owner: this.config.owner,
         repo: this.config.repo,
         issue_number: this.config.pullNumber,
-        body: `Comment on line ${comment.line} of file ${comment.file}: ${comment.comment}`,
+        body: `Comment on line ${comment.line} (${comment.side}) of file ${comment.file}: ${comment.comment}`,
       });
     }
 

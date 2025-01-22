@@ -23,7 +23,7 @@ function packCommit(
   for (const p of commit.patches) {
     core.debug(`Packing patch: ${p.filename}`);
 
-    const patchBlock = `\n### ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`;
+    const patchBlock = `\n### ${p.filename} (sha: ${commit.sha})\n\`\`\`diff\n${p.patch}\n\`\`\`\n`;
     // Check if we can add this patch without exceeding limit
     const combinedPreview = accumulated + commitBlock + patchBlock;
     // isWithinTokenLimit returns false if limit exceeded
