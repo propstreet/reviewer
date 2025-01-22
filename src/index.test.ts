@@ -46,29 +46,72 @@ describe("index", () => {
   });
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
-  it("should call reviewer", async () => {
+  it("should call reviewer with default values when inputs are empty", async () => {
+    // Mock all inputs to return empty string
+    (core.getInput as MockType).mockImplementation(() => "");
+
     const { review } = await import("./reviewer.js");
     vi.mocked(review).mockImplementation((_options: unknown) =>
       Promise.resolve()
     );
 
-    // Verify token count is logged
-    const infoSpy = vi.spyOn(core, "info");
+    // Import and run the index file
+    const { run } = await import("./index.js");
+    await run();
+
+    // Verify reviewer was called with default values
+    expect(review).toHaveBeenCalledWith({
+      githubToken: "test-token",
+      diffMode: "last-commit",
+      tokenLimit: 200000,
+      changesThreshold: "error",
+      reasoningEffort: "medium",
+    });
+
+    // Verify no errors were reported
+    expect(core.setFailed).not.toHaveBeenCalled();
+
+    // Verify completion was logged
+    expect(core.info).toHaveBeenCalledWith("Review completed.");
+  });
+
+  it("should call reviewer with provided values", async () => {
+    // Mock inputs with specific values
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      switch (name) {
+        case "diffMode":
+          return "entire-pr";
+        case "severity":
+          return "warning";
+        case "reasoningEffort":
+          return "high";
+        case "tokenLimit":
+          return "150000";
+        default:
+          return "";
+      }
+    });
+
+    const { review } = await import("./reviewer.js");
+    vi.mocked(review).mockImplementation((_options: unknown) =>
+      Promise.resolve()
+    );
 
     // Import and run the index file
     const { run } = await import("./index.js");
     await run();
 
-    // Verify reviewer was called
-    expect(review).toHaveBeenCalled();
+    // Verify reviewer was called with provided values
+    expect(review).toHaveBeenCalledWith({
+      githubToken: "test-token",
+      diffMode: "entire-pr",
+      tokenLimit: 150000,
+      changesThreshold: "warning",
+      reasoningEffort: "high",
+    });
 
     // Verify no errors were reported
     expect(core.setFailed).not.toHaveBeenCalled();
-
-    // Verify token count was logged correctly
-    expect(infoSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Review completed.")
-    );
   });
 
   it("should handle invalid diffMode", async () => {
