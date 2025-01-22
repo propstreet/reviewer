@@ -27,7 +27,6 @@ describe("AzureOpenAIService", () => {
   };
 
   const mockReviewConfig: ReviewPromptConfig = {
-    severityThreshold: "info",
     reasoningEffort: "medium",
   };
 

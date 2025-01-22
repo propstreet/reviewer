@@ -1,7 +1,6 @@
 import { AzureOpenAI } from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { CodeReviewCommentArray } from "./schemas.js";
-import { ChatCompletionReasoningEffort } from "openai/resources/index.mjs";
 
 export interface AzureOpenAIConfig {
   endpoint: string;
@@ -10,9 +9,10 @@ export interface AzureOpenAIConfig {
   apiVersion: string;
 }
 
+export type ReasoningEffort = "low" | "medium" | "high";
+
 export interface ReviewPromptConfig {
-  severityThreshold: string;
-  reasoningEffort: ChatCompletionReasoningEffort;
+  reasoningEffort: ReasoningEffort;
 }
 
 export class AzureOpenAIService {
@@ -34,7 +34,7 @@ export class AzureOpenAIService {
         {
           role: "developer",
           content: `You are a helpful code reviewer. Review this pull request and provide any suggestions.
-Each comment must include a severity: 'info', 'warning', or 'error'. Skip any comments with severity less than '${config.severityThreshold}'.
+Each comment must include a severity: 'info', 'warning', or 'error'.
 Only comment on lines that need improvement. Comments may be formatted as markdown.
 If you have no comments, return an empty comments array. Respond in JSON format.`,
         },

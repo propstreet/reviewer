@@ -26,31 +26,27 @@ jobs:
       - name: Run AI Reviewer
         uses: propstreet/reviewer@v2
         with:
+          azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
           azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_REASONING_ENDPOINT }}
           azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_REASONING_DEPLOYMENT }}
-          azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
           azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
           diffMode: "last-commit" # or entire-pr
-          severity: "info" # or "warning" or "error"
+          severity: "error" # or "info" or "warning"
           reasoningEffort: "medium" # or "low" or "high"
         env:
           # Make sure GITHUB_TOKEN has write permissions to create reviews
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 ```
 
-2. **Secrets**
+2. **Options**
 
-- AZURE_OPENAI_REASONING_ENDPOINT should be your Azure OpenAI endpoint URL to a reasoning model. (e.g. <https://my-o1-resource.openai.azure.com/openai/deployments/...>)
-- AZURE_OPENAI_REASONING_DEPLOYMENT is your Azure OpenAI deployment name for the reasoning model. (e.g. my-o1-deployment)
-- AZURE_OPENAI_REASONING_VERSION is the version of the Azure OpenAI API used for calling the reasoning model. (e.g. 2024-12-01-preview)
-- AZURE_OPENAI_API_KEY is your Azure OpenAI API key.
-- The GITHUB_TOKEN is automatically available, but ensure your workflow permission is set to “Read and write” so it can post PR reviews.
-
-3. **Diff Modes**
-
-- diffMode: entire-pr → uses git diff origin/\<base>...HEAD.
-- diffMode: last-commit → uses git diff HEAD~1 HEAD (fallback to entire PR if there’s only one commit).
+- azureOpenAIKey: Your Azure OpenAI API key.
+- azureOpenAIEndpoint: Azure OpenAI endpoint URL to an o1 reasoning model. (e.g. <https://my-o1-resource.openai.azure.com/openai/deployments/...>)
+- azureOpenAIDeployment: Azure OpenAI deployment name for the o1 reasoning model. (e.g. my-o1-deployment)
+- azureOpenAIVersion: Version of the Azure OpenAI API used for calling the reasoning model. (e.g. 2024-12-01-preview)
+- diffMode: Controls which patches are sent to Azure OpenAI. Options are "last-commit" (default) or "entire-pr".
+- severity: The minimum severity level for requesting changes. Lower severity levels will be posted as informational comments.
+- reasoningEffort: The level of reasoning effort to use when generating comments. Options are "low", "medium" (default), or "high".
 
 ## Development & Contributing
 

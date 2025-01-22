@@ -1,7 +1,7 @@
 import * as github from "@actions/github";
 import { CodeReviewComment } from "./schemas.js";
 import { z } from "zod";
-import { findPositionInDiff } from "./diffparser.js";
+import { SeverityLevel } from "./validators.js";
 
 export interface GitHubConfig {
   token: string;
@@ -24,6 +24,7 @@ export interface ReviewResult {
 }
 
 export interface GitDiffResult {
+  commitSha?: string;
   commitMessage: string;
   patches: Array<{
     filename: string;
@@ -40,74 +41,53 @@ export class GitHubService {
     this.config = config;
   }
 
-  async postReviewComments(
-    comments: z.infer<typeof CodeReviewComment>[],
-    severityThreshold: string
+  private async createReview(
+    event: "REQUEST_CHANGES" | "COMMENT",
+    review: z.infer<typeof CodeReviewComment>[],
+    commit_id?: string
   ) {
-    // Fetch the PR files to get their patches
-    const { data: changedFiles } = await this.octokit.rest.pulls.listFiles({
-      owner: this.config.owner,
-      repo: this.config.repo,
-      pull_number: this.config.pullNumber,
-    });
-
-    // Order of severity levels
-    const severityOrder = ["info", "warning", "error"];
-    const thresholdIndex = severityOrder.indexOf(severityThreshold);
-
-    // Build up the array of comments that meet or exceed the threshold
-    const reviewComments = comments
-      .filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex)
-      .map((c) => {
-        const fileInfo = changedFiles.find((f) => f.filename === c.file);
-        if (!fileInfo || !fileInfo.patch) {
-          // This file might not exist or doesn't have a patch (binary file, etc.)
-          // fallback to top-level or skip
-          return {
-            path: c.file,
-            body: `**File ${c.file} not found or no patch**: ${c.comment}`,
-          };
-        }
-
-        // Find position in diff
-        const pos = findPositionInDiff(fileInfo.patch, c.line);
-        if (!pos) {
-          // We couldn't match that line in the patch
-          // fallback to top-level
-          return {
-            path: c.file,
-            body: `**Could not map line ${c.line} in ${c.file}**: ${c.comment}`,
-          };
-        }
-
-        return {
-          path: c.file,
-          position: pos,
-          body: c.comment,
-        };
-      });
-
-    // If no comments met the threshold
-    if (reviewComments.length === 0) {
-      return {
-        skipped: true,
-        reason: `No comments at or above severity: ${severityThreshold}`,
-      };
-    }
-
-    // Create a review with multiple comments
     await this.octokit.rest.pulls.createReview({
       owner: this.config.owner,
       repo: this.config.repo,
       pull_number: this.config.pullNumber,
-      event: "COMMENT",
-      comments: reviewComments,
+      commit_id: commit_id,
+      event: event,
+      comments: review.map((c) => ({
+        path: c.file,
+        line: c.line,
+        body: c.comment,
+      })),
     });
+  }
+
+  async postReviewComments(
+    comments: z.infer<typeof CodeReviewComment>[],
+    changesThreshold: SeverityLevel,
+    commitSha?: string
+  ) {
+    // Order of severity levels
+    const severityOrder = ["info", "warning", "error"];
+    const thresholdIndex = severityOrder.indexOf(changesThreshold);
+
+    // Build up the array of comments that meet or exceed the threshold to require changes
+    const reviewChanges = comments.filter(
+      (c) => severityOrder.indexOf(c.severity) >= thresholdIndex
+    );
+
+    if (reviewChanges.length) {
+      await this.createReview("REQUEST_CHANGES", reviewChanges, commitSha);
+    }
+
+    // The remaining comments will be posted as informational comments
+    const reviewComments = comments.filter((c) => !reviewChanges.includes(c));
+
+    if (reviewComments.length) {
+      await this.createReview("COMMENT", reviewComments, commitSha);
+    }
 
     return {
-      skipped: false,
+      changesPosted: reviewChanges.length,
       commentsPosted: reviewComments.length,
-      commentsFiltered: comments.length - reviewComments.length,
     };
   }
 
@@ -135,7 +115,7 @@ export class GitHubService {
     return { commitMessage, patches };
   }
 
-  async getLastCommitDiff(): Promise<GitDiffResult> {
+  async getLastCommitDiff(): Promise<GitDiffResult | null> {
     const commitsResponse = await this.octokit.rest.pulls.listCommits({
       owner: this.config.owner,
       repo: this.config.repo,
@@ -144,7 +124,7 @@ export class GitHubService {
 
     const commits = commitsResponse.data;
     if (commits.length === 0) {
-      return { commitMessage: "", patches: [] };
+      return null;
     }
 
     const lastCommit = commits[commits.length - 1];
@@ -155,7 +135,11 @@ export class GitHubService {
     if (!parentSha) {
       // If there's no parent (first commit), use entire PR diff
       const prDiff = await this.getEntirePRDiff();
-      return { commitMessage, patches: prDiff.patches };
+      return {
+        commitSha: lastCommitSha,
+        commitMessage,
+        patches: prDiff.patches,
+      };
     }
 
     const compareData = await this.octokit.rest.repos.compareCommits({
@@ -170,6 +154,6 @@ export class GitHubService {
       patch: file.patch || "",
     }));
 
-    return { commitMessage, patches };
+    return { commitSha: lastCommitSha, commitMessage, patches };
   }
 }
