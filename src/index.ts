@@ -28,7 +28,7 @@ export async function run(): Promise<void> {
       return;
     }
 
-    const tokenLimitInput = core.getInput("tokenLimit") || "200000";
+    const tokenLimitInput = core.getInput("tokenLimit") || "50000";
     if (!isValidTokenLimit(tokenLimitInput)) {
       core.setFailed(`Invalid token limit: ${tokenLimitInput}`);
       return;

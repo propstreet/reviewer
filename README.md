@@ -30,9 +30,10 @@ jobs:
           azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_REASONING_ENDPOINT }}
           azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_REASONING_DEPLOYMENT }}
           azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
-          diffMode: "last-commit" # or entire-pr
-          severity: "error" # or "info" or "warning"
-          reasoningEffort: "medium" # or "low" or "high"
+          diffMode: "last-commit" # optional, defaults to "last-commit"
+          severity: "error" # optional, defaults to "error"
+          reasoningEffort: "medium" # optional, defaults to "medium"
+          tokenLimit: 50000 # optional, defaults to 50000
         env:
           # Make sure GITHUB_TOKEN has write permissions to create reviews
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,8 +46,9 @@ jobs:
 - azureOpenAIDeployment: Azure OpenAI deployment name for the o1 reasoning model. (e.g. my-o1-deployment)
 - azureOpenAIVersion: Version of the Azure OpenAI API used for calling the reasoning model. (e.g. 2024-12-01-preview)
 - diffMode: Controls which patches are sent to Azure OpenAI. Options are "last-commit" (default) or "entire-pr".
-- severity: The minimum severity level for requesting changes. Lower severity levels will be posted as informational comments.
+- severity: The minimum severity level for requesting changes. Lower severity levels will be posted as informational comments. Options are "info", "warning", or "error".
 - reasoningEffort: The level of reasoning effort to use when generating comments. Options are "low", "medium" (default), or "high".
+- tokenLimit: The maximum number of tokens to send to Azure OpenAI. The default is 50 000, o1 supports up to 200 000 but the REST API seems to support ~190 000.
 
 ## Development & Contributing
 

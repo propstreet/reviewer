@@ -31,7 +31,7 @@ describe("index", () => {
         case "reasoningEffort":
           return "medium";
         case "tokenLimit":
-          return "200000";
+          return "50000";
         default:
           return "";
       }
@@ -63,7 +63,7 @@ describe("index", () => {
     expect(review).toHaveBeenCalledWith({
       githubToken: "test-token",
       diffMode: "last-commit",
-      tokenLimit: 200000,
+      tokenLimit: 50000,
       changesThreshold: "error",
       reasoningEffort: "medium",
     });
