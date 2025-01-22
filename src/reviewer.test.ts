@@ -248,6 +248,40 @@ describe("reviewer", () => {
     expect(core.info).toHaveBeenCalledWith("No patches returned from GitHub.");
   });
 
+  it("should handle empty AI response", async () => {
+    // Mock isWithinTokenLimit to allow diff processing
+    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1000 // Return token count instead of boolean
+    );
+
+    // Mock successful diff retrieval
+    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockResolvedValue({
+      commitMessage: "test commit",
+      patches: [{ filename: "test.ts", patch: "test diff" }],
+    });
+
+    // Mock empty AI response
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue({
+      comments: [],
+    });
+
+    // Import and run the reviewer
+    const { review } = await import("./reviewer.js");
+    await review({
+      githubToken: "test-token",
+      diffMode: "last-commit",
+      tokenLimit: 1234,
+      changesThreshold: "error",
+      reasoningEffort: "low",
+    });
+
+    // Verify appropriate message was logged
+    expect(core.info).toHaveBeenCalledWith("No suggestions from AI.");
+    // Verify GitHub service was not called for posting comments
+    expect(GitHubService.prototype.postReviewComments).not.toHaveBeenCalled();
+  });
+
   it("should handle GitHub API errors", async () => {
     // Mock API error
     vi.mocked(GitHubService.prototype.getLastCommitDiff).mockRejectedValue(
@@ -262,6 +296,17 @@ describe("reviewer", () => {
     expect(core.error).toHaveBeenCalledWith(
       "Failed to get git info: API Error"
     );
+  });
+
+  it("should handle non-Error objects in getDiff error", async () => {
+    // Mock GitHub service to throw a non-Error object
+    vi.mocked(GitHubService.prototype.getLastCommitDiff).mockRejectedValue(42);
+
+    // Import and run the reviewer
+    const { review } = await import("./reviewer.js");
+    await review(reviewOptions);
+
+    expect(core.error).toHaveBeenCalledWith("Failed to get git info: 42");
   });
 
   it("should handle entire-pr mode", async () => {
