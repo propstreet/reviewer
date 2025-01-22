@@ -49666,7 +49666,7 @@ class GitHubService {
 
 
 
-async function packCommit(accumulated, commit, tokenLimit) {
+function packCommit(accumulated, commit, tokenLimit) {
     core.debug(`Packing commit: ${commit.sha}`);
     let commitBlock = `\n## ${commit.message}\n`;
     const skippedPatches = [];
@@ -49720,7 +49720,7 @@ async function buildPrompt(githubService, diffMode, tokenLimit) {
         core.debug(`Processing commit: ${c.sha}`);
         const commitDetails = await githubService.getCommitDetails(c.sha);
         core.debug(`Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`);
-        const packed = await packCommit(prompt, commitDetails, tokenLimit);
+        const packed = packCommit(prompt, commitDetails, tokenLimit);
         if (!packed) {
             core.warning(`Could not pack commit ${c.sha} within token limit.`);
             break;

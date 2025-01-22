@@ -9,7 +9,7 @@ import {
 } from "./azureOpenAIService.js";
 import { CommitDetails, GitHubService, PatchInfo } from "./githubService.js";
 
-async function packCommit(
+function packCommit(
   accumulated: string,
   commit: CommitDetails,
   tokenLimit: number
@@ -97,7 +97,7 @@ async function buildPrompt(
     core.debug(
       `Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`
     );
-    const packed = await packCommit(prompt, commitDetails, tokenLimit);
+    const packed = packCommit(prompt, commitDetails, tokenLimit);
 
     if (!packed) {
       core.warning(`Could not pack commit ${c.sha} within token limit.`);
