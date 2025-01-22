@@ -55,90 +55,254 @@ describe("GitHubService", () => {
     expect(github.getOctokit).toHaveBeenCalledExactlyOnceWith(mockConfig.token);
   });
 
-  it("should handle successful review comments posting", async () => {
-    const mockCreateReview = vi.fn().mockResolvedValue({});
-    const mockCreateComment = vi.fn().mockResolvedValue({});
+  describe("postReviewComments", () => {
+    it("should handle successful review comments posting", async () => {
+      const mockCreateReview = vi.fn().mockResolvedValue({});
+      const mockCreateComment = vi.fn().mockResolvedValue({});
 
-    const mockOctokit = {
-      rest: {
-        pulls: {
-          createReview: mockCreateReview,
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            createReview: mockCreateReview,
+          },
+          issues: {
+            createComment: mockCreateComment,
+          },
         },
-        issues: {
-          createComment: mockCreateComment,
-        },
-      },
-    };
+      };
 
-    (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
-    const service = new GitHubService(mockConfig);
-    const patches = [
-      {
-        filename: "first.ts",
-        patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line",
-      },
-      {
-        filename: "second.ts",
-        patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line",
-      },
-    ];
-    const reviewResult = await service.postReviewComments(
-      mockComments,
-      "warning",
-      [
+      const service = new GitHubService(mockConfig);
+      const patches = [
         {
-          commit: { sha: "sha1", message: "Commit message", patches },
-          patches,
+          filename: "first.ts",
+          patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line",
         },
-      ]
-    );
+        {
+          filename: "second.ts",
+          patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line",
+        },
+      ];
+      const reviewResult = await service.postReviewComments(
+        mockComments,
+        "warning",
+        [
+          {
+            commit: { sha: "sha1", message: "Commit message", patches },
+            patches,
+          },
+        ]
+      );
 
-    expect(reviewResult).toEqual({
-      reviewChanges: 1,
-      reviewComments: 1,
-      issueComments: 1,
+      expect(reviewResult).toEqual({
+        reviewChanges: 1,
+        reviewComments: 1,
+        issueComments: 1,
+      });
+
+      // Verify that createReview was called with the correct parameters
+      expect(mockCreateReview).toHaveBeenCalledTimes(2);
+      expect(mockCreateReview).toHaveBeenCalledWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        pull_number: mockConfig.pullNumber,
+        commit_id: "sha1",
+        event: "REQUEST_CHANGES",
+        comments: [
+          {
+            path: "first.ts",
+            line: 1,
+            side: "RIGHT",
+            body: "First comment",
+          },
+        ],
+      });
+      expect(mockCreateReview).toHaveBeenCalledWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        pull_number: mockConfig.pullNumber,
+        commit_id: "sha1",
+        event: "COMMENT",
+        comments: [
+          {
+            path: "second.ts",
+            line: 2,
+            side: "RIGHT",
+            body: "Second comment",
+          },
+        ],
+      });
+
+      // Verify that out-of-range comment was posted as issue comment
+      expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        issue_number: mockConfig.pullNumber,
+        body: "Comment on line 10 (RIGHT) of file first.ts: Out of range comment",
+      });
     });
 
-    // Verify that createReview was called with the correct parameters
-    expect(mockCreateReview).toHaveBeenCalledTimes(2);
-    expect(mockCreateReview).toHaveBeenCalledWith({
-      owner: mockConfig.owner,
-      repo: mockConfig.repo,
-      pull_number: mockConfig.pullNumber,
-      commit_id: "sha1",
-      event: "REQUEST_CHANGES",
-      comments: [
+    it("should handle comments for missing commits", async () => {
+      const mockCreateReview = vi.fn().mockResolvedValue({});
+      const mockCreateComment = vi.fn().mockResolvedValue({});
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            createReview: mockCreateReview,
+          },
+          issues: {
+            createComment: mockCreateComment,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const commentsWithMissingCommit = [
         {
-          path: "first.ts",
+          sha: "nonexistent-sha",
+          file: "missing.ts",
           line: 1,
-          side: "RIGHT",
-          body: "First comment",
+          side: "RIGHT" as const,
+          comment: "Comment for missing commit",
+          severity: "warning" as const,
         },
-      ],
+      ];
+
+      const reviewResult = await service.postReviewComments(
+        commentsWithMissingCommit,
+        "warning",
+        [] // Empty commits array, so no commits will be found
+      );
+
+      expect(reviewResult).toEqual({
+        reviewChanges: 0,
+        reviewComments: 0,
+        issueComments: 1,
+      });
+
+      // Verify that createReview was not called
+      expect(mockCreateReview).not.toHaveBeenCalled();
+
+      // Verify that the comment was posted as an issue comment
+      expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        issue_number: mockConfig.pullNumber,
+        body: "Comment on line 1 (RIGHT) of file missing.ts: Comment for missing commit",
+      });
     });
-    expect(mockCreateReview).toHaveBeenCalledWith({
-      owner: mockConfig.owner,
-      repo: mockConfig.repo,
-      pull_number: mockConfig.pullNumber,
-      commit_id: "sha1",
-      event: "COMMENT",
-      comments: [
-        {
-          path: "second.ts",
-          line: 2,
-          side: "RIGHT",
-          body: "Second comment",
+  });
+
+  describe("getPrDetails", () => {
+    it("should retrieve PR details successfully", async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          number: 123,
+          title: "Test PR",
+          body: "PR description",
         },
-      ],
+      });
+
+      const mockListCommits = vi.fn().mockResolvedValue({
+        status: 200,
+        data: [
+          { sha: "commit1" },
+          { sha: "commit2" },
+        ],
+      });
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            get: mockGet,
+            listCommits: mockListCommits,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.getPrDetails();
+
+      expect(result).toEqual({
+        pull_number: 123,
+        title: "Test PR",
+        body: "PR description",
+        commits: [
+          { sha: "commit1" },
+          { sha: "commit2" },
+        ],
+      });
+
+      expect(mockGet).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        pull_number: mockConfig.pullNumber,
+      });
+
+      expect(mockListCommits).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        pull_number: mockConfig.pullNumber,
+      });
     });
 
-    // Verify that out-of-range comment was posted as issue comment
-    expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
-      owner: mockConfig.owner,
-      repo: mockConfig.repo,
-      issue_number: mockConfig.pullNumber,
-      body: "Comment on line 10 (RIGHT) of file first.ts: Out of range comment",
+    it("should handle non-200 status on pulls.get", async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        status: 404,
+      });
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            get: mockGet,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await expect(service.getPrDetails()).rejects.toThrow(
+        `Failed to list commits for pr #${mockConfig.pullNumber}, status: 404`
+      );
+    });
+
+    it("should handle non-200 status on pulls.listCommits", async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          number: 123,
+          title: "Test PR",
+          body: "PR description",
+        },
+      });
+
+      const mockListCommits = vi.fn().mockResolvedValue({
+        status: 500,
+      });
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            get: mockGet,
+            listCommits: mockListCommits,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await expect(service.getPrDetails()).rejects.toThrow(
+        `Failed to list commits for pr #${mockConfig.pullNumber}, status: 500`
+      );
     });
   });
 
