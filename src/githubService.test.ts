@@ -67,13 +67,13 @@ describe("GitHubService", () => {
 
     const service = new GitHubService(mockConfig);
     const patches = [
-      { 
-        filename: "first.ts", 
-        patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line"
+      {
+        filename: "first.ts",
+        patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line",
       },
-      { 
-        filename: "second.ts", 
-        patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line"
+      {
+        filename: "second.ts",
+        patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line",
       },
     ];
     const reviewResult = await service.postReviewComments(
@@ -95,11 +95,13 @@ describe("GitHubService", () => {
       pull_number: mockConfig.pullNumber,
       commit_id: undefined,
       event: "REQUEST_CHANGES",
-      comments: [{
-        path: "first.ts",
-        position: 1,
-        body: "First comment"
-      }]
+      comments: [
+        {
+          path: "first.ts",
+          position: 1,
+          body: "First comment",
+        },
+      ]
     });
 
     // Verify that out-of-range comment was posted as issue comment
@@ -117,11 +119,13 @@ describe("GitHubService", () => {
       pull_number: mockConfig.pullNumber,
       commit_id: undefined,
       event: "REQUEST_CHANGES",
-      comments: [{
-        path: "first.ts",
-        position: expect.any(Number),
-        body: "First comment"
-      }]
+      comments: [
+        {
+          path: "first.ts",
+          position: expect.any(Number),
+          body: "First comment",
+        },
+      ]
     });
 
     expect(mockCreateReview).toHaveBeenCalled();
