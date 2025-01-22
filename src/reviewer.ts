@@ -7,73 +7,126 @@ import {
   type ReasoningEffort,
   type AzureOpenAIConfig,
 } from "./azureOpenAIService.js";
-import { GitHubService } from "./githubService.js";
+import { CommitDetails, GitHubService, PatchInfo } from "./githubService.js";
 
-async function getDiff(
-  githubService: GitHubService,
-  diffMode: string,
+function packCommit(
+  accumulated: string,
+  commit: CommitDetails,
   tokenLimit: number
 ) {
-  try {
-    const diff =
-      diffMode === "entire-pr"
-        ? await githubService.getEntirePRDiff()
-        : await githubService.getLastCommitDiff();
+  core.debug(`Packing commit: ${commit.sha}`);
 
-    if (!diff?.patches || diff.patches.length === 0) {
-      core.info("No patches returned from GitHub.");
-      return null;
+  let commitBlock = `\n## ${commit.message}\n`;
+  const skippedPatches: PatchInfo[] = [];
+  const usedPatches: PatchInfo[] = [];
+
+  for (const p of commit.patches) {
+    core.debug(`Packing patch: ${p.filename}`);
+
+    const patchBlock = `\n### ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`;
+    // Check if we can add this patch without exceeding limit
+    const combinedPreview = accumulated + commitBlock + patchBlock;
+    // isWithinTokenLimit returns false if limit exceeded
+    const check = isWithinTokenLimit(combinedPreview, tokenLimit);
+    if (!check) {
+      // Skip adding this patch
+      core.debug(`Skipping patch ${p.filename} due to token limit.`);
+      skippedPatches.push(p);
+      continue;
     }
+    // If within limit, add it
+    core.debug(`Adding patch ${p.filename} to commit block.`);
+    commitBlock += patchBlock;
+    usedPatches.push(p);
+  }
 
-    const diffHeader = `# ${diff.commitMessage}\n`;
-    let finalDiff = "";
-    let patchesUsed = 0;
-    let patchesSkipped = 0;
-
-    for (const p of diff.patches) {
-      const patchBlock = `\n## ${p.filename}\n\`\`\`diff\n${p.patch}\`\`\`\n`;
-      // Check if we can add this patch without exceeding limit
-      const combinedPreview = diffHeader + finalDiff + patchBlock;
-      // isWithinTokenLimit returns false if limit exceeded
-      const check = isWithinTokenLimit(combinedPreview, tokenLimit);
-      if (!check) {
-        // Skip adding this patch
-        patchesSkipped++;
-        continue;
-      }
-      // If within limit, add it
-      finalDiff += patchBlock;
-      patchesUsed++;
-    }
-
-    if (patchesUsed === 0) {
-      core.warning("No patches fit within token limit.");
-      return null;
-    } else if (patchesSkipped > 0) {
-      core.warning(
-        `${patchesSkipped} patches did not fit within tokenLimit = ${tokenLimit}.`
-      );
-    }
-
-    const combined = diffHeader + finalDiff;
-    const tokenCount = isWithinTokenLimit(combined, tokenLimit);
-
-    core.info(`Commit Message: ${diff.commitMessage}`);
-    core.info(`Diff Length: ${combined.length}, Token Count: ${tokenCount}`);
-    core.info(
-      `Patches Used: ${patchesUsed}, Patches Skipped: ${patchesSkipped}`
+  if (usedPatches.length === 0) {
+    core.warning("No patches fit within token limit.");
+    return null;
+  } else if (skippedPatches.length > 0) {
+    core.warning(
+      `${skippedPatches.length} patches did not fit within tokenLimit = ${tokenLimit}.`
     );
+  }
 
-    return {
-      combined,
-      commitSha: diff.commitSha,
-    };
-  } catch (error) {
-    core.error(
-      `Failed to get git info: ${error instanceof Error ? error.message : String(error)}`
-    );
+  return {
+    block: commitBlock,
+    usedPatches,
+    skippedPatches,
+  };
+}
+
+export type PackedCommit = {
+  commit: CommitDetails;
+  patches: PatchInfo[];
+};
+
+async function buildPrompt(
+  githubService: GitHubService,
+  diffMode: DiffMode,
+  tokenLimit: number
+) {
+  const prDetails = await githubService.getPrDetails();
+  core.debug(
+    `Loaded PR #${prDetails.pull_number} with ${prDetails.commits.length} commits.`
+  );
+
+  const commitsToInclude =
+    diffMode === "entire-pr" ? prDetails.commits : prDetails.commits.slice(-1);
+
+  if (commitsToInclude.length === 0) {
+    core.info("No commits found to review.");
     return null;
   }
+
+  core.info(
+    `Building prompt for PR #${prDetails.pull_number}: ${prDetails.title}`
+  );
+  let prompt = `# ${prDetails.title}\n`;
+
+  if (prDetails.body) {
+    prompt += `\n${prDetails.body}\n`;
+  }
+
+  const packedCommits: PackedCommit[] = [];
+
+  for (const c of commitsToInclude) {
+    core.debug(`Processing commit: ${c.sha}`);
+    const commitDetails = await githubService.getCommitDetails(c.sha);
+
+    core.debug(
+      `Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`
+    );
+    const packed = packCommit(prompt, commitDetails, tokenLimit);
+
+    if (!packed) {
+      core.warning(`Could not pack commit ${c.sha} within token limit.`);
+      break;
+    }
+
+    core.debug(
+      `Patches Used: ${packed.usedPatches.length}, Patches Skipped: ${packed.skippedPatches.length}`
+    );
+
+    core.info(
+      `Packed commit ${c.sha} with ${packed.usedPatches.length} patches into prompt.`
+    );
+    core.info(`Commit message: ${commitDetails.message}`);
+    prompt += packed.block;
+    packedCommits.push({ commit: commitDetails, patches: packed.usedPatches });
+  }
+
+  // final token count check
+  const tokenCount = isWithinTokenLimit(prompt, tokenLimit);
+
+  core.info(
+    `Total Prompt Length: ${prompt.length}, Token Count: ${tokenCount}`
+  );
+
+  return {
+    prompt,
+    commits: packedCommits,
+  };
 }
 
 export type ReviewOptions = {
@@ -93,12 +146,13 @@ export async function review(options: ReviewOptions) {
     pullNumber: pull_number,
   });
 
-  const diff = await getDiff(
+  const pr = await buildPrompt(
     githubService,
     options.diffMode,
     options.tokenLimit
   );
-  if (!diff) {
+  if (!pr || !pr.commits || pr.commits.length === 0) {
+    core.info("No commits found to review.");
     return;
   }
 
@@ -113,7 +167,7 @@ export async function review(options: ReviewOptions) {
   const azureService = new AzureOpenAIService(azureConfig);
   core.info("Calling Azure OpenAI...");
 
-  const response = await azureService.runReviewPrompt(diff.combined, {
+  const response = await azureService.runReviewPrompt(pr.prompt, {
     reasoningEffort: options.reasoningEffort,
   });
 
@@ -128,10 +182,10 @@ export async function review(options: ReviewOptions) {
   const result = await githubService.postReviewComments(
     response.comments,
     options.changesThreshold,
-    diff.commitSha
+    pr.commits
   );
 
   core.info(
-    `Posted ${result.commentsPosted} comments and requested ${result.changesPosted} changes.`
+    `Posted ${result.reviewComments} comments and requested ${result.reviewChanges} changes.`
   );
 }

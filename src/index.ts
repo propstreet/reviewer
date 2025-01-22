@@ -61,4 +61,7 @@ export async function run(): Promise<void> {
   }
 }
 
-run();
+// Only call run if we are not in a test environment
+if (require.main === module) {
+  run();
+}

@@ -1,4 +1,5 @@
 import * as core from "@actions/core";
+import { ReviewOptions } from "./reviewer.js";
 
 // Mock types
 type MockType = ReturnType<typeof vi.fn>;
@@ -51,7 +52,7 @@ describe("index", () => {
     (core.getInput as MockType).mockImplementation(() => "");
 
     const { review } = await import("./reviewer.js");
-    vi.mocked(review).mockImplementation((_options: unknown) =>
+    vi.mocked(review).mockImplementation((_options: ReviewOptions) =>
       Promise.resolve()
     );
 
@@ -60,7 +61,7 @@ describe("index", () => {
     await run();
 
     // Verify reviewer was called with default values
-    expect(review).toHaveBeenCalledWith({
+    expect(review).toHaveBeenCalledExactlyOnceWith({
       githubToken: "test-token",
       diffMode: "last-commit",
       tokenLimit: 50000,
@@ -72,7 +73,7 @@ describe("index", () => {
     expect(core.setFailed).not.toHaveBeenCalled();
 
     // Verify completion was logged
-    expect(core.info).toHaveBeenCalledWith("Review completed.");
+    expect(core.info).toHaveBeenCalledExactlyOnceWith("Review completed.");
   });
 
   it("should call reviewer with provided values", async () => {
@@ -93,7 +94,7 @@ describe("index", () => {
     });
 
     const { review } = await import("./reviewer.js");
-    vi.mocked(review).mockImplementation((_options: unknown) =>
+    vi.mocked(review).mockImplementation((_options: ReviewOptions) =>
       Promise.resolve()
     );
 
@@ -102,7 +103,7 @@ describe("index", () => {
     await run();
 
     // Verify reviewer was called with provided values
-    expect(review).toHaveBeenCalledWith({
+    expect(review).toHaveBeenCalledExactlyOnceWith({
       githubToken: "test-token",
       diffMode: "entire-pr",
       tokenLimit: 150000,
@@ -127,7 +128,9 @@ describe("index", () => {
     await run();
 
     // Verify error was reported
-    expect(core.setFailed).toHaveBeenCalledWith("Invalid diff mode: invalid");
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid diff mode: invalid"
+    );
   });
 
   it("should handle invalid severity", async () => {
@@ -140,7 +143,7 @@ describe("index", () => {
     const { run } = await import("./index.js");
     await run();
 
-    expect(core.setFailed).toHaveBeenCalledWith(
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
       "Invalid severity: invalid-severity"
     );
   });
@@ -156,7 +159,7 @@ describe("index", () => {
     const { run } = await import("./index.js");
     await run();
 
-    expect(core.setFailed).toHaveBeenCalledWith(
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
       "Invalid reasoning effort: invalid-effort"
     );
   });
@@ -173,7 +176,7 @@ describe("index", () => {
     const { run } = await import("./index.js");
     await run();
 
-    expect(core.setFailed).toHaveBeenCalledWith(
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
       "Invalid token limit: not-a-number"
     );
   });
@@ -185,7 +188,7 @@ describe("index", () => {
     await run();
 
     // Verify appropriate message was logged
-    expect(core.setFailed).toHaveBeenCalledWith(
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
       "Missing GITHUB_TOKEN in environment."
     );
   });
@@ -205,7 +208,9 @@ describe("index", () => {
     const { run } = await import("./index.js");
     await run();
 
-    expect(core.setFailed).toHaveBeenCalledWith("An unknown error occurred.");
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "An unknown error occurred."
+    );
   });
 
   it("should handle Error objects with message in catch", async () => {
@@ -223,6 +228,8 @@ describe("index", () => {
     const { run } = await import("./index.js");
     await run();
 
-    expect(core.setFailed).toHaveBeenCalledWith("Test error message");
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Test error message"
+    );
   });
 });
