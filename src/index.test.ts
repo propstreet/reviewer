@@ -31,7 +31,7 @@ describe("index", () => {
         case "reasoningEffort":
           return "medium";
         case "tokenLimit":
-          return "200000";
+          return "50000";
         default:
           return "";
       }

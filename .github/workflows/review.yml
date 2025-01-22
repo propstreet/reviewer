@@ -14,9 +14,10 @@ jobs:
           azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_REASONING_DEPLOYMENT }}
           azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
           azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
-          diffMode: "last-commit" # or entire-pr
-          severity: "error" # or "info" or "warning"
-          reasoningEffort: "high" # or "low" or "medium"
+          diffMode: "last-commit"
+          severity: "error"
+          reasoningEffort: "high"
+          tokenLimit: 150000
         env:
           # Make sure GITHUB_TOKEN has write permissions to create reviews
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

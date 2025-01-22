@@ -31,3 +31,7 @@ inputs:
     description: "Reasoning effort level (low, medium, or high)."
     required: false
     default: "medium"
+  tokenLimit:
+    description: "Maximum number of tokens to process."
+    required: false
+    default: "50000"
