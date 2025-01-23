@@ -1,5 +1,6 @@
-import { GitHubService, type GitHubConfig } from "./githubService.js";
+import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { GitHubService, type GitHubConfig } from "./githubService.js";
 
 // Mock types
 type MockType = ReturnType<typeof vi.fn>;
@@ -55,295 +56,585 @@ describe("GitHubService", () => {
     expect(github.getOctokit).toHaveBeenCalledExactlyOnceWith(mockConfig.token);
   });
 
-  it("should handle successful review comments posting", async () => {
-    const mockCreateReview = vi.fn().mockResolvedValue({});
-    const mockCreateComment = vi.fn().mockResolvedValue({});
+  describe("postReviewComments", () => {
+    it("should handle successful review comments posting", async () => {
+      const mockCreateReview = vi.fn().mockResolvedValue({});
+      const mockCreateComment = vi.fn().mockResolvedValue({});
 
-    const mockOctokit = {
-      rest: {
-        pulls: {
-          createReview: mockCreateReview,
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            createReview: mockCreateReview,
+          },
+          issues: {
+            createComment: mockCreateComment,
+          },
         },
-        issues: {
-          createComment: mockCreateComment,
-        },
-      },
-    };
+      };
 
-    (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
-    const service = new GitHubService(mockConfig);
-    const patches = [
-      {
-        filename: "first.ts",
-        patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line",
-      },
-      {
-        filename: "second.ts",
-        patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line",
-      },
-    ];
-    const reviewResult = await service.postReviewComments(
-      mockComments,
-      "warning",
-      [
+      const service = new GitHubService(mockConfig);
+      const patches = [
         {
-          commit: { sha: "sha1", message: "Commit message", patches },
-          patches,
+          filename: "first.ts",
+          patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line",
         },
-      ]
-    );
+        {
+          filename: "second.ts",
+          patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line",
+        },
+      ];
+      const reviewResult = await service.postReviewComments(
+        mockComments,
+        "warning",
+        [
+          {
+            commit: { sha: "sha1", message: "Commit message", patches },
+            patches,
+          },
+        ]
+      );
 
-    expect(reviewResult).toEqual({
-      reviewChanges: 1,
-      reviewComments: 1,
-      issueComments: 1,
+      expect(reviewResult).toEqual({
+        reviewChanges: 1,
+        reviewComments: 1,
+        issueComments: 1,
+      });
+
+      // Verify that createReview was called with the correct parameters
+      expect(mockCreateReview).toHaveBeenCalledTimes(2);
+      expect(mockCreateReview).toHaveBeenCalledWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        pull_number: mockConfig.pullNumber,
+        commit_id: "sha1",
+        event: "REQUEST_CHANGES",
+        comments: [
+          {
+            path: "first.ts",
+            line: 1,
+            side: "RIGHT",
+            body: "First comment",
+          },
+        ],
+      });
+      expect(mockCreateReview).toHaveBeenCalledWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        pull_number: mockConfig.pullNumber,
+        commit_id: "sha1",
+        event: "COMMENT",
+        comments: [
+          {
+            path: "second.ts",
+            line: 2,
+            side: "RIGHT",
+            body: "Second comment",
+          },
+        ],
+      });
+
+      // Verify that out-of-range comment was posted as issue comment
+      expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        issue_number: mockConfig.pullNumber,
+        body: "Comment on line 10 (RIGHT) of file first.ts: Out of range comment",
+      });
     });
 
-    // Verify that createReview was called with the correct parameters
-    expect(mockCreateReview).toHaveBeenCalledTimes(2);
-    expect(mockCreateReview).toHaveBeenCalledWith({
-      owner: mockConfig.owner,
-      repo: mockConfig.repo,
-      pull_number: mockConfig.pullNumber,
-      commit_id: "sha1",
-      event: "REQUEST_CHANGES",
-      comments: [
+    it("should handle comments for missing commits", async () => {
+      const mockCreateReview = vi.fn().mockResolvedValue({});
+      const mockCreateComment = vi.fn().mockResolvedValue({});
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            createReview: mockCreateReview,
+          },
+          issues: {
+            createComment: mockCreateComment,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const commentsWithMissingCommit = [
         {
-          path: "first.ts",
+          sha: "nonexistent-sha",
+          file: "missing.ts",
           line: 1,
-          side: "RIGHT",
-          body: "First comment",
+          side: "RIGHT" as const,
+          comment: "Comment for missing commit",
+          severity: "warning" as const,
         },
-      ],
-    });
-    expect(mockCreateReview).toHaveBeenCalledWith({
-      owner: mockConfig.owner,
-      repo: mockConfig.repo,
-      pull_number: mockConfig.pullNumber,
-      commit_id: "sha1",
-      event: "COMMENT",
-      comments: [
-        {
-          path: "second.ts",
-          line: 2,
-          side: "RIGHT",
-          body: "Second comment",
-        },
-      ],
+      ];
+
+      const reviewResult = await service.postReviewComments(
+        commentsWithMissingCommit,
+        "warning",
+        [] // Empty commits array, so no commits will be found
+      );
+
+      expect(reviewResult).toEqual({
+        reviewChanges: 0,
+        reviewComments: 0,
+        issueComments: 1,
+      });
+
+      // Verify that createReview was not called
+      expect(mockCreateReview).not.toHaveBeenCalled();
+
+      // Verify that the comment was posted as an issue comment
+      expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        issue_number: mockConfig.pullNumber,
+        body: "Comment on line 1 (RIGHT) of file missing.ts: Comment for missing commit",
+      });
     });
 
-    // Verify that out-of-range comment was posted as issue comment
-    expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
-      owner: mockConfig.owner,
-      repo: mockConfig.repo,
-      issue_number: mockConfig.pullNumber,
-      body: "Comment on line 10 (RIGHT) of file first.ts: Out of range comment",
+    it("should handle comments with missing patches", async () => {
+      const mockCreateReview = vi.fn().mockResolvedValue({});
+      const mockCreateComment = vi.fn().mockResolvedValue({});
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            createReview: mockCreateReview,
+          },
+          issues: {
+            createComment: mockCreateComment,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const comments = [
+        {
+          sha: "test-sha",
+          file: "test.ts",
+          line: 10,
+          side: "LEFT" as const,
+          comment: "Comment",
+          severity: "info" as const,
+        },
+      ];
+
+      const reviewResult = await service.postReviewComments(comments, "error", [
+        {
+          commit: {
+            sha: "test-sha",
+            message: "Commit message",
+            patches: [],
+          },
+          patches: [],
+        },
+      ]);
+
+      expect(reviewResult).toEqual({
+        reviewChanges: 0,
+        reviewComments: 0,
+        issueComments: 1,
+      });
+
+      // Verify that createReview was not called
+      expect(mockCreateReview).not.toHaveBeenCalled();
+
+      // Verify that the comment was posted as an issue comment
+      expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        issue_number: mockConfig.pullNumber,
+        body: "Comment on line 10 (LEFT) of file test.ts: Comment",
+      });
+
+      expect(core.warning).toBeCalledTimes(2);
+      expect(core.warning).toHaveBeenCalledWith(
+        "No patch found for file: test.ts"
+      );
+      expect(core.warning).toHaveBeenCalledWith(
+        "Comment is out of range for test.ts:10:LEFT: Comment"
+      );
     });
   });
 
-  //   describe("getLastCommitDetails", () => {
-  //     it("should retrieve diff for the last commit", async () => {
-  //       const mockListCommits = vi.fn().mockResolvedValue({
-  //         data: [
-  //           { sha: "parentSha", parents: [{ sha: "grandparentSha" }] },
-  //           {
-  //             sha: "lastCommitSha",
-  //             parents: [{ sha: "parentSha" }],
-  //             commit: { message: "Last commit message" },
-  //           },
-  //         ],
-  //       });
+  describe("getPrDetails", () => {
+    it("should retrieve PR details successfully", async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          number: 123,
+          title: "Test PR",
+          body: "PR description",
+        },
+      });
 
-  //       const mockCompareCommits = vi.fn().mockResolvedValue({
-  //         data: {
-  //           files: [
-  //             { filename: "file1.ts", patch: "diff for file1" },
-  //             { filename: "file2.ts", patch: "diff for file2" },
-  //           ],
-  //         },
-  //       });
+      const mockListCommits = vi.fn().mockResolvedValue({
+        status: 200,
+        data: [{ sha: "commit1" }, { sha: "commit2" }],
+      });
 
-  //       const mockOctokit = {
-  //         rest: {
-  //           pulls: {
-  //             listCommits: mockListCommits,
-  //           },
-  //           repos: {
-  //             compareCommitsWithBasehead: mockCompareCommits,
-  //           },
-  //         },
-  //       };
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            get: mockGet,
+            listCommits: mockListCommits,
+          },
+        },
+      };
 
-  //       (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
-  //       const service = new GitHubService(mockConfig);
-  //       const result = await service.getLastCommitDetails();
+      const service = new GitHubService(mockConfig);
+      const result = await service.getPrDetails();
 
-  //       expect(result).not.toBeNull();
-  //       expect(result?.sha).toBe("lastCommitSha");
-  //       expect(result?.message).toBe("Last commit message");
-  //       expect(result?.patches).toHaveLength(2);
-  //       expect(result?.patches[0]).toEqual({
-  //         filename: "file1.ts",
-  //         patch: "diff for file1",
-  //       });
+      expect(result).toEqual({
+        pull_number: 123,
+        title: "Test PR",
+        body: "PR description",
+        commits: [{ sha: "commit1" }, { sha: "commit2" }],
+      });
 
-  //       expect(mockListCommits).toHaveBeenCalledExactlyOnceWith({
-  //         owner: mockConfig.owner,
-  //         repo: mockConfig.repo,
-  //         pull_number: mockConfig.pullNumber,
-  //       });
+      expect(mockGet).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        pull_number: mockConfig.pullNumber,
+      });
 
-  //       expect(mockCompareCommits).toHaveBeenCalledExactlyOnceWith({
-  //         owner: mockConfig.owner,
-  //         repo: mockConfig.repo,
-  //         basehead: "parentSha...lastCommitSha",
-  //       });
-  //     });
+      expect(mockListCommits).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        pull_number: mockConfig.pullNumber,
+      });
+    });
 
-  //     it("should handle first commit in PR (no parent)", async () => {
-  //       const mockListCommits = vi.fn().mockResolvedValue({
-  //         data: [
-  //           {
-  //             sha: "firstCommitSha",
-  //             parents: [],
-  //             commit: { message: "First commit" },
-  //           },
-  //         ],
-  //       });
+    it("should handle non-200 status on pulls.get", async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        status: 404,
+      });
 
-  //       // Mock for getEntirePRDiff that will be called
-  //       const mockGet = vi.fn().mockResolvedValue({
-  //         data: {
-  //           title: "PR Title",
-  //           body: "PR Body",
-  //         },
-  //       });
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            get: mockGet,
+          },
+        },
+      };
 
-  //       const mockListFiles = vi.fn().mockResolvedValue({
-  //         data: [{ filename: "file.ts", patch: "initial diff" }],
-  //       });
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
-  //       const mockOctokit = {
-  //         rest: {
-  //           pulls: {
-  //             listCommits: mockListCommits,
-  //             get: mockGet,
-  //             listFiles: mockListFiles,
-  //           },
-  //         },
-  //       };
+      const service = new GitHubService(mockConfig);
+      await expect(service.getPrDetails()).rejects.toThrow(
+        `Failed to list commits for pr #${mockConfig.pullNumber}, status: 404`
+      );
+    });
 
-  //       (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+    it("should handle non-200 status on pulls.listCommits", async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          number: 123,
+          title: "Test PR",
+          body: "PR description",
+        },
+      });
 
-  //       const service = new GitHubService(mockConfig);
-  //       const result = await service.getLastCommitDetails();
+      const mockListCommits = vi.fn().mockResolvedValue({
+        status: 500,
+      });
 
-  //       expect(result).not.toBeNull();
-  //       expect(result?.sha).toBe("firstCommitSha");
-  //       expect(result?.message).toBe("First commit");
-  //       expect(result?.patches).toHaveLength(1);
-  //     });
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            get: mockGet,
+            listCommits: mockListCommits,
+          },
+        },
+      };
 
-  //     it("should handle PR with no commits", async () => {
-  //       const mockListCommits = vi.fn().mockResolvedValue({
-  //         data: [],
-  //       });
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
-  //       const mockOctokit = {
-  //         rest: {
-  //           pulls: {
-  //             listCommits: mockListCommits,
-  //           },
-  //         },
-  //       };
+      const service = new GitHubService(mockConfig);
+      await expect(service.getPrDetails()).rejects.toThrow(
+        `Failed to list commits for pr #${mockConfig.pullNumber}, status: 500`
+      );
+    });
+  });
 
-  //       (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+  describe("getCommitDetails", () => {
+    it("should retrieve commit details successfully", async () => {
+      const mockGetCommit = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          commit: { message: "Test commit message" },
+          files: [
+            { filename: "file1.ts", patch: "diff for file1" },
+            { filename: "file2.ts", patch: "diff for file2" },
+          ],
+        },
+      });
 
-  //       const service = new GitHubService(mockConfig);
-  //       const result = await service.getLastCommitDetails();
+      const mockOctokit = {
+        rest: {
+          repos: {
+            getCommit: mockGetCommit,
+          },
+        },
+      };
 
-  //       expect(result).toBeNull();
-  //     });
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
-  //     it("should handle missing patches in compare result", async () => {
-  //       const mockListCommits = vi.fn().mockResolvedValue({
-  //         data: [
-  //           {
-  //             sha: "lastCommitSha",
-  //             parents: [{ sha: "parentSha" }],
-  //             commit: { message: "Last commit" },
-  //           },
-  //         ],
-  //       });
+      const service = new GitHubService(mockConfig);
+      const result = await service.getCommitDetails("testSha");
 
-  //       const mockCompareCommits = vi.fn().mockResolvedValue({
-  //         data: {
-  //           files: [
-  //             { filename: "file1.ts", patch: null },
-  //             { filename: "file2.ts", patch: "diff1" },
-  //             { filename: "file3.ts" }, // missing patch
-  //           ],
-  //         },
-  //       });
+      expect(result).toEqual({
+        sha: "testSha",
+        message: "Test commit message",
+        patches: [
+          { filename: "file1.ts", patch: "diff for file1" },
+          { filename: "file2.ts", patch: "diff for file2" },
+        ],
+      });
 
-  //       const mockOctokit = {
-  //         rest: {
-  //           pulls: {
-  //             listCommits: mockListCommits,
-  //           },
-  //           repos: {
-  //             compareCommitsWithBasehead: mockCompareCommits,
-  //           },
-  //         },
-  //       };
+      expect(mockGetCommit).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        ref: "testSha",
+      });
+    });
 
-  //       (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+    it("should handle missing patches in commit result", async () => {
+      const mockGetCommit = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          commit: { message: "Test commit" },
+          files: [
+            { filename: "file1.ts", patch: null },
+            { filename: "file2.ts", patch: "diff1" },
+            { filename: "file3.ts" }, // missing patch
+          ],
+        },
+      });
 
-  //       const service = new GitHubService(mockConfig);
-  //       const result = await service.getLastCommitDetails();
+      const mockOctokit = {
+        rest: {
+          repos: {
+            getCommit: mockGetCommit,
+          },
+        },
+      };
 
-  //       expect(result).not.toBeNull();
-  //       expect(result?.patches).toHaveLength(1);
-  //       expect(result?.patches[0].patch).toBe("diff1");
-  //     });
-  //   });
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
-  //   it("should handle undefined files in compare result", async () => {
-  //     const mockListCommits = vi.fn().mockResolvedValue({
-  //       data: [
-  //         {
-  //           sha: "lastCommitSha",
-  //           parents: [{ sha: "parentSha" }],
-  //           commit: { message: "Last commit" },
-  //         },
-  //       ],
-  //     });
+      const service = new GitHubService(mockConfig);
+      const result = await service.getCommitDetails("testSha");
 
-  //     const mockCompareCommits = vi.fn().mockResolvedValue({
-  //       data: {
-  //         // files property is undefined
-  //       },
-  //     });
+      expect(result.patches).toHaveLength(1);
+      expect(result.patches[0].patch).toBe("diff1");
+    });
 
-  //     const mockOctokit = {
-  //       rest: {
-  //         pulls: {
-  //           listCommits: mockListCommits,
-  //         },
-  //         repos: {
-  //           compareCommitsWithBasehead: mockCompareCommits,
-  //         },
-  //       },
-  //     };
+    it("should handle undefined files in commit result", async () => {
+      const mockGetCommit = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          commit: { message: "Test commit" },
+          // files property is undefined
+        },
+      });
 
-  //     (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+      const mockOctokit = {
+        rest: {
+          repos: {
+            getCommit: mockGetCommit,
+          },
+        },
+      };
 
-  //     const service = new GitHubService(mockConfig);
-  //     const result = await service.getLastCommitDetails();
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
-  //     expect(result).not.toBeNull();
-  //     expect(result?.patches).toHaveLength(0);
-  //   });
+      const service = new GitHubService(mockConfig);
+      const result = await service.getCommitDetails("testSha");
+
+      expect(result.patches).toHaveLength(0);
+    });
+
+    it("should handle non-200 status code", async () => {
+      const mockGetCommit = vi.fn().mockResolvedValue({
+        status: 404,
+      });
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            getCommit: mockGetCommit,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await expect(service.getCommitDetails("testSha")).rejects.toThrow(
+        "Failed to get commit details for testSha, status: 404"
+      );
+    });
+
+    it("should handle non-Error exceptions", async () => {
+      const mockGetCommit = vi.fn().mockRejectedValue("Test error");
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            getCommit: mockGetCommit,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await expect(service.getCommitDetails("testSha")).rejects.toThrow(
+        "Failed to get commit details: Test error"
+      );
+    });
+  });
+
+  describe("compareCommits", () => {
+    it("should compare commits successfully", async () => {
+      const mockCompareCommits = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          files: [
+            { filename: "file1.ts", patch: "diff for file1" },
+            { filename: "file2.ts", patch: "diff for file2" },
+          ],
+        },
+      });
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            compareCommitsWithBasehead: mockCompareCommits,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.compareCommits("baseSha", "headSha");
+
+      expect(result).toEqual([
+        { filename: "file1.ts", patch: "diff for file1" },
+        { filename: "file2.ts", patch: "diff for file2" },
+      ]);
+
+      expect(mockCompareCommits).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        basehead: "baseSha...headSha",
+      });
+    });
+
+    it("should handle missing patches in compare result", async () => {
+      const mockCompareCommits = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          files: [
+            { filename: "file1.ts", patch: null },
+            { filename: "file2.ts", patch: "diff1" },
+            { filename: "file3.ts" }, // missing patch
+          ],
+        },
+      });
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            compareCommitsWithBasehead: mockCompareCommits,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.compareCommits("baseSha", "headSha");
+
+      expect(result).toHaveLength(1);
+      expect(result[0].patch).toBe("diff1");
+    });
+
+    it("should handle undefined files in compare result", async () => {
+      const mockCompareCommits = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          // files property is undefined
+        },
+      });
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            compareCommitsWithBasehead: mockCompareCommits,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.compareCommits("baseSha", "headSha");
+
+      expect(result).toHaveLength(0);
+    });
+
+    it("should handle non-200 status code", async () => {
+      const mockCompareCommits = vi.fn().mockResolvedValue({
+        status: 404,
+      });
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            compareCommitsWithBasehead: mockCompareCommits,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await expect(
+        service.compareCommits("baseSha", "headSha")
+      ).rejects.toThrow(
+        "Failed to compare commit head headSha to base baseSha, status: 404"
+      );
+    });
+
+    it("should handle non-Error exceptions", async () => {
+      const mockCompareCommits = vi.fn().mockRejectedValue("Test error");
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            compareCommitsWithBasehead: mockCompareCommits,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await expect(
+        service.compareCommits("baseSha", "headSha")
+      ).rejects.toThrow("Failed to compare commits: Test error");
+    });
+  });
 });

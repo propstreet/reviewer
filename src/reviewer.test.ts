@@ -328,24 +328,40 @@ describe("reviewer", () => {
     }).rejects.toThrow("API Error");
   });
 
-  // it("should handle entire-pr mode", async () => {
-  //   // Mock diffMode input
-  //   (core.getInput as MockType).mockImplementation((name: string) => {
-  //     if (name === "diffMode") {
-  //       return "entire-pr";
-  //     }
-  //     return "";
-  //   });
+  it("should handle no PR commits", async () => {
+    // Mock GitHubService to return empty commits
+    vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({
+      pull_number: 1,
+      title: "test title",
+      body: "test body",
+      commits: [],
+    });
 
-  //   // Import and run the reviewer
-  //   const { review } = await import("./reviewer.js");
-  //   await review({
-  //     ...reviewOptions,
-  //     diffMode: "entire-pr",
-  //   });
+    // Import and run the reviewer
+    const { review } = await import("./reviewer.js");
+    await review(reviewOptions);
 
-  //   // Verify entire-pr API was called
-  //   expect(GitHubService.prototype.getEntirePRDiff).toHaveBeenCalled();
-  //   expect(GitHubService.prototype.getLastCommitDetails).not.toHaveBeenCalled();
-  // });
+    // Verify appropriate message was logged
+    expect(core.info).toHaveBeenCalledWith("No commits found to review.");
+  });
+
+  it("should use all commits for entire-pr diff mode", async () => {
+    // Mock GitHubService to return multiple commits
+    vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({
+      pull_number: 1,
+      title: "test title",
+      body: "test body",
+      commits: [{ sha: "sha1" }, { sha: "sha2" }, { sha: "sha3" }],
+    });
+
+    // Import and run the reviewer
+    const { review } = await import("./reviewer.js");
+    await review({
+      ...reviewOptions,
+      diffMode: "entire-pr",
+    });
+
+    // Verify all commits were used
+    expect(GitHubService.prototype.getCommitDetails).toHaveBeenCalledTimes(3);
+  });
 });

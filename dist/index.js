@@ -49554,7 +49554,7 @@ class GitHubService {
                 return acc;
             }
             if (!this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches)) {
-                core.warning(`Comment ${c.comment} is out of range for ${c.file}:${c.line}:${c.side}`);
+                core.warning(`Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`);
                 issueComments.push(c);
                 return acc;
             }
