@@ -1,5 +1,6 @@
-import { GitHubService, type GitHubConfig } from "./githubService.js";
+import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { GitHubService, type GitHubConfig } from "./githubService.js";
 
 // Mock types
 type MockType = ReturnType<typeof vi.fn>;
@@ -194,6 +195,72 @@ describe("GitHubService", () => {
         issue_number: mockConfig.pullNumber,
         body: "Comment on line 1 (RIGHT) of file missing.ts: Comment for missing commit",
       });
+    });
+
+    it("should handle comments with missing patches", async () => {
+      const mockCreateReview = vi.fn().mockResolvedValue({});
+      const mockCreateComment = vi.fn().mockResolvedValue({});
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            createReview: mockCreateReview,
+          },
+          issues: {
+            createComment: mockCreateComment,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const comments = [
+        {
+          sha: "test-sha",
+          file: "test.ts",
+          line: 10,
+          side: "LEFT" as const,
+          comment: "Comment",
+          severity: "info" as const,
+        },
+      ];
+
+      const reviewResult = await service.postReviewComments(comments, "error", [
+        {
+          commit: {
+            sha: "test-sha",
+            message: "Commit message",
+            patches: [],
+          },
+          patches: [],
+        },
+      ]);
+
+      expect(reviewResult).toEqual({
+        reviewChanges: 0,
+        reviewComments: 0,
+        issueComments: 1,
+      });
+
+      // Verify that createReview was not called
+      expect(mockCreateReview).not.toHaveBeenCalled();
+
+      // Verify that the comment was posted as an issue comment
+      expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        issue_number: mockConfig.pullNumber,
+        body: "Comment on line 10 (LEFT) of file test.ts: Comment",
+      });
+
+      expect(core.warning).toBeCalledTimes(2);
+      expect(core.warning).toHaveBeenCalledWith(
+        "No patch found for file: test.ts"
+      );
+      expect(core.warning).toHaveBeenCalledWith(
+        "Comment is out of range for test.ts:10:LEFT: Comment"
+      );
     });
   });
 
@@ -417,6 +484,25 @@ describe("GitHubService", () => {
         "Failed to get commit details for testSha, status: 404"
       );
     });
+
+    it("should handle non-Error exceptions", async () => {
+      const mockGetCommit = vi.fn().mockRejectedValue("Test error");
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            getCommit: mockGetCommit,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await expect(service.getCommitDetails("testSha")).rejects.toThrow(
+        "Failed to get commit details: Test error"
+      );
+    });
   });
 
   describe("compareCommits", () => {
@@ -530,6 +616,25 @@ describe("GitHubService", () => {
       ).rejects.toThrow(
         "Failed to compare commit head headSha to base baseSha, status: 404"
       );
+    });
+
+    it("should handle non-Error exceptions", async () => {
+      const mockCompareCommits = vi.fn().mockRejectedValue("Test error");
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            compareCommitsWithBasehead: mockCompareCommits,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await expect(
+        service.compareCommits("baseSha", "headSha")
+      ).rejects.toThrow("Failed to compare commits: Test error");
     });
   });
 });
