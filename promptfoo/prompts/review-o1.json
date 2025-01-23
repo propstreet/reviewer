@@ -5,6 +5,6 @@
     },
     {
         "role": "user",
-        "content": "Commit Message:\n{{ commitMessage }}\n\nDiff:\n{{ diff }}"
+        "content": "{{ diff }}"
     }
 ]

@@ -140,7 +140,20 @@ describe("reviewer", () => {
 
     // Verify Azure OpenAI service was called
     expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalledWith(
-      expect.stringMatching(/commit\.ts \(sha:\s+test-sha\).*commit diff/s),
+      `# test title
+
+test body
+
+## COMMIT SHA: test-sha
+
+test commit
+
+### FILE: commit.ts
+
+\`\`\`diff
+commit diff
+\`\`\`
+`,
       { reasoningEffort: "low" }
     );
 

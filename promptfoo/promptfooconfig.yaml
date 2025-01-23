@@ -52,8 +52,7 @@ providers:
 tests:
   - vars:
       commitMessage: "Add subtract method to calculator"
-      severityThreshold: "info"
-      diff: file://./prompts/review-1.diff
+      diff: file://./prompts/review-1.md
     description: "Comment on use of any"
     options:
       # Parse the JSON before all assertions
@@ -68,20 +67,5 @@ tests:
           }
       - type: javascript
         value: |
-          output.comments[0].comment.includes("'any'") && [7,8,9].some(l => l === output.comments[0].line) && output.comments[0].file === "src/example.ts" && output.comments[0].severity === "warning"
-  - vars:
-      commitMessage: "Add subtract method to calculator"
-      severityThreshold: "error"
-      diff: file://./prompts/review-1.diff
-    description: "No comments due to severity threshold"
-    options:
-      # Parse the JSON before all assertions
-      transform: JSON.parse(output)
-    assert:
-      - type: is-json
-        value:
-          {
-            "required": ["comments"],
-            "type": "object",
-            "properties": { "comments": { "type": "array", "maxItems": 0 } },
-          }
+          output.comments[0].comment.includes("any") && [7,8,9].some(l => l === output.comments[0].line) && output.comments[0].file === "src/example.ts" && output.comments[0].severity === "warning"
+

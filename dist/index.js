@@ -49704,12 +49704,12 @@ class GitHubService {
 
 function packCommit(accumulated, commit, tokenLimit) {
     core.debug(`Packing commit: ${commit.sha}`);
-    let commitBlock = `\n## ${commit.message}\n`;
+    let commitBlock = `\n## COMMIT SHA: ${commit.sha}\n\n${commit.message}\n`;
     const skippedPatches = [];
     const usedPatches = [];
     for (const p of commit.patches) {
         core.debug(`Packing patch: ${p.filename}`);
-        const patchBlock = `\n### ${p.filename} (sha: ${commit.sha})\n\`\`\`diff\n${p.patch}\n\`\`\`\n`;
+        const patchBlock = `\n### FILE: ${p.filename}\n\n\`\`\`diff\n${p.patch}\n\`\`\`\n`;
         // Check if we can add this patch without exceeding limit
         const combinedPreview = accumulated + commitBlock + patchBlock;
         // isWithinTokenLimit returns false if limit exceeded

@@ -1,7 +1,10 @@
-diff --git a/src/example.ts b/src/example.ts
-index 1234567..89abcde 100644
---- a/src/example.ts
-+++ b/src/example.ts
+# mock PR
+
+## COMMIT SHA: 1a2b3c4d5e6f7g8h9i0j
+
+### src/example.ts
+
+```diff
 @@ -1,5 +1,9 @@
  export class Calculator {
      add(a: number, b: number): number {
@@ -13,3 +16,4 @@ index 1234567..89abcde 100644
 +        return a - b;
 +    }
  }
+```
