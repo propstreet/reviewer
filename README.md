@@ -34,6 +34,7 @@ jobs:
           severity: "error" # optional, defaults to "error"
           reasoningEffort: "medium" # optional, defaults to "medium"
           tokenLimit: 50000 # optional, defaults to 50000
+          commitLimit: 100 # optional, defaults to 100
         env:
           # Make sure GITHUB_TOKEN has write permissions to create reviews
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -49,6 +50,7 @@ jobs:
 - severity: The minimum severity level for requesting changes. Lower severity levels will be posted as informational comments. Options are "info", "warning", or "error".
 - reasoningEffort: The level of reasoning effort to use when generating comments. Options are "low", "medium" (default), or "high".
 - tokenLimit: The maximum number of tokens to send to Azure OpenAI. The default is 50 000, o1 supports up to 200 000 but the REST API seems to support ~190 000.
+- commitLimit: The maximum number of commits to load when using "entire-pr" diff mode. The default is maximum value 100.
 
 ## Development & Contributing
 

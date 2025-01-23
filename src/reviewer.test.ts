@@ -41,6 +41,7 @@ describe("reviewer", () => {
     tokenLimit: 1234,
     changesThreshold: "error",
     reasoningEffort: "low",
+    commitLimit: 10,
   };
 
   beforeEach(() => {
@@ -57,9 +58,11 @@ describe("reviewer", () => {
       pull_number: 1,
       title: "test title",
       body: "test body",
+      commitCount: 1,
+      headSha: "head-sha",
       commits: [
         {
-          sha: "test-sha",
+          sha: "head-sha",
         },
       ],
     });
@@ -142,6 +145,7 @@ describe("reviewer", () => {
     );
 
     // Verify GitHub service was called
+    expect(GitHubService.prototype.getPrDetails).toHaveBeenCalledWith("last");
     expect(GitHubService.prototype.postReviewComments).toHaveBeenCalledWith(
       mockAzureResponse.comments,
       "error",
@@ -306,6 +310,7 @@ describe("reviewer", () => {
       tokenLimit: 1234,
       changesThreshold: "error",
       reasoningEffort: "low",
+      commitLimit: 10,
     });
 
     // Verify appropriate message was logged
@@ -334,6 +339,8 @@ describe("reviewer", () => {
       pull_number: 1,
       title: "test title",
       body: "test body",
+      commitCount: 0,
+      headSha: "head-sha",
       commits: [],
     });
 
@@ -351,6 +358,8 @@ describe("reviewer", () => {
       pull_number: 1,
       title: "test title",
       body: "test body",
+      commitCount: 3,
+      headSha: "sha3",
       commits: [{ sha: "sha1" }, { sha: "sha2" }, { sha: "sha3" }],
     });
 
@@ -363,5 +372,26 @@ describe("reviewer", () => {
 
     // Verify all commits were used
     expect(GitHubService.prototype.getCommitDetails).toHaveBeenCalledTimes(3);
+  });
+
+  it("should warn if head sha was not in the loaded commits", async () => {
+    // Mock GitHubService to return commits without head sha
+    vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({
+      pull_number: 1,
+      title: "test title",
+      body: "test body",
+      commitCount: 1,
+      headSha: "head-sha",
+      commits: [{ sha: "sha1" }],
+    });
+
+    // Import and run the reviewer
+    const { review } = await import("./reviewer.js");
+    await review(reviewOptions);
+
+    // Verify warning was logged
+    expect(core.warning).toHaveBeenCalledWith(
+      "PR head commit head-sha was not included in PR commits."
+    );
   });
 });
