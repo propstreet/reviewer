@@ -35,3 +35,7 @@ inputs:
     description: "Maximum number of tokens to process."
     required: false
     default: "50000"
+  commitLimit:
+    description: "Maximum number of commits to load for 'entire-pr' diff mode."
+    required: false
+    default: "100"

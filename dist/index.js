@@ -35501,6 +35501,10 @@ function isValidTokenLimit(limit) {
     const num = parseInt(limit, 10);
     return !isNaN(num) && num > 0;
 }
+function isValidCommitLimit(limit) {
+    const num = parseInt(limit, 10);
+    return !isNaN(num) && num > 0 && num <= 100;
+}
 
 // EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
 var github = __nccwpck_require__(3228);
@@ -49603,7 +49607,8 @@ class GitHubService {
             issueComments: issueComments.length,
         };
     }
-    async getPrDetails() {
+    // load the PR details, including xx commits in chronological order (or the last one)
+    async getPrDetails(includeCommits) {
         const prResponse = await this.octokit.rest.pulls.get({
             owner: this.config.owner,
             repo: this.config.repo,
@@ -49612,19 +49617,33 @@ class GitHubService {
         if (prResponse.status !== 200) {
             throw new Error(`Failed to list commits for pr #${this.config.pullNumber}, status: ${prResponse.status}`);
         }
-        const commitsResponse = await this.octokit.rest.pulls.listCommits({
-            owner: this.config.owner,
-            repo: this.config.repo,
-            pull_number: this.config.pullNumber,
-        });
-        if (commitsResponse.status !== 200) {
-            throw new Error(`Failed to list commits for pr #${this.config.pullNumber}, status: ${commitsResponse.status}`);
+        const commits = [];
+        if (includeCommits === "last") {
+            commits.push({ sha: prResponse.data.head.sha });
+        }
+        else {
+            if (includeCommits > 100) {
+                // max allowed, could paginate in the future but context is still limited
+                throw new Error("Cannot request more than 100 commits");
+            }
+            const commitsResponse = await this.octokit.rest.pulls.listCommits({
+                owner: this.config.owner,
+                repo: this.config.repo,
+                pull_number: this.config.pullNumber,
+                per_page: includeCommits,
+            });
+            if (commitsResponse.status !== 200) {
+                throw new Error(`Failed to list commits for pr #${this.config.pullNumber}, status: ${commitsResponse.status}`);
+            }
+            commits.push(...commitsResponse.data.map((c) => ({ sha: c.sha })));
         }
         return {
             pull_number: prResponse.data.number,
             title: prResponse.data.title,
             body: prResponse.data.body,
-            commits: commitsResponse.data.map((c) => ({ sha: c.sha })),
+            headSha: prResponse.data.head.sha,
+            commitCount: prResponse.data.commits,
+            commits,
         };
     }
     async compareCommits(baseSha, headSha) {
@@ -49719,11 +49738,14 @@ function packCommit(accumulated, commit, tokenLimit) {
         skippedPatches,
     };
 }
-async function buildPrompt(githubService, diffMode, tokenLimit) {
-    const prDetails = await githubService.getPrDetails();
+async function buildPrompt(githubService, diffMode, tokenLimit, commitLimit) {
+    const prDetails = await githubService.getPrDetails(diffMode === "entire-pr" ? commitLimit : "last");
     core.debug(`Loaded PR #${prDetails.pull_number} with ${prDetails.commits.length} commits.`);
-    const commitsToInclude = diffMode === "entire-pr" ? prDetails.commits : prDetails.commits.slice(-1);
-    if (commitsToInclude.length === 0) {
+    // check that prDetails.headSha is contained in prDetails.commits
+    if (!prDetails.commits.find((c) => c.sha === prDetails.headSha)) {
+        core.warning(`PR head commit ${prDetails.headSha} was not included in PR commits.`);
+    }
+    if (prDetails.commits.length === 0) {
         core.info("No commits found to review.");
         return null;
     }
@@ -49733,7 +49755,7 @@ async function buildPrompt(githubService, diffMode, tokenLimit) {
         prompt += `\n${prDetails.body}\n`;
     }
     const packedCommits = [];
-    for (const c of commitsToInclude) {
+    for (const c of prDetails.commits) {
         core.debug(`Processing commit: ${c.sha}`);
         const commitDetails = await githubService.getCommitDetails(c.sha);
         core.debug(`Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`);
@@ -49764,7 +49786,7 @@ async function review(options) {
         repo,
         pullNumber: pull_number,
     });
-    const pr = await buildPrompt(githubService, options.diffMode, options.tokenLimit);
+    const pr = await buildPrompt(githubService, options.diffMode, options.tokenLimit, options.commitLimit);
     if (!pr || !pr.commits || pr.commits.length === 0) {
         core.info("No commits found to review.");
         return;
@@ -49819,6 +49841,12 @@ async function run() {
             return;
         }
         const tokenLimit = parseInt(tokenLimitInput, 10);
+        const commitLimitInput = core.getInput("commitLimit") || "100";
+        if (!isValidCommitLimit(commitLimitInput)) {
+            core.setFailed(`Invalid commit limit: ${commitLimitInput}`);
+            return;
+        }
+        const commitLimit = parseInt(commitLimitInput, 10);
         const githubToken = process.env.GITHUB_TOKEN;
         if (!githubToken) {
             core.setFailed("Missing GITHUB_TOKEN in environment.");
@@ -49831,6 +49859,7 @@ async function run() {
             tokenLimit,
             changesThreshold,
             reasoningEffort,
+            commitLimit,
         });
         // 3. Done
         core.info("Review completed.");

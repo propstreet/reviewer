@@ -175,7 +175,8 @@ export class GitHubService {
     };
   }
 
-  async getPrDetails() {
+  // load the PR details, including xx commits in chronological order (or the last one)
+  async getPrDetails(includeCommits: number | "last") {
     const prResponse = await this.octokit.rest.pulls.get({
       owner: this.config.owner,
       repo: this.config.repo,
@@ -188,23 +189,39 @@ export class GitHubService {
       );
     }
 
-    const commitsResponse = await this.octokit.rest.pulls.listCommits({
-      owner: this.config.owner,
-      repo: this.config.repo,
-      pull_number: this.config.pullNumber,
-    });
+    const commits: { sha: string }[] = [];
 
-    if (commitsResponse.status !== 200) {
-      throw new Error(
-        `Failed to list commits for pr #${this.config.pullNumber}, status: ${commitsResponse.status}`
-      );
+    if (includeCommits === "last") {
+      commits.push({ sha: prResponse.data.head.sha });
+    } else {
+      if (includeCommits > 100) {
+        // max allowed, could paginate in the future but context is still limited
+        throw new Error("Cannot request more than 100 commits");
+      }
+
+      const commitsResponse = await this.octokit.rest.pulls.listCommits({
+        owner: this.config.owner,
+        repo: this.config.repo,
+        pull_number: this.config.pullNumber,
+        per_page: includeCommits,
+      });
+
+      if (commitsResponse.status !== 200) {
+        throw new Error(
+          `Failed to list commits for pr #${this.config.pullNumber}, status: ${commitsResponse.status}`
+        );
+      }
+
+      commits.push(...commitsResponse.data.map((c) => ({ sha: c.sha })));
     }
 
     return {
       pull_number: prResponse.data.number,
       title: prResponse.data.title,
       body: prResponse.data.body,
-      commits: commitsResponse.data.map((c) => ({ sha: c.sha })),
+      headSha: prResponse.data.head.sha,
+      commitCount: prResponse.data.commits,
+      commits,
     };
   }
 

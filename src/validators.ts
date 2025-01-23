@@ -23,3 +23,8 @@ export function isValidTokenLimit(limit: string): boolean {
   const num = parseInt(limit, 10);
   return !isNaN(num) && num > 0;
 }
+
+export function isValidCommitLimit(limit: string): boolean {
+  const num = parseInt(limit, 10);
+  return !isNaN(num) && num > 0 && num <= 100;
+}

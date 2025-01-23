@@ -272,6 +272,8 @@ describe("GitHubService", () => {
           number: 123,
           title: "Test PR",
           body: "PR description",
+          commits: 3,
+          head: { sha: "commit3" },
         },
       });
 
@@ -292,12 +294,14 @@ describe("GitHubService", () => {
       (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
       const service = new GitHubService(mockConfig);
-      const result = await service.getPrDetails();
+      const result = await service.getPrDetails(2);
 
       expect(result).toEqual({
         pull_number: 123,
         title: "Test PR",
         body: "PR description",
+        headSha: "commit3",
+        commitCount: 3,
         commits: [{ sha: "commit1" }, { sha: "commit2" }],
       });
 
@@ -311,7 +315,89 @@ describe("GitHubService", () => {
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         pull_number: mockConfig.pullNumber,
+        per_page: 2,
       });
+    });
+
+    it("should retrieve PR details for last commit", async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          number: 123,
+          title: "Test PR",
+          body: "PR description",
+          commits: 3,
+          head: { sha: "commit3" },
+        },
+      });
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            get: mockGet,
+            listCommits: vi.fn(),
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.getPrDetails("last");
+
+      expect(result).toEqual({
+        pull_number: 123,
+        title: "Test PR",
+        body: "PR description",
+        headSha: "commit3",
+        commitCount: 3,
+        commits: [{ sha: "commit3" }],
+      });
+
+      expect(mockGet).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        pull_number: mockConfig.pullNumber,
+      });
+
+      expect(mockOctokit.rest.pulls.listCommits).not.toHaveBeenCalled();
+    });
+
+    it("should not allow more than 100 commits", async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          number: 123,
+          title: "Test PR",
+          body: "PR description",
+          commits: 3,
+          head: { sha: "commit3" },
+        },
+      });
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            get: mockGet,
+            listCommits: vi.fn(),
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await expect(service.getPrDetails(101)).rejects.toThrow(
+        "Cannot request more than 100 commits"
+      );
+
+      expect(mockGet).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        pull_number: mockConfig.pullNumber,
+      });
+
+      expect(mockOctokit.rest.pulls.listCommits).not.toHaveBeenCalled();
     });
 
     it("should handle non-200 status on pulls.get", async () => {
@@ -330,7 +416,7 @@ describe("GitHubService", () => {
       (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
       const service = new GitHubService(mockConfig);
-      await expect(service.getPrDetails()).rejects.toThrow(
+      await expect(service.getPrDetails("last")).rejects.toThrow(
         `Failed to list commits for pr #${mockConfig.pullNumber}, status: 404`
       );
     });
@@ -361,7 +447,7 @@ describe("GitHubService", () => {
       (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
       const service = new GitHubService(mockConfig);
-      await expect(service.getPrDetails()).rejects.toThrow(
+      await expect(service.getPrDetails(10)).rejects.toThrow(
         `Failed to list commits for pr #${mockConfig.pullNumber}, status: 500`
       );
     });

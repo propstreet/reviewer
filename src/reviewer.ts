@@ -64,17 +64,24 @@ export type PackedCommit = {
 async function buildPrompt(
   githubService: GitHubService,
   diffMode: DiffMode,
-  tokenLimit: number
+  tokenLimit: number,
+  commitLimit: number
 ) {
-  const prDetails = await githubService.getPrDetails();
+  const prDetails = await githubService.getPrDetails(
+    diffMode === "entire-pr" ? commitLimit : "last"
+  );
   core.debug(
     `Loaded PR #${prDetails.pull_number} with ${prDetails.commits.length} commits.`
   );
 
-  const commitsToInclude =
-    diffMode === "entire-pr" ? prDetails.commits : prDetails.commits.slice(-1);
+  // check that prDetails.headSha is contained in prDetails.commits
+  if (!prDetails.commits.find((c) => c.sha === prDetails.headSha)) {
+    core.warning(
+      `PR head commit ${prDetails.headSha} was not included in PR commits.`
+    );
+  }
 
-  if (commitsToInclude.length === 0) {
+  if (prDetails.commits.length === 0) {
     core.info("No commits found to review.");
     return null;
   }
@@ -90,7 +97,7 @@ async function buildPrompt(
 
   const packedCommits: PackedCommit[] = [];
 
-  for (const c of commitsToInclude) {
+  for (const c of prDetails.commits) {
     core.debug(`Processing commit: ${c.sha}`);
     const commitDetails = await githubService.getCommitDetails(c.sha);
 
@@ -135,6 +142,7 @@ export type ReviewOptions = {
   tokenLimit: number;
   changesThreshold: SeverityLevel;
   reasoningEffort: ReasoningEffort;
+  commitLimit: number;
 };
 
 export async function review(options: ReviewOptions) {
@@ -149,7 +157,8 @@ export async function review(options: ReviewOptions) {
   const pr = await buildPrompt(
     githubService,
     options.diffMode,
-    options.tokenLimit
+    options.tokenLimit,
+    options.commitLimit
   );
   if (!pr || !pr.commits || pr.commits.length === 0) {
     core.info("No commits found to review.");

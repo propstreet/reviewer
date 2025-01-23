@@ -4,6 +4,7 @@ import {
   isValidSeverityLevel,
   isValidReasoningEffort,
   isValidTokenLimit,
+  isValidCommitLimit,
 } from "./validators.js";
 import { review } from "./reviewer.js";
 
@@ -35,6 +36,13 @@ export async function run(): Promise<void> {
     }
     const tokenLimit = parseInt(tokenLimitInput, 10);
 
+    const commitLimitInput = core.getInput("commitLimit") || "100";
+    if (!isValidCommitLimit(commitLimitInput)) {
+      core.setFailed(`Invalid commit limit: ${commitLimitInput}`);
+      return;
+    }
+    const commitLimit = parseInt(commitLimitInput, 10);
+
     const githubToken = process.env.GITHUB_TOKEN;
     if (!githubToken) {
       core.setFailed("Missing GITHUB_TOKEN in environment.");
@@ -48,6 +56,7 @@ export async function run(): Promise<void> {
       tokenLimit,
       changesThreshold,
       reasoningEffort,
+      commitLimit,
     });
 
     // 3. Done

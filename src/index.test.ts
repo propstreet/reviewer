@@ -33,6 +33,8 @@ describe("index", () => {
           return "medium";
         case "tokenLimit":
           return "50000";
+        case "commitLimit":
+          return "100";
         default:
           return "";
       }
@@ -67,6 +69,7 @@ describe("index", () => {
       tokenLimit: 50000,
       changesThreshold: "error",
       reasoningEffort: "medium",
+      commitLimit: 100,
     });
 
     // Verify no errors were reported
@@ -88,6 +91,8 @@ describe("index", () => {
           return "high";
         case "tokenLimit":
           return "150000";
+        case "commitLimit":
+          return "99";
         default:
           return "";
       }
@@ -109,6 +114,7 @@ describe("index", () => {
       tokenLimit: 150000,
       changesThreshold: "warning",
       reasoningEffort: "high",
+      commitLimit: 99,
     });
 
     // Verify no errors were reported
@@ -178,6 +184,24 @@ describe("index", () => {
 
     expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
       "Invalid token limit: not-a-number"
+    );
+  });
+
+  it("should handle invalid commitLimit", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "diffMode") return "last-commit";
+      if (name === "severity") return "error";
+      if (name === "reasoningEffort") return "medium";
+      if (name === "tokenLimit") return "200000";
+      if (name === "commitLimit") return "not-a-number";
+      return "";
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid commit limit: not-a-number"
     );
   });
 
