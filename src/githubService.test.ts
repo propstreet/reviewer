@@ -140,7 +140,16 @@ describe("GitHubService", () => {
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         issue_number: mockConfig.pullNumber,
-        body: "Comment on line 10 (RIGHT) of file first.ts: Out of range comment",
+        body: `Out of range comment
+
+first.ts:10 (RIGHT)
+\`\`\`diff
+@@ -0,0 +1,3 @@
++First line
++Second line
++Third line
+\`\`\`
+`,
       });
     });
 
@@ -193,7 +202,7 @@ describe("GitHubService", () => {
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         issue_number: mockConfig.pullNumber,
-        body: "Comment on line 1 (RIGHT) of file missing.ts: Comment for missing commit",
+        body: "Comment on line 1 (RIGHT) of file missing.ts:\n\nComment for missing commit",
       });
     });
 
@@ -251,15 +260,15 @@ describe("GitHubService", () => {
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         issue_number: mockConfig.pullNumber,
-        body: "Comment on line 10 (LEFT) of file test.ts: Comment",
+        body: "Comment on line 10 (LEFT) of file test.ts:\n\nComment",
       });
 
       expect(core.warning).toBeCalledTimes(2);
       expect(core.warning).toHaveBeenCalledWith(
-        "No patch found for file: test.ts"
+        "Could not generate inline comment for test.ts: Comment"
       );
       expect(core.warning).toHaveBeenCalledWith(
-        "Comment is out of range for test.ts:10:LEFT: Comment"
+        "- patch not found in commit test-sha"
       );
     });
   });
