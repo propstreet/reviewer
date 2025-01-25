@@ -209,12 +209,17 @@ export class GitHubService {
       }
 
       // Get the pushed_at timestamp from the PR
-      const pushedAt = new Date(prResponse.data.pushed_at).getTime();
+      const pushedAt = new Date(prResponse.data.updated_at).getTime();
 
       // Filter commits that were made after the last push
       // Note: Commits are returned in chronological order, newest first
       const lastPushCommits = commitsResponse.data.filter((commit) => {
-        const commitDate = new Date(commit.commit.committer.date).getTime();
+        const committer = commit.commit.committer;
+        if (!committer || !committer.date) {
+          core.warning(`Commit ${commit.sha} has no committer date, skipping`);
+          return false;
+        }
+        const commitDate = new Date(committer.date).getTime();
         return commitDate >= pushedAt;
       });
 
