@@ -266,11 +266,11 @@ describe("GitHubService", () => {
 
   describe("getPrDetails", () => {
     it("should handle 'last-push' mode correctly", async () => {
-      const mockPushedAt = "2023-10-11T10:00:00Z";
+      const mockUpdatedAt = "2023-10-11T10:00:00Z";
       const mockCommits = [
         {
           sha: "commit3",
-          commit: { committer: { date: "2023-10-11T11:00:00Z" } }, // After push
+          commit: { committer: { date: "2023-10-11T10:00:00Z" } }, // Same as updated_at
         },
         {
           sha: "commit2",
@@ -290,7 +290,7 @@ describe("GitHubService", () => {
           body: "PR description",
           commits: 3,
           head: { sha: "commit3" },
-          pushed_at: mockPushedAt,
+          updated_at: mockUpdatedAt,
         },
       });
 
