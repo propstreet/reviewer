@@ -331,7 +331,7 @@ describe("GitHubService", () => {
     });
 
     it("should handle no commits after last push", async () => {
-      const mockPushedAt = "2023-10-11T12:00:00Z";
+      const mockUpdatedAt = "2023-10-11T12:00:00Z";
       const mockCommits = [
         {
           sha: "commit2",
@@ -351,7 +351,7 @@ describe("GitHubService", () => {
           body: "PR description",
           commits: 2,
           head: { sha: "commit2" },
-          pushed_at: mockPushedAt,
+          updated_at: mockUpdatedAt,
         },
       });
 
@@ -397,7 +397,7 @@ describe("GitHubService", () => {
           body: "PR description",
           commits: 2,
           head: { sha: "commit2" },
-          pushed_at: "2023-10-11T12:00:00Z",
+          updated_at: "2023-10-11T12:00:00Z",
         },
       });
 

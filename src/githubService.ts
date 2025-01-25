@@ -216,8 +216,8 @@ export class GitHubService {
         );
       }
 
-      // Get the pushed_at timestamp from the PR
-      const pushedAt = new Date(prResponse.data.updated_at).getTime();
+      // Get the last update timestamp from the PR
+      const lastUpdateTime = new Date(prResponse.data.updated_at).getTime();
 
       // Filter commits that were made after the last push
       // Note: Commits are returned in chronological order, newest first
@@ -228,7 +228,7 @@ export class GitHubService {
           return false;
         }
         const commitDate = new Date(committer.date).getTime();
-        return commitDate >= pushedAt;
+        return commitDate >= lastUpdateTime;
       });
 
       if (lastPushCommits.length === 0) {
