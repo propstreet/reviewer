@@ -193,6 +193,14 @@ export class GitHubService {
 
     if (includeCommits === "last") {
       commits.push({ sha: prResponse.data.head.sha });
+      return {
+        pull_number: prResponse.data.number,
+        title: prResponse.data.title,
+        body: prResponse.data.body,
+        headSha: prResponse.data.head.sha,
+        commitCount: prResponse.data.commits,
+        commits,
+      };
     } else if (includeCommits === "last-push") {
       // Get all commits and filter by the last push timestamp
       const commitsResponse = await this.octokit.rest.pulls.listCommits({

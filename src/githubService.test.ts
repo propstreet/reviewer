@@ -432,6 +432,7 @@ describe("GitHubService", () => {
           body: "PR description",
           commits: 3,
           head: { sha: "commit3" },
+          updated_at: "2024-01-25T15:00:00Z",
         },
       });
 
