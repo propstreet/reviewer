@@ -175,8 +175,8 @@ export class GitHubService {
     };
   }
 
-  // load the PR details, including xx commits in chronological order (or the last one)
-  async getPrDetails(includeCommits: number | "last") {
+  // load the PR details, including xx commits in chronological order (or specific commits based on mode)
+  async getPrDetails(includeCommits: number | "last" | "last-push") {
     const prResponse = await this.octokit.rest.pulls.get({
       owner: this.config.owner,
       repo: this.config.repo,
@@ -193,6 +193,36 @@ export class GitHubService {
 
     if (includeCommits === "last") {
       commits.push({ sha: prResponse.data.head.sha });
+    } else if (includeCommits === "last-push") {
+      // Get all commits and filter by the last push timestamp
+      const commitsResponse = await this.octokit.rest.pulls.listCommits({
+        owner: this.config.owner,
+        repo: this.config.repo,
+        pull_number: this.config.pullNumber,
+        per_page: 100, // Get maximum allowed to ensure we have enough history
+      });
+
+      if (commitsResponse.status !== 200) {
+        throw new Error(
+          `Failed to list commits for pr #${this.config.pullNumber}, status: ${commitsResponse.status}`
+        );
+      }
+
+      // Get the pushed_at timestamp from the PR
+      const pushedAt = new Date(prResponse.data.pushed_at).getTime();
+
+      // Filter commits that were made after the last push
+      // Note: Commits are returned in chronological order, newest first
+      const lastPushCommits = commitsResponse.data.filter((commit) => {
+        const commitDate = new Date(commit.commit.committer.date).getTime();
+        return commitDate >= pushedAt;
+      });
+
+      if (lastPushCommits.length === 0) {
+        core.info("No commits found since last push.");
+      }
+
+      commits.push(...lastPushCommits.map((c) => ({ sha: c.sha })));
     } else {
       if (includeCommits > 100) {
         // max allowed, could paginate in the future but context is still limited

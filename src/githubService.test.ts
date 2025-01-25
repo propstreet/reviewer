@@ -265,6 +265,164 @@ describe("GitHubService", () => {
   });
 
   describe("getPrDetails", () => {
+    it("should handle 'last-push' mode correctly", async () => {
+      const mockPushedAt = "2023-10-11T10:00:00Z";
+      const mockCommits = [
+        {
+          sha: "commit3",
+          commit: { committer: { date: "2023-10-11T11:00:00Z" } }, // After push
+        },
+        {
+          sha: "commit2",
+          commit: { committer: { date: "2023-10-11T09:00:00Z" } }, // Before push
+        },
+        {
+          sha: "commit1",
+          commit: { committer: { date: "2023-10-11T08:00:00Z" } }, // Before push
+        },
+      ];
+
+      const mockGet = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          number: 123,
+          title: "Test PR",
+          body: "PR description",
+          commits: 3,
+          head: { sha: "commit3" },
+          pushed_at: mockPushedAt,
+        },
+      });
+
+      const mockListCommits = vi.fn().mockResolvedValue({
+        status: 200,
+        data: mockCommits,
+      });
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            get: mockGet,
+            listCommits: mockListCommits,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.getPrDetails("last-push");
+
+      expect(result).toEqual({
+        pull_number: 123,
+        title: "Test PR",
+        body: "PR description",
+        headSha: "commit3",
+        commitCount: 3,
+        commits: [{ sha: "commit3" }], // Only commit after push
+      });
+
+      expect(mockListCommits).toHaveBeenCalledWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        pull_number: mockConfig.pullNumber,
+        per_page: 100,
+      });
+    });
+
+    it("should handle no commits after last push", async () => {
+      const mockPushedAt = "2023-10-11T12:00:00Z";
+      const mockCommits = [
+        {
+          sha: "commit2",
+          commit: { committer: { date: "2023-10-11T09:00:00Z" } }, // Before push
+        },
+        {
+          sha: "commit1",
+          commit: { committer: { date: "2023-10-11T08:00:00Z" } }, // Before push
+        },
+      ];
+
+      const mockGet = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          number: 123,
+          title: "Test PR",
+          body: "PR description",
+          commits: 2,
+          head: { sha: "commit2" },
+          pushed_at: mockPushedAt,
+        },
+      });
+
+      const mockListCommits = vi.fn().mockResolvedValue({
+        status: 200,
+        data: mockCommits,
+      });
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            get: mockGet,
+            listCommits: mockListCommits,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.getPrDetails("last-push");
+
+      expect(result).toEqual({
+        pull_number: 123,
+        title: "Test PR",
+        body: "PR description",
+        headSha: "commit2",
+        commitCount: 2,
+        commits: [], // No commits after push
+      });
+
+      expect(core.info).toHaveBeenCalledWith(
+        "No commits found since last push."
+      );
+    });
+
+    it("should handle listCommits error in last-push mode", async () => {
+      const mockGet = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          number: 123,
+          title: "Test PR",
+          body: "PR description",
+          commits: 2,
+          head: { sha: "commit2" },
+          pushed_at: "2023-10-11T12:00:00Z",
+        },
+      });
+
+      const mockListCommits = vi.fn().mockResolvedValue({
+        status: 500, // Error status
+        data: [],
+      });
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            get: mockGet,
+            listCommits: mockListCommits,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await expect(service.getPrDetails("last-push")).rejects.toThrow(
+        `Failed to list commits for pr #${mockConfig.pullNumber}, status: 500`
+      );
+    });
+
     it("should retrieve PR details successfully", async () => {
       const mockGet = vi.fn().mockResolvedValue({
         status: 200,

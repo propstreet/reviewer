@@ -68,7 +68,11 @@ async function buildPrompt(
   commitLimit: number
 ) {
   const prDetails = await githubService.getPrDetails(
-    diffMode === "entire-pr" ? commitLimit : "last"
+    diffMode === "entire-pr"
+      ? commitLimit
+      : diffMode === "last-push"
+        ? "last-push"
+        : "last"
   );
   core.debug(
     `Loaded PR #${prDetails.pull_number} with ${prDetails.commits.length} commits.`
