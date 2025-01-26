@@ -1,7 +1,7 @@
 import { ChatCompletionReasoningEffort } from "openai/resources/index.mjs";
 
 export type SeverityLevel = "info" | "warning" | "error";
-export type DiffMode = "last-commit" | "entire-pr";
+export type DiffMode = "last-commit" | "entire-pr" | "last-push";
 
 export function isValidReasoningEffort(
   reasoningEffort: string
@@ -16,7 +16,7 @@ export function isValidSeverityLevel(
 }
 
 export function isValidDiffMode(diffMode: string): diffMode is DiffMode {
-  return ["last-commit", "entire-pr"].includes(diffMode);
+  return ["last-commit", "entire-pr", "last-push"].includes(diffMode);
 }
 
 export function isValidTokenLimit(limit: string): boolean {

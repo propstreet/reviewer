@@ -30,7 +30,7 @@ jobs:
           azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_REASONING_ENDPOINT }}
           azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_REASONING_DEPLOYMENT }}
           azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
-          diffMode: "last-commit" # optional, defaults to "last-commit"
+          diffMode: "last-push" # optional, defaults to "last-push"
           severity: "error" # optional, defaults to "error"
           reasoningEffort: "medium" # optional, defaults to "medium"
           tokenLimit: 50000 # optional, defaults to 50000
@@ -46,7 +46,7 @@ jobs:
 - azureOpenAIEndpoint: Azure OpenAI endpoint URL to an o1 reasoning model. (e.g. <https://my-o1-resource.openai.azure.com/openai/deployments/...>)
 - azureOpenAIDeployment: Azure OpenAI deployment name for the o1 reasoning model. (e.g. my-o1-deployment)
 - azureOpenAIVersion: Version of the Azure OpenAI API used for calling the reasoning model. (e.g. 2024-12-01-preview)
-- diffMode: Controls which patches are sent to Azure OpenAI. Options are "last-commit" (default) or "entire-pr".
+- diffMode: Controls which patches are sent to Azure OpenAI. Options are "last-push" (default), "last-commit" or "entire-pr".
 - severity: The minimum severity level for requesting changes. Lower severity levels will be posted as informational comments. Options are "info", "warning", or "error".
 - reasoningEffort: The level of reasoning effort to use when generating comments. Options are "low", "medium" (default), or "high".
 - tokenLimit: The maximum number of tokens to send to Azure OpenAI. The default is 50 000, o1 supports up to 200 000 but the REST API seems to support ~190 000.

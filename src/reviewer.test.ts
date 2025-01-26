@@ -54,18 +54,38 @@ describe("reviewer", () => {
       patches: [{ filename: "commit.ts", patch: "commit diff" }],
     });
 
-    vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({
-      pull_number: 1,
-      title: "test title",
-      body: "test body",
-      commitCount: 1,
-      headSha: "head-sha",
-      commits: [
-        {
-          sha: "head-sha",
-        },
-      ],
-    });
+    vi.mocked(GitHubService.prototype.getPrDetails).mockImplementation(
+      async (diffMode) => {
+        if (diffMode === "last-push") {
+          return {
+            pull_number: 1,
+            title: "test title",
+            body: "test body",
+            commitCount: 3,
+            headSha: "head-sha",
+            baseSha: "base-sha",
+            commits: [
+              { sha: "commit3" },
+              { sha: "commit2" },
+              { sha: "commit1" },
+            ],
+          };
+        }
+        return {
+          pull_number: 1,
+          title: "test title",
+          body: "test body",
+          commitCount: 1,
+          headSha: "head-sha",
+          baseSha: "base-sha",
+          commits: [
+            {
+              sha: "head-sha",
+            },
+          ],
+        };
+      }
+    );
 
     // Mock github context
     vi.mocked(github).context = {
@@ -95,6 +115,28 @@ describe("reviewer", () => {
   });
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
+  it("should handle successful review flow with last-push mode", async () => {
+    // Mock isWithinTokenLimit to allow diff processing and return token count
+    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1234 // Return specific token count for verification
+    );
+
+    const options = {
+      ...reviewOptions,
+      diffMode: "last-push" as const,
+    };
+
+    const { review } = await import("./reviewer.js");
+    await review(options);
+
+    // Verify getPrDetails was called with last-push
+    expect(GitHubService.prototype.getPrDetails).toHaveBeenCalledWith(
+      "last-push",
+      10
+    );
+  });
+
   it("should handle successful review flow", async () => {
     // Mock isWithinTokenLimit to allow diff processing and return token count
     const { isWithinTokenLimit } = await import("gpt-tokenizer");
@@ -158,7 +200,10 @@ commit diff
     );
 
     // Verify GitHub service was called
-    expect(GitHubService.prototype.getPrDetails).toHaveBeenCalledWith("last");
+    expect(GitHubService.prototype.getPrDetails).toHaveBeenCalledWith(
+      "last-commit",
+      10
+    );
     expect(GitHubService.prototype.postReviewComments).toHaveBeenCalledWith(
       mockAzureResponse.comments,
       "error",
@@ -354,6 +399,7 @@ commit diff
       body: "test body",
       commitCount: 0,
       headSha: "head-sha",
+      baseSha: "base-sha",
       commits: [],
     });
 
@@ -373,6 +419,7 @@ commit diff
       body: "test body",
       commitCount: 3,
       headSha: "sha3",
+      baseSha: "base-sha",
       commits: [{ sha: "sha1" }, { sha: "sha2" }, { sha: "sha3" }],
     });
 
@@ -395,6 +442,7 @@ commit diff
       body: "test body",
       commitCount: 1,
       headSha: "head-sha",
+      baseSha: "base-sha",
       commits: [{ sha: "sha1" }],
     });
 

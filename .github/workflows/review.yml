@@ -14,8 +14,8 @@ jobs:
           azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_REASONING_DEPLOYMENT }}
           azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
           azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
-          diffMode: "last-commit"
-          severity: "warning"
+          diffMode: "last-push"
+          severity: "error"
           reasoningEffort: "high"
           tokenLimit: 150000
         env:
