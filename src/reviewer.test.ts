@@ -55,14 +55,15 @@ describe("reviewer", () => {
     });
 
     vi.mocked(GitHubService.prototype.getPrDetails).mockImplementation(
-      async (includeCommits) => {
-        if (includeCommits === "last-push") {
+      async (diffMode) => {
+        if (diffMode === "last-push") {
           return {
             pull_number: 1,
             title: "test title",
             body: "test body",
             commitCount: 3,
             headSha: "head-sha",
+            baseSha: "base-sha",
             commits: [
               { sha: "commit3" },
               { sha: "commit2" },
@@ -76,6 +77,7 @@ describe("reviewer", () => {
           body: "test body",
           commitCount: 1,
           headSha: "head-sha",
+          baseSha: "base-sha",
           commits: [
             {
               sha: "head-sha",
@@ -130,7 +132,8 @@ describe("reviewer", () => {
 
     // Verify getPrDetails was called with last-push
     expect(GitHubService.prototype.getPrDetails).toHaveBeenCalledWith(
-      "last-push"
+      "last-push",
+      10
     );
   });
 
@@ -197,7 +200,10 @@ commit diff
     );
 
     // Verify GitHub service was called
-    expect(GitHubService.prototype.getPrDetails).toHaveBeenCalledWith("last");
+    expect(GitHubService.prototype.getPrDetails).toHaveBeenCalledWith(
+      "last-commit",
+      10
+    );
     expect(GitHubService.prototype.postReviewComments).toHaveBeenCalledWith(
       mockAzureResponse.comments,
       "error",
@@ -393,6 +399,7 @@ commit diff
       body: "test body",
       commitCount: 0,
       headSha: "head-sha",
+      baseSha: "base-sha",
       commits: [],
     });
 
@@ -412,6 +419,7 @@ commit diff
       body: "test body",
       commitCount: 3,
       headSha: "sha3",
+      baseSha: "base-sha",
       commits: [{ sha: "sha1" }, { sha: "sha2" }, { sha: "sha3" }],
     });
 
@@ -434,6 +442,7 @@ commit diff
       body: "test body",
       commitCount: 1,
       headSha: "head-sha",
+      baseSha: "base-sha",
       commits: [{ sha: "sha1" }],
     });
 

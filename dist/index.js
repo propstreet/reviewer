@@ -35495,7 +35495,7 @@ function isValidSeverityLevel(severity) {
     return ["info", "warning", "error"].includes(severity);
 }
 function isValidDiffMode(diffMode) {
-    return ["last-commit", "entire-pr"].includes(diffMode);
+    return ["last-commit", "entire-pr", "last-push"].includes(diffMode);
 }
 function isValidTokenLimit(limit) {
     const num = parseInt(limit, 10);
@@ -49607,8 +49607,12 @@ class GitHubService {
             issueComments: issueComments.length,
         };
     }
-    // load the PR details, including xx commits in chronological order (or the last one)
-    async getPrDetails(includeCommits) {
+    // load the PR details, including xx commits in chronological order (or specific commits based on mode)
+    async getPrDetails(diffMode, commitLimit) {
+        if (commitLimit > 100) {
+            // max allowed, could paginate in the future but context is still limited
+            throw new Error("Cannot request more than 100 commits");
+        }
         const prResponse = await this.octokit.rest.pulls.get({
             owner: this.config.owner,
             repo: this.config.repo,
@@ -49618,23 +49622,40 @@ class GitHubService {
             throw new Error(`Failed to list commits for pr #${this.config.pullNumber}, status: ${prResponse.status}`);
         }
         const commits = [];
-        if (includeCommits === "last") {
+        if (diffMode === "last-commit") {
             commits.push({ sha: prResponse.data.head.sha });
         }
-        else {
-            if (includeCommits > 100) {
-                // max allowed, could paginate in the future but context is still limited
-                throw new Error("Cannot request more than 100 commits");
+        else if (diffMode === "last-push") {
+            const pushedAt = prResponse.data.head.repo?.pushed_at ??
+                prResponse.data.base.repo.pushed_at;
+            core.debug(`Listing commits since last push at ${pushedAt}`);
+            // Get all commits and filter by the last push timestamp
+            const commitsResponse = await this.octokit.rest.repos.listCommits({
+                owner: this.config.owner,
+                repo: this.config.repo,
+                pull_number: this.config.pullNumber,
+                sha: prResponse.data.head.sha,
+                since: pushedAt,
+                per_page: commitLimit,
+            });
+            if (commitsResponse.status !== 200) {
+                throw new Error(`Failed to list commits for pr #${this.config.pullNumber} since ${pushedAt}, status: ${commitsResponse.status}`);
             }
+            const lastPushCommits = commitsResponse.data;
+            core.debug(`Found ${lastPushCommits.length} commits since last push`);
+            commits.push(...lastPushCommits.map((c) => ({ sha: c.sha })));
+        }
+        else {
             const commitsResponse = await this.octokit.rest.pulls.listCommits({
                 owner: this.config.owner,
                 repo: this.config.repo,
                 pull_number: this.config.pullNumber,
-                per_page: includeCommits,
+                per_page: commitLimit,
             });
             if (commitsResponse.status !== 200) {
                 throw new Error(`Failed to list commits for pr #${this.config.pullNumber}, status: ${commitsResponse.status}`);
             }
+            core.debug(`Found ${commitsResponse.data.length} commits`);
             commits.push(...commitsResponse.data.map((c) => ({ sha: c.sha })));
         }
         return {
@@ -49642,6 +49663,7 @@ class GitHubService {
             title: prResponse.data.title,
             body: prResponse.data.body,
             headSha: prResponse.data.head.sha,
+            baseSha: prResponse.data.base.sha,
             commitCount: prResponse.data.commits,
             commits,
         };
@@ -49739,7 +49761,7 @@ function packCommit(accumulated, commit, tokenLimit) {
     };
 }
 async function buildPrompt(githubService, diffMode, tokenLimit, commitLimit) {
-    const prDetails = await githubService.getPrDetails(diffMode === "entire-pr" ? commitLimit : "last");
+    const prDetails = await githubService.getPrDetails(diffMode, commitLimit);
     core.debug(`Loaded PR #${prDetails.pull_number} with ${prDetails.commits.length} commits.`);
     // check that prDetails.headSha is contained in prDetails.commits
     if (!prDetails.commits.find((c) => c.sha === prDetails.headSha)) {
@@ -49820,7 +49842,7 @@ async function review(options) {
 async function run() {
     try {
         // 1. Validate Inputs
-        const diffMode = core.getInput("diffMode") || "last-commit";
+        const diffMode = core.getInput("diffMode") || "last-push";
         if (!isValidDiffMode(diffMode)) {
             core.setFailed(`Invalid diff mode: ${diffMode}`);
             return;

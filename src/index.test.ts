@@ -26,7 +26,7 @@ describe("index", () => {
         case "azureOpenAIVersion":
           return "2024-12-01-preview";
         case "diffMode":
-          return "last-commit";
+          return "last-push";
         case "severity":
           return "error";
         case "reasoningEffort":
@@ -65,7 +65,7 @@ describe("index", () => {
     // Verify reviewer was called with default values
     expect(review).toHaveBeenCalledExactlyOnceWith({
       githubToken: "test-token",
-      diffMode: "last-commit",
+      diffMode: "last-push",
       tokenLimit: 50000,
       changesThreshold: "error",
       reasoningEffort: "medium",

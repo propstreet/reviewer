@@ -2,7 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { CodeReviewComment } from "./schemas.js";
 import { z } from "zod";
-import { SeverityLevel } from "./validators.js";
+import { DiffMode, SeverityLevel } from "./validators.js";
 import { findPositionInDiff } from "./diffparser.js";
 import { type PackedCommit } from "./reviewer.js";
 
@@ -176,7 +176,12 @@ export class GitHubService {
   }
 
   // load the PR details, including xx commits in chronological order (or specific commits based on mode)
-  async getPrDetails(includeCommits: number | "last" | "last-push") {
+  async getPrDetails(diffMode: DiffMode, commitLimit: number) {
+    if (commitLimit > 100) {
+      // max allowed, could paginate in the future but context is still limited
+      throw new Error("Cannot request more than 100 commits");
+    }
+
     const prResponse = await this.octokit.rest.pulls.get({
       owner: this.config.owner,
       repo: this.config.repo,
@@ -191,62 +196,42 @@ export class GitHubService {
 
     const commits: { sha: string }[] = [];
 
-    if (includeCommits === "last") {
+    if (diffMode === "last-commit") {
       commits.push({ sha: prResponse.data.head.sha });
-      return {
-        pull_number: prResponse.data.number,
-        title: prResponse.data.title,
-        body: prResponse.data.body,
-        headSha: prResponse.data.head.sha,
-        commitCount: prResponse.data.commits,
-        commits,
-      };
-    } else if (includeCommits === "last-push") {
+    } else if (diffMode === "last-push") {
+      const pushedAt =
+        prResponse.data.head.repo?.pushed_at ??
+        prResponse.data.base.repo.pushed_at;
+
+      core.debug(`Listing commits since last push at ${pushedAt}`);
+
       // Get all commits and filter by the last push timestamp
-      const commitsResponse = await this.octokit.rest.pulls.listCommits({
+      const commitsResponse = await this.octokit.rest.repos.listCommits({
         owner: this.config.owner,
         repo: this.config.repo,
         pull_number: this.config.pullNumber,
-        per_page: 100, // Get maximum allowed to ensure we have enough history
+        sha: prResponse.data.head.sha,
+        since: pushedAt,
+        per_page: commitLimit,
       });
 
       if (commitsResponse.status !== 200) {
         throw new Error(
-          `Failed to list commits for pr #${this.config.pullNumber}, status: ${commitsResponse.status}`
+          `Failed to list commits for pr #${this.config.pullNumber} since ${pushedAt}, status: ${commitsResponse.status}`
         );
       }
 
-      // Get the last update timestamp from the PR
-      const lastUpdateTime = new Date(prResponse.data.updated_at).getTime();
+      const lastPushCommits = commitsResponse.data;
 
-      // Filter commits that were made after the last push
-      // Note: Commits are returned in chronological order, newest first
-      const lastPushCommits = commitsResponse.data.filter((commit) => {
-        const committer = commit.commit.committer;
-        if (!committer || !committer.date) {
-          core.warning(`Commit ${commit.sha} has no committer date, skipping`);
-          return false;
-        }
-        const commitDate = new Date(committer.date).getTime();
-        return commitDate >= lastUpdateTime;
-      });
-
-      if (lastPushCommits.length === 0) {
-        core.info("No commits found since last push.");
-      }
+      core.debug(`Found ${lastPushCommits.length} commits since last push`);
 
       commits.push(...lastPushCommits.map((c) => ({ sha: c.sha })));
     } else {
-      if (includeCommits > 100) {
-        // max allowed, could paginate in the future but context is still limited
-        throw new Error("Cannot request more than 100 commits");
-      }
-
       const commitsResponse = await this.octokit.rest.pulls.listCommits({
         owner: this.config.owner,
         repo: this.config.repo,
         pull_number: this.config.pullNumber,
-        per_page: includeCommits,
+        per_page: commitLimit,
       });
 
       if (commitsResponse.status !== 200) {
@@ -254,6 +239,8 @@ export class GitHubService {
           `Failed to list commits for pr #${this.config.pullNumber}, status: ${commitsResponse.status}`
         );
       }
+
+      core.debug(`Found ${commitsResponse.data.length} commits`);
 
       commits.push(...commitsResponse.data.map((c) => ({ sha: c.sha })));
     }
@@ -263,6 +250,7 @@ export class GitHubService {
       title: prResponse.data.title,
       body: prResponse.data.body,
       headSha: prResponse.data.head.sha,
+      baseSha: prResponse.data.base.sha,
       commitCount: prResponse.data.commits,
       commits,
     };

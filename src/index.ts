@@ -11,7 +11,7 @@ import { review } from "./reviewer.js";
 export async function run(): Promise<void> {
   try {
     // 1. Validate Inputs
-    const diffMode = core.getInput("diffMode") || "last-commit";
+    const diffMode = core.getInput("diffMode") || "last-push";
     if (!isValidDiffMode(diffMode)) {
       core.setFailed(`Invalid diff mode: ${diffMode}`);
       return;
