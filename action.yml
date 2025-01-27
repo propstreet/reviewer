@@ -19,14 +19,16 @@ inputs:
     description: "Azure OpenAI version (e.g., 2024-12-01-preview)"
     required: false
     default: "2024-12-01-preview"
-  diffMode:
-    description: '"last-push", "last-commit" or "entire-pr"'
+  base:
+    description: "Base commit SHA to compare against."
     required: false
-    default: "last-push"
+  head:
+    description: "Head commit SHA to compare against."
+    required: false
   severity:
-    description: "Minimum severity level required to post a review comment (info, warning, or error)."
+    description: "Minimum severity level required to post a request changes review comment (info, warning, or error)."
     required: false
-    default: "info"
+    default: "error"
   reasoningEffort:
     description: "Reasoning effort level (low, medium, or high)."
     required: false

@@ -2,7 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { CodeReviewComment } from "./schemas.js";
 import { z } from "zod";
-import { DiffMode, SeverityLevel } from "./validators.js";
+import { SeverityLevel } from "./validators.js";
 import { findPositionInDiff } from "./diffparser.js";
 import { type PackedCommit } from "./reviewer.js";
 
@@ -19,6 +19,13 @@ export interface ReviewComment {
   body: string;
 }
 
+export type CompareResults = {
+  base: string;
+  head: string;
+  commits: CommitDetails[];
+  patches: PatchInfo[];
+};
+
 export type PatchInfo = {
   filename: string;
   patch: string;
@@ -28,6 +35,15 @@ export interface CommitDetails {
   sha: string;
   message: string;
   patches: PatchInfo[];
+}
+
+export interface PrDetails {
+  number: number;
+  title: string;
+  body?: string;
+  head: string;
+  base: string;
+  commitCount: number;
 }
 
 export class GitHubService {
@@ -175,13 +191,7 @@ export class GitHubService {
     };
   }
 
-  // load the PR details, including xx commits in chronological order (or specific commits based on mode)
-  async getPrDetails(diffMode: DiffMode, commitLimit: number) {
-    if (commitLimit > 100) {
-      // max allowed, could paginate in the future but context is still limited
-      throw new Error("Cannot request more than 100 commits");
-    }
-
+  async getPrDetails(): Promise<PrDetails> {
     const prResponse = await this.octokit.rest.pulls.get({
       owner: this.config.owner,
       repo: this.config.repo,
@@ -194,81 +204,29 @@ export class GitHubService {
       );
     }
 
-    const commits: { sha: string }[] = [];
-
-    if (diffMode === "last-commit") {
-      commits.push({ sha: prResponse.data.head.sha });
-    } else if (diffMode === "last-push") {
-      const pushedAt =
-        prResponse.data.head.repo?.pushed_at ??
-        prResponse.data.base.repo.pushed_at;
-
-      core.debug(`Listing commits since last push at ${pushedAt}`);
-
-      // Get all commits and filter by the last push timestamp
-      const commitsResponse = await this.octokit.rest.repos.listCommits({
-        owner: this.config.owner,
-        repo: this.config.repo,
-        pull_number: this.config.pullNumber,
-        sha: prResponse.data.head.sha,
-        since: pushedAt,
-        per_page: commitLimit,
-      });
-
-      if (commitsResponse.status !== 200) {
-        throw new Error(
-          `Failed to list commits for pr #${this.config.pullNumber} since ${pushedAt}, status: ${commitsResponse.status}`
-        );
-      }
-
-      const lastPushCommits = commitsResponse.data;
-
-      core.debug(`Found ${lastPushCommits.length} commits since last push`);
-
-      commits.push(...lastPushCommits.map((c) => ({ sha: c.sha })));
-    } else {
-      const commitsResponse = await this.octokit.rest.pulls.listCommits({
-        owner: this.config.owner,
-        repo: this.config.repo,
-        pull_number: this.config.pullNumber,
-        per_page: commitLimit,
-      });
-
-      if (commitsResponse.status !== 200) {
-        throw new Error(
-          `Failed to list commits for pr #${this.config.pullNumber}, status: ${commitsResponse.status}`
-        );
-      }
-
-      core.debug(`Found ${commitsResponse.data.length} commits`);
-
-      commits.push(...commitsResponse.data.map((c) => ({ sha: c.sha })));
-    }
-
     return {
-      pull_number: prResponse.data.number,
+      number: prResponse.data.number,
       title: prResponse.data.title,
-      body: prResponse.data.body,
-      headSha: prResponse.data.head.sha,
-      baseSha: prResponse.data.base.sha,
+      body: prResponse.data.body ? prResponse.data.body : undefined,
+      head: prResponse.data.head.sha,
+      base: prResponse.data.base.sha,
       commitCount: prResponse.data.commits,
-      commits,
     };
   }
 
-  async compareCommits(baseSha: string, headSha: string): Promise<PatchInfo[]> {
+  async compareCommits(base: string, head: string): Promise<CompareResults> {
     try {
       const response = await this.octokit.rest.repos.compareCommitsWithBasehead(
         {
           owner: this.config.owner,
           repo: this.config.repo,
-          basehead: `${baseSha}...${headSha}`,
+          basehead: `${base}...${head}`,
         }
       );
 
       if (response.status !== 200) {
         throw new Error(
-          `Failed to compare commit head ${headSha} to base ${baseSha}, status: ${response.status}`
+          `Failed to compare commit head ${head} to base ${base}, status: ${response.status}`
         );
       }
 
@@ -279,7 +237,16 @@ export class GitHubService {
           patch: file.patch!,
         }));
 
-      return patches;
+      return {
+        base,
+        head,
+        commits: response.data.commits.map((commit) => ({
+          sha: commit.sha,
+          message: commit.commit.message,
+          patches: [], // get patches for each commit to base
+        })),
+        patches,
+      };
     } catch (error) {
       throw new Error(
         `Failed to compare commits: ${error instanceof Error ? error.message : String(error)}`

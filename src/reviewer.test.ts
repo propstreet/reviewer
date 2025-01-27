@@ -1,26 +1,7 @@
 import * as core from "@actions/core";
-import * as github from "@actions/github";
 import { AzureOpenAIService } from "./azureOpenAIService.js";
 import { GitHubService } from "./githubService.js";
-import { ReviewOptions } from "./reviewer.js";
-
-type Context = {
-  payload: Record<string, unknown>;
-  eventName: string;
-  sha: string;
-  ref: string;
-  workflow: string;
-  action: string;
-  actor: string;
-  job: string;
-  runNumber: number;
-  runId: number;
-  apiUrl: string;
-  serverUrl: string;
-  graphqlUrl: string;
-  issue: { owner: string; repo: string; number: number };
-  repo: { owner: string; repo: string };
-};
+import { ReviewService, ReviewOptions } from "./reviewer.js";
 
 // Mock types
 //type MockType = ReturnType<typeof vi.fn>;
@@ -36,107 +17,60 @@ vi.mock("gpt-tokenizer", () => ({
 
 describe("reviewer", () => {
   const reviewOptions: ReviewOptions = {
-    githubToken: "test-token",
-    diffMode: "last-commit",
     tokenLimit: 1234,
     changesThreshold: "error",
     reasoningEffort: "low",
     commitLimit: 10,
+    base: "base-sha",
+    head: "head-sha",
   };
+
+  const mockedGithubService = new GitHubService({
+    token: "test-token",
+    owner: "test-owner",
+    repo: "test-repo",
+    pullNumber: 1,
+  });
+
+  const mockedAzureService = new AzureOpenAIService({
+    apiKey: "test-key",
+    apiVersion: "test-version",
+    deployment: "test-deployment",
+    endpoint: "test-endpoint",
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
 
     // Mock GitHubService methods
-    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
-      sha: "test-sha",
-      message: "test commit",
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [
+        {
+          sha: "test-sha",
+          message: "test commit",
+          patches: [{ filename: "commit.ts", patch: "commit diff" }],
+        },
+      ],
       patches: [{ filename: "commit.ts", patch: "commit diff" }],
     });
 
     vi.mocked(GitHubService.prototype.getPrDetails).mockImplementation(
-      async (diffMode) => {
-        if (diffMode === "last-push") {
-          return {
-            pull_number: 1,
-            title: "test title",
-            body: "test body",
-            commitCount: 3,
-            headSha: "head-sha",
-            baseSha: "base-sha",
-            commits: [
-              { sha: "commit3" },
-              { sha: "commit2" },
-              { sha: "commit1" },
-            ],
-          };
-        }
+      async () => {
         return {
-          pull_number: 1,
+          number: 1,
           title: "test title",
           body: "test body",
           commitCount: 1,
-          headSha: "head-sha",
-          baseSha: "base-sha",
-          commits: [
-            {
-              sha: "head-sha",
-            },
-          ],
+          head: "head-sha",
+          base: "base-sha",
         };
       }
     );
-
-    // Mock github context
-    vi.mocked(github).context = {
-      issue: {
-        owner: "test-owner",
-        repo: "test-repo",
-        number: 1,
-      },
-      repo: {
-        owner: "test-owner",
-        repo: "test-repo",
-      },
-      payload: {},
-      eventName: "pull_request",
-      sha: "test-sha",
-      ref: "refs/heads/main",
-      workflow: "test-workflow",
-      action: "test-action",
-      actor: "test-actor",
-      job: "test-job",
-      runNumber: 1,
-      runId: 1,
-      apiUrl: "https://api.github.com",
-      serverUrl: "https://github.com",
-      graphqlUrl: "https://api.github.com/graphql",
-    } as Context;
   });
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
-  it("should handle successful review flow with last-push mode", async () => {
-    // Mock isWithinTokenLimit to allow diff processing and return token count
-    const { isWithinTokenLimit } = await import("gpt-tokenizer");
-    vi.mocked(isWithinTokenLimit).mockImplementation(
-      (_input: unknown, _tokenLimit: number) => 1234 // Return specific token count for verification
-    );
-
-    const options = {
-      ...reviewOptions,
-      diffMode: "last-push" as const,
-    };
-
-    const { review } = await import("./reviewer.js");
-    await review(options);
-
-    // Verify getPrDetails was called with last-push
-    expect(GitHubService.prototype.getPrDetails).toHaveBeenCalledWith(
-      "last-push",
-      10
-    );
-  });
-
   it("should handle successful review flow", async () => {
     // Mock isWithinTokenLimit to allow diff processing and return token count
     const { isWithinTokenLimit } = await import("gpt-tokenizer");
@@ -175,10 +109,18 @@ describe("reviewer", () => {
     vi.mocked(GitHubService.prototype.postReviewComments).mockResolvedValue(
       mockGitHubResponse
     );
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "test-sha",
+      message: "test commit",
+      patches: [{ filename: "commit.ts", patch: "commit diff" }],
+    });
 
     // Import and run the reviewer
-    const { review } = await import("./reviewer.js");
-    await review(reviewOptions);
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review(reviewOptions);
 
     // Verify Azure OpenAI service was called
     expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalledWith(
@@ -200,10 +142,7 @@ commit diff
     );
 
     // Verify GitHub service was called
-    expect(GitHubService.prototype.getPrDetails).toHaveBeenCalledWith(
-      "last-commit",
-      10
-    );
+    expect(GitHubService.prototype.getPrDetails).toHaveBeenCalled();
     expect(GitHubService.prototype.postReviewComments).toHaveBeenCalledWith(
       mockAzureResponse.comments,
       "error",
@@ -258,8 +197,11 @@ commit diff
     });
 
     // Import and run the reviewer
-    const { review } = await import("./reviewer.js");
-    await review(reviewOptions);
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review(reviewOptions);
 
     // Verify warning was logged
     expect(core.warning).toHaveBeenCalledWith(
@@ -293,9 +235,8 @@ commit diff
       }
     );
 
-    // Mock GitHubService to return multiple patches
     vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
-      sha: "test-sha",
+      sha: "head-sha",
       message: "test commit",
       patches: [
         { filename: "small1.ts", patch: "small diff 1" },
@@ -304,9 +245,34 @@ commit diff
       ],
     });
 
+    // Mock GitHubService to return multiple patches
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [
+        {
+          sha: "head-sha",
+          message: "test commit",
+          patches: [
+            { filename: "small1.ts", patch: "small diff 1" },
+            { filename: "small2.ts", patch: "small diff 2" },
+            { filename: "large.ts", patch: "very large diff" },
+          ],
+        },
+      ],
+      patches: [
+        { filename: "small1.ts", patch: "small diff 1" },
+        { filename: "small2.ts", patch: "small diff 2" },
+        { filename: "large.ts", patch: "very large diff" },
+      ],
+    });
+
     // Import and run the reviewer
-    const { review } = await import("./reviewer.js");
-    await review(reviewOptions);
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review(reviewOptions);
 
     // Verify warning about skipped patches
     expect(core.warning).toHaveBeenCalledWith(
@@ -323,15 +289,19 @@ commit diff
 
   it("should handle no diff found", async () => {
     // Mock GitHubService to return empty patches
-    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
-      sha: "test-sha",
-      message: "",
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [],
       patches: [],
     });
 
     // Import and run the reviewer
-    const { review } = await import("./reviewer.js");
-    await review(reviewOptions);
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review(reviewOptions);
 
     // Verify services were not called
     expect(AzureOpenAIService.prototype.runReviewPrompt).not.toHaveBeenCalled();
@@ -349,10 +319,17 @@ commit diff
     );
 
     // Mock successful diff retrieval
-    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
-      sha: "test-sha",
-      message: "test commit",
-      patches: [{ filename: "test.ts", patch: "test diff" }],
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [
+        {
+          sha: "test-sha",
+          message: "test commit",
+          patches: [{ filename: "commit.ts", patch: "commit diff" }],
+        },
+      ],
+      patches: [{ filename: "commit.ts", patch: "commit diff" }],
     });
 
     // Mock empty AI response
@@ -361,14 +338,17 @@ commit diff
     });
 
     // Import and run the reviewer
-    const { review } = await import("./reviewer.js");
-    await review({
-      githubToken: "test-token",
-      diffMode: "last-commit",
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review({
       tokenLimit: 1234,
       changesThreshold: "error",
       reasoningEffort: "low",
       commitLimit: 10,
+      base: "base-sha",
+      head: "head-sha",
     });
 
     // Verify appropriate message was logged
@@ -379,80 +359,83 @@ commit diff
 
   it("should handle GitHub API errors", async () => {
     // Mock API error
-    vi.mocked(GitHubService.prototype.getCommitDetails).mockRejectedValue(
+    vi.mocked(GitHubService.prototype.getPrDetails).mockRejectedValue(
       new Error("API Error")
     );
 
     // Import and run the reviewer
-    const { review } = await import("./reviewer.js");
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
 
     await expect(async () => {
-      await review(reviewOptions);
+      await reviewService.review(reviewOptions);
     }).rejects.toThrow("API Error");
   });
 
   it("should handle no PR commits", async () => {
-    // Mock GitHubService to return empty commits
     vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({
-      pull_number: 1,
+      number: 1,
       title: "test title",
       body: "test body",
       commitCount: 0,
-      headSha: "head-sha",
-      baseSha: "base-sha",
+      head: "head-sha",
+      base: "base-sha",
+    });
+
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
       commits: [],
+      patches: [],
     });
 
     // Import and run the reviewer
-    const { review } = await import("./reviewer.js");
-    await review(reviewOptions);
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review(reviewOptions);
 
     // Verify appropriate message was logged
     expect(core.info).toHaveBeenCalledWith("No commits found to review.");
   });
 
-  it("should use all commits for entire-pr diff mode", async () => {
-    // Mock GitHubService to return multiple commits
-    vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({
-      pull_number: 1,
-      title: "test title",
-      body: "test body",
-      commitCount: 3,
-      headSha: "sha3",
-      baseSha: "base-sha",
-      commits: [{ sha: "sha1" }, { sha: "sha2" }, { sha: "sha3" }],
-    });
-
-    // Import and run the reviewer
-    const { review } = await import("./reviewer.js");
-    await review({
-      ...reviewOptions,
-      diffMode: "entire-pr",
-    });
-
-    // Verify all commits were used
-    expect(GitHubService.prototype.getCommitDetails).toHaveBeenCalledTimes(3);
-  });
-
   it("should warn if head sha was not in the loaded commits", async () => {
     // Mock GitHubService to return commits without head sha
     vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({
-      pull_number: 1,
+      number: 1,
       title: "test title",
       body: "test body",
       commitCount: 1,
-      headSha: "head-sha",
-      baseSha: "base-sha",
-      commits: [{ sha: "sha1" }],
+      head: "head-sha",
+      base: "base-sha",
+    });
+
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [
+        {
+          sha: "base-sha",
+          message: "test commit",
+          patches: [{ filename: "commit.ts", patch: "commit diff" }],
+        },
+      ],
+      patches: [{ filename: "commit.ts", patch: "commit diff" }],
     });
 
     // Import and run the reviewer
-    const { review } = await import("./reviewer.js");
-    await review(reviewOptions);
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review(reviewOptions);
 
     // Verify warning was logged
     expect(core.warning).toHaveBeenCalledWith(
-      "PR head commit head-sha was not included in PR commits."
+      "PR head commit head-sha was not included in commit comparison."
     );
   });
 });

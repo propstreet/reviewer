@@ -1,47 +1,90 @@
 import * as core from "@actions/core";
-import { ReviewOptions } from "./reviewer.js";
+import * as github from "@actions/github";
+import { ReviewOptions, ReviewService } from "./reviewer.js";
 
 // Mock types
 type MockType = ReturnType<typeof vi.fn>;
+type Context = {
+  payload: Record<string, unknown>;
+  eventName: string;
+  sha: string;
+  ref: string;
+  workflow: string;
+  action: string;
+  actor: string;
+  job: string;
+  runNumber: number;
+  runId: number;
+  apiUrl: string;
+  serverUrl: string;
+  graphqlUrl: string;
+  issue: { owner: string; repo: string; number: number };
+  repo: { owner: string; repo: string };
+};
 
 // Mock dependencies
 vi.mock("@actions/core");
-vi.mock("./reviewer.js", () => ({
-  review: vi.fn(),
-}));
+vi.mock("@actions/github");
+vi.mock("./reviewer.js");
 
 describe("index", () => {
+  const getInputDefaults = (name: string) => {
+    switch (name) {
+      case "azureOpenAIEndpoint":
+        return "https://AZURE_ENDPOINT";
+      case "azureOpenAIDeployment":
+        return "AZURE_DEPLOYMENT";
+      case "azureOpenAIKey":
+        return "AZURE_API_KEY";
+      case "azureOpenAIVersion":
+        return "2024-12-01-preview";
+      case "severity":
+        return "error";
+      case "reasoningEffort":
+        return "medium";
+      case "tokenLimit":
+        return "50000";
+      case "commitLimit":
+        return "100";
+      default:
+        return "";
+    }
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
 
     // Mock core.getInput
-    (core.getInput as MockType).mockImplementation((name: string) => {
-      switch (name) {
-        case "azureOpenAIEndpoint":
-          return "https://AZURE_ENDPOINT";
-        case "azureOpenAIDeployment":
-          return "AZURE_DEPLOYMENT";
-        case "azureOpenAIKey":
-          return "AZURE_API_KEY";
-        case "azureOpenAIVersion":
-          return "2024-12-01-preview";
-        case "diffMode":
-          return "last-push";
-        case "severity":
-          return "error";
-        case "reasoningEffort":
-          return "medium";
-        case "tokenLimit":
-          return "50000";
-        case "commitLimit":
-          return "100";
-        default:
-          return "";
-      }
-    });
+    (core.getInput as MockType).mockImplementation(getInputDefaults);
 
     // Set GITHUB_TOKEN
     process.env.GITHUB_TOKEN = "test-token";
+
+    // Mock github context
+    vi.mocked(github).context = {
+      issue: {
+        owner: "test-owner",
+        repo: "test-repo",
+        number: 1,
+      },
+      repo: {
+        owner: "test-owner",
+        repo: "test-repo",
+      },
+      payload: {},
+      eventName: "pull_request",
+      sha: "test-sha",
+      ref: "refs/heads/main",
+      workflow: "test-workflow",
+      action: "test-action",
+      actor: "test-actor",
+      job: "test-job",
+      runNumber: 1,
+      runId: 1,
+      apiUrl: "https://api.github.com",
+      serverUrl: "https://github.com",
+      graphqlUrl: "https://api.github.com/graphql",
+    } as Context;
   });
 
   afterEach(() => {
@@ -49,42 +92,131 @@ describe("index", () => {
   });
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
-  it("should call reviewer with default values when inputs are empty", async () => {
-    // Mock all inputs to return empty string
-    (core.getInput as MockType).mockImplementation(() => "");
-
-    const { review } = await import("./reviewer.js");
-    vi.mocked(review).mockImplementation((_options: ReviewOptions) =>
-      Promise.resolve()
+  it("should require base and head sha", async () => {
+    vi.mocked(ReviewService.prototype.review).mockImplementation(
+      (_options: ReviewOptions) => Promise.resolve()
     );
 
     // Import and run the index file
     const { run } = await import("./index.js");
     await run();
 
-    // Verify reviewer was called with default values
-    expect(review).toHaveBeenCalledExactlyOnceWith({
-      githubToken: "test-token",
-      diffMode: "last-push",
+    // Verify no errors were reported
+    expect(core.setFailed).toHaveBeenCalledWith(
+      "Missing base or head sha to review."
+    );
+  });
+
+  it("should use base and head from getInput", async () => {
+    vi.mocked(github).context.payload = {};
+
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      switch (name) {
+        case "base":
+          return "base-sha";
+        case "head":
+          return "head-sha";
+        default:
+          return getInputDefaults(name);
+      }
+    });
+
+    vi.mocked(ReviewService.prototype.review).mockImplementation(
+      (_options: ReviewOptions) => Promise.resolve()
+    );
+
+    // Import and run the index file
+    const { run } = await import("./index.js");
+    await run();
+
+    // Verify no errors were reported
+    expect(core.setFailed).not.toHaveBeenCalled();
+
+    // Verify reviewer was called with provided values
+    expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith({
+      base: "base-sha",
+      head: "head-sha",
       tokenLimit: 50000,
       changesThreshold: "error",
       reasoningEffort: "medium",
       commitLimit: 100,
     });
+  });
+
+  it("should use base and head from synchronize event", async () => {
+    // Mock github context payload
+    vi.mocked(github).context.payload = {
+      action: "synchronize",
+      before: "base-sha",
+      after: "head-sha",
+    } as Context["payload"];
+
+    vi.mocked(ReviewService.prototype.review).mockImplementation(
+      (_options: ReviewOptions) => Promise.resolve()
+    );
+
+    // Import and run the index file
+    const { run } = await import("./index.js");
+    await run();
 
     // Verify no errors were reported
     expect(core.setFailed).not.toHaveBeenCalled();
 
-    // Verify completion was logged
-    expect(core.info).toHaveBeenCalledExactlyOnceWith("Review completed.");
+    // Verify reviewer was called with provided values
+    expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith({
+      base: "base-sha",
+      head: "head-sha",
+      tokenLimit: 50000,
+      changesThreshold: "error",
+      reasoningEffort: "medium",
+      commitLimit: 100,
+    });
+  });
+
+  it("should use base and head from pull_request event", async () => {
+    // Mock github context payload
+    vi.mocked(github).context.payload = {
+      action: "opened",
+      pull_request: {
+        base: { sha: "base-sha" },
+        head: { sha: "head-sha" },
+      },
+    } as Context["payload"];
+
+    vi.mocked(ReviewService.prototype.review).mockImplementation(
+      (_options: ReviewOptions) => Promise.resolve()
+    );
+
+    // Import and run the index file
+    const { run } = await import("./index.js");
+    await run();
+
+    // Verify no errors were reported
+    expect(core.setFailed).not.toHaveBeenCalled();
+
+    // Verify reviewer was called with provided values
+    expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith({
+      base: "base-sha",
+      head: "head-sha",
+      tokenLimit: 50000,
+      changesThreshold: "error",
+      reasoningEffort: "medium",
+      commitLimit: 100,
+    });
   });
 
   it("should call reviewer with provided values", async () => {
     // Mock inputs with specific values
     (core.getInput as MockType).mockImplementation((name: string) => {
       switch (name) {
-        case "diffMode":
-          return "entire-pr";
+        case "azureOpenAIEndpoint":
+          return "endpoint";
+        case "azureOpenAIDeployment":
+          return "deployment";
+        case "azureOpenAIKey":
+          return "key";
+        case "azureOpenAIVersion":
+          return "version";
         case "severity":
           return "warning";
         case "reasoningEffort":
@@ -93,55 +225,39 @@ describe("index", () => {
           return "150000";
         case "commitLimit":
           return "99";
+        case "base":
+          return "base-sha";
+        case "head":
+          return "head-sha";
         default:
           return "";
       }
     });
 
-    const { review } = await import("./reviewer.js");
-    vi.mocked(review).mockImplementation((_options: ReviewOptions) =>
-      Promise.resolve()
+    vi.mocked(ReviewService.prototype.review).mockImplementation(
+      (_options: ReviewOptions) => Promise.resolve()
     );
 
     // Import and run the index file
     const { run } = await import("./index.js");
     await run();
 
+    // Verify no errors were reported
+    expect(core.setFailed).not.toHaveBeenCalled();
+
     // Verify reviewer was called with provided values
-    expect(review).toHaveBeenCalledExactlyOnceWith({
-      githubToken: "test-token",
-      diffMode: "entire-pr",
+    expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith({
+      base: "base-sha",
+      head: "head-sha",
       tokenLimit: 150000,
       changesThreshold: "warning",
       reasoningEffort: "high",
       commitLimit: 99,
     });
-
-    // Verify no errors were reported
-    expect(core.setFailed).not.toHaveBeenCalled();
-  });
-
-  it("should handle invalid diffMode", async () => {
-    // Mock invalid diffMode
-    (core.getInput as MockType).mockImplementation((name: string) => {
-      if (name === "diffMode") {
-        return "invalid";
-      }
-      return "";
-    });
-
-    const { run } = await import("./index.js");
-    await run();
-
-    // Verify error was reported
-    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
-      "Invalid diff mode: invalid"
-    );
   });
 
   it("should handle invalid severity", async () => {
     (core.getInput as MockType).mockImplementation((name: string) => {
-      if (name === "diffMode") return "last-commit";
       if (name === "severity") return "invalid-severity";
       return "";
     });
@@ -156,7 +272,6 @@ describe("index", () => {
 
   it("should handle invalid reasoningEffort", async () => {
     (core.getInput as MockType).mockImplementation((name: string) => {
-      if (name === "diffMode") return "last-commit";
       if (name === "severity") return "error";
       if (name === "reasoningEffort") return "invalid-effort";
       return "";
@@ -172,7 +287,6 @@ describe("index", () => {
 
   it("should handle invalid tokenLimit", async () => {
     (core.getInput as MockType).mockImplementation((name: string) => {
-      if (name === "diffMode") return "last-commit";
       if (name === "severity") return "error";
       if (name === "reasoningEffort") return "medium";
       if (name === "tokenLimit") return "not-a-number";
@@ -189,7 +303,6 @@ describe("index", () => {
 
   it("should handle invalid commitLimit", async () => {
     (core.getInput as MockType).mockImplementation((name: string) => {
-      if (name === "diffMode") return "last-commit";
       if (name === "severity") return "error";
       if (name === "reasoningEffort") return "medium";
       if (name === "tokenLimit") return "200000";
@@ -219,15 +332,17 @@ describe("index", () => {
 
   it("should handle non-Error objects in catch", async () => {
     (core.getInput as MockType).mockImplementation((name: string) => {
-      if (name === "diffMode") return "last-commit";
-      if (name === "severity") return "error";
-      if (name === "reasoningEffort") return "medium";
-      if (name === "tokenLimit") return "200000";
-      return "";
+      switch (name) {
+        case "base":
+          return "base-sha";
+        case "head":
+          return "head-sha";
+        default:
+          return getInputDefaults(name);
+      }
     });
 
-    const { review } = await import("./reviewer.js");
-    vi.mocked(review).mockRejectedValue(42); // Throw a number instead of an Error
+    vi.mocked(ReviewService.prototype.review).mockRejectedValue(42); // Throw a number instead of an Error
 
     const { run } = await import("./index.js");
     await run();
@@ -239,15 +354,19 @@ describe("index", () => {
 
   it("should handle Error objects with message in catch", async () => {
     (core.getInput as MockType).mockImplementation((name: string) => {
-      if (name === "diffMode") return "last-commit";
-      if (name === "severity") return "error";
-      if (name === "reasoningEffort") return "medium";
-      if (name === "tokenLimit") return "200000";
-      return "";
+      switch (name) {
+        case "base":
+          return "base-sha";
+        case "head":
+          return "head-sha";
+        default:
+          return getInputDefaults(name);
+      }
     });
 
-    const { review } = await import("./reviewer.js");
-    vi.mocked(review).mockRejectedValue(new Error("Test error message")); // Throw an Error with message
+    vi.mocked(ReviewService.prototype.review).mockRejectedValue(
+      new Error("Test error message")
+    ); // Throw an Error with message
 
     const { run } = await import("./index.js");
     await run();
