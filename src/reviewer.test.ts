@@ -44,6 +44,8 @@ describe("reviewer", () => {
 
     // Mock GitHubService methods
     vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
       commits: [
         {
           sha: "test-sha",
@@ -245,6 +247,8 @@ commit diff
 
     // Mock GitHubService to return multiple patches
     vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
       commits: [
         {
           sha: "head-sha",
@@ -286,6 +290,8 @@ commit diff
   it("should handle no diff found", async () => {
     // Mock GitHubService to return empty patches
     vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
       commits: [],
       patches: [],
     });
@@ -314,6 +320,8 @@ commit diff
 
     // Mock successful diff retrieval
     vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
       commits: [
         {
           sha: "test-sha",
@@ -377,6 +385,8 @@ commit diff
     });
 
     vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
       commits: [],
       patches: [],
     });
@@ -404,6 +414,8 @@ commit diff
     });
 
     vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
       commits: [
         {
           sha: "base-sha",
