@@ -35487,15 +35487,14 @@ __nccwpck_require__.d(__webpack_exports__, {
 
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
 var core = __nccwpck_require__(7484);
+// EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
+var github = __nccwpck_require__(3228);
 ;// CONCATENATED MODULE: ./src/validators.ts
 function isValidReasoningEffort(reasoningEffort) {
     return ["low", "medium", "high"].includes(reasoningEffort);
 }
 function isValidSeverityLevel(severity) {
     return ["info", "warning", "error"].includes(severity);
-}
-function isValidDiffMode(diffMode) {
-    return ["last-commit", "entire-pr", "last-push"].includes(diffMode);
 }
 function isValidTokenLimit(limit) {
     const num = parseInt(limit, 10);
@@ -35505,9 +35504,19 @@ function isValidCommitLimit(limit) {
     const num = parseInt(limit, 10);
     return !isNaN(num) && num > 0 && num <= 100;
 }
+function isValidAzureEndpoint(endpoint) {
+    return endpoint.length > 0; // Add further validation if necessary
+}
+function isValidAzureDeployment(deployment) {
+    return deployment.length > 0; // Add further validation if necessary
+}
+function isValidAzureApiKey(apiKey) {
+    return apiKey.length > 0; // Add further validation if necessary
+}
+function isValidAzureApiVersion(apiVersion) {
+    return apiVersion.length > 0; // Add further validation if necessary
+}
 
-// EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
-var github = __nccwpck_require__(3228);
 ;// CONCATENATED MODULE: ./node_modules/gpt-tokenizer/esm/bpeRanks/cl100k_base.js
 /* eslint-disable */
 // @ts-nocheck
@@ -37153,6 +37162,379 @@ const { decode, decodeAsyncGenerator, decodeGenerator, encode, encodeGenerator, 
 
 
 //# sourceMappingURL=main.js.map
+;// CONCATENATED MODULE: ./src/reviewer.ts
+
+
+class ReviewService {
+    githubService;
+    azureService;
+    constructor(githubService, azureService) {
+        this.githubService = githubService;
+        this.azureService = azureService;
+    }
+    packCommit(accumulated, commit, tokenLimit) {
+        core.debug(`Packing commit: ${commit.sha}`);
+        let commitBlock = `\n## COMMIT SHA: ${commit.sha}\n\n${commit.message}\n`;
+        const skippedPatches = [];
+        const usedPatches = [];
+        for (const p of commit.patches) {
+            core.debug(`Packing patch: ${p.filename}`);
+            const patchBlock = `\n### FILE: ${p.filename}\n\n\`\`\`diff\n${p.patch}\n\`\`\`\n`;
+            // Check if we can add this patch without exceeding limit
+            const combinedPreview = accumulated + commitBlock + patchBlock;
+            // isWithinTokenLimit returns false if limit exceeded
+            const check = isWithinTokenLimit(combinedPreview, tokenLimit);
+            if (!check) {
+                // Skip adding this patch
+                core.debug(`Skipping patch ${p.filename} due to token limit.`);
+                skippedPatches.push(p);
+                continue;
+            }
+            // If within limit, add it
+            core.debug(`Adding patch ${p.filename} to commit block.`);
+            commitBlock += patchBlock;
+            usedPatches.push(p);
+        }
+        if (usedPatches.length === 0) {
+            core.warning("No patches fit within token limit.");
+            return null;
+        }
+        else if (skippedPatches.length > 0) {
+            core.warning(`${skippedPatches.length} patches did not fit within tokenLimit = ${tokenLimit}.`);
+        }
+        return {
+            block: commitBlock,
+            usedPatches,
+            skippedPatches,
+        };
+    }
+    async buildPrompt(options) {
+        const prDetails = await this.githubService.getPrDetails();
+        core.debug(`Loaded PR #${prDetails.number} with ${prDetails.commitCount} commits.`);
+        const results = await this.githubService.compareCommits(options.base, options.head);
+        // check that prDetails.head is contained in patches.commits
+        if (!results.commits.find((c) => c.sha === prDetails.head)) {
+            core.warning(`PR head commit ${prDetails.head} was not included in commit comparison.`);
+        }
+        if (results.commits.length === 0) {
+            core.info("No commits found to review.");
+            return null;
+        }
+        core.info(`Building prompt for PR #${prDetails.number}: ${prDetails.title}`);
+        let prompt = `# ${prDetails.title}\n`;
+        if (prDetails.body) {
+            prompt += `\n${prDetails.body}\n`;
+        }
+        const packedCommits = [];
+        for (const c of results.commits) {
+            core.debug(`Processing commit: ${c.sha}`);
+            const commitDetails = await this.githubService.getCommitDetails(c.sha);
+            core.debug(`Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`);
+            const packed = this.packCommit(prompt, commitDetails, options.tokenLimit);
+            if (!packed) {
+                core.warning(`Could not pack commit ${c.sha} within token limit.`);
+                break;
+            }
+            core.debug(`Patches Used: ${packed.usedPatches.length}, Patches Skipped: ${packed.skippedPatches.length}`);
+            core.info(`Packed commit ${c.sha} with ${packed.usedPatches.length} patches into prompt.`);
+            core.info(`Commit message: ${commitDetails.message}`);
+            prompt += packed.block;
+            packedCommits.push({
+                commit: commitDetails,
+                patches: packed.usedPatches,
+            });
+        }
+        // final token count check
+        const tokenCount = isWithinTokenLimit(prompt, options.tokenLimit);
+        core.info(`Total Prompt Length: ${prompt.length}, Token Count: ${tokenCount}`);
+        return {
+            prompt,
+            commits: packedCommits,
+        };
+    }
+    async review(options) {
+        const pr = await this.buildPrompt(options);
+        if (!pr || !pr.commits || pr.commits.length === 0) {
+            core.info("No commits found to review.");
+            return;
+        }
+        core.info("Calling Azure OpenAI...");
+        const response = await this.azureService.runReviewPrompt(pr.prompt, {
+            reasoningEffort: options.reasoningEffort,
+        });
+        if (!response?.comments || response.comments.length === 0) {
+            core.info("No suggestions from AI.");
+            return;
+        }
+        core.info(`Got ${response.comments.length} suggestions from AI.`);
+        // 4. Post Comments to PR
+        const result = await this.githubService.postReviewComments(response.comments, options.changesThreshold, pr.commits);
+        core.info(`Posted ${result.reviewComments} comments and requested ${result.reviewChanges} changes.`);
+    }
+}
+
+;// CONCATENATED MODULE: ./src/diffparser.ts
+/**
+ * Finds the line position of a specified line number (newFileLine) within a unified diff patch.
+ *
+ * Algorithm explanation:
+ * 1. Split the patch into lines and iterate through them.
+ * 2. Ignore lines until the first '@@' hunk header is encountered.
+ * 3. From that point on, increment a counter for each line that is an addition ("+") or unmodified line (" ").
+ * 4. If the counter matches the target newFileLine, the position returned is how many lines have passed
+ *    since the first '@@' hunk header.
+ *
+ * According to GitHub's specification:
+ * "The position value equals the number of lines down from the first '@@' hunk header
+ * in the file. The line just below the '@@' line is position 1, the next line is
+ * position 2, and so on. The position in the diff continues to increase through
+ * lines of whitespace and additional hunks until the beginning of a new file."
+ *
+ * @param patch       Unified diff string
+ * @param targetLine  Line number in the "side" of the file to locate
+ * @param side        Side of the diff to search for the line
+ * @returns           Position in the diff, or null if not found
+ */
+function findPositionInDiff(patch, targetLine, side) {
+    // Split into lines
+    const lines = patch.split("\n");
+    // Tracks the current line number in the old file and new file
+    let trackedOldLine = 0;
+    let trackedNewLine = 0;
+    // Indicates if we've encountered the first "@@" hunk header
+    let hasFoundFirstHunk = false;
+    // Zero-based index of the line where the first "@@" occurs
+    let firstHunkLineIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        // Detect a hunk header, e.g. "@@ -123,4 +567,8 @@"
+        if (line.startsWith("@@ ")) {
+            // Attempt to parse the old/new line starts
+            const match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+            if (match) {
+                // We only care about the starting line numbers, ignoring lengths for this purpose
+                const oldStart = parseInt(match[1], 10);
+                const newStart = parseInt(match[3], 10);
+                trackedOldLine = oldStart - 1;
+                trackedNewLine = newStart - 1;
+                if (!hasFoundFirstHunk) {
+                    hasFoundFirstHunk = true;
+                    firstHunkLineIndex = i;
+                }
+            }
+            continue;
+        }
+        // Skip lines until we've encountered the first "@@"
+        if (!hasFoundFirstHunk) {
+            continue;
+        }
+        // In a unified diff:
+        //   - lines starting with " " appear in both old and new
+        //   - lines starting with "-" only appear in old
+        //   - lines starting with "+" only appear in new
+        if (line.startsWith(" ")) {
+            // Unmodified line on both sides
+            trackedOldLine++;
+            trackedNewLine++;
+        }
+        else if (line.startsWith("-")) {
+            // Deleted line, only on old (LEFT)
+            trackedOldLine++;
+        }
+        else if (line.startsWith("+")) {
+            // Added line, only on new (RIGHT)
+            trackedNewLine++;
+        }
+        // Check if we've hit the target line for the requested side
+        if (side === "LEFT" && trackedOldLine === targetLine) {
+            return i - firstHunkLineIndex;
+        }
+        if (side === "RIGHT" && trackedNewLine === targetLine) {
+            return i - firstHunkLineIndex;
+        }
+    }
+    // If we exhaust the patch lines without matching targetLine, return null
+    return null;
+}
+
+;// CONCATENATED MODULE: ./src/githubService.ts
+
+
+
+class GitHubService {
+    octokit;
+    config;
+    constructor(config) {
+        this.octokit = github.getOctokit(config.token);
+        this.config = config;
+    }
+    verifyCommentLineInPatch(filename, line, side, patches) {
+        const target = patches.find((p) => p.filename === filename);
+        if (!target) {
+            core.warning(`No patch found for file: ${filename}`);
+            return false;
+        }
+        const position = findPositionInDiff(target.patch, line, side);
+        core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
+        return position !== null;
+    }
+    async createReview(event, review, sha) {
+        core.debug(`Creating ${event} review for ${sha} with ${review.length} comments`);
+        await this.octokit.rest.pulls.createReview({
+            owner: this.config.owner,
+            repo: this.config.repo,
+            pull_number: this.config.pullNumber,
+            commit_id: sha,
+            event: event,
+            comments: review.map((c) => ({
+                path: c.file,
+                line: c.line,
+                side: c.side,
+                body: c.comment,
+            })),
+        });
+    }
+    async postReviewComments(comments, changesThreshold, commits) {
+        // Order of severity levels
+        const severityOrder = ["info", "warning", "error"];
+        const thresholdIndex = severityOrder.indexOf(changesThreshold);
+        // Separate comments that are outside the diff patch
+        const issueComments = [];
+        // group comments by commit
+        const commentsByCommit = comments.reduce((acc, c) => {
+            const commit = commits.find((d) => d.commit.sha === c.sha);
+            if (!commit) {
+                core.warning(`No commit found for sha: ${c.sha}`);
+                issueComments.push(c);
+                return acc;
+            }
+            if (!this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches)) {
+                core.warning(`Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`);
+                issueComments.push(c);
+                return acc;
+            }
+            const group = acc.find((g) => g.sha === c.sha);
+            if (group) {
+                group.comments.push(c);
+            }
+            else {
+                acc.push({
+                    sha: c.sha,
+                    commit,
+                    comments: [c],
+                });
+            }
+            return acc;
+        }, []);
+        const allChanges = [];
+        const allComments = [];
+        // process each sha separately
+        for (const group of commentsByCommit) {
+            // Build up the array of comments that meet or exceed the threshold to require changes
+            const groupChanges = group.comments.filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex);
+            if (groupChanges.length) {
+                await this.createReview("REQUEST_CHANGES", groupChanges, group.sha);
+                allChanges.push(...groupChanges);
+            }
+            // The remaining comments will be posted as informational comments
+            const groupComments = group.comments.filter((c) => !groupChanges.includes(c));
+            if (groupComments.length) {
+                await this.createReview("COMMENT", groupComments, group.sha);
+                allComments.push(...groupComments);
+            }
+        }
+        // Post fallback comments as issue comments
+        for (const comment of issueComments) {
+            await this.octokit.rest.issues.createComment({
+                owner: this.config.owner,
+                repo: this.config.repo,
+                issue_number: this.config.pullNumber,
+                body: `Comment on line ${comment.line} (${comment.side}) of file ${comment.file}: ${comment.comment}`,
+            });
+        }
+        return {
+            reviewChanges: allChanges.length,
+            reviewComments: allComments.length,
+            issueComments: issueComments.length,
+        };
+    }
+    async getPrDetails() {
+        const prResponse = await this.octokit.rest.pulls.get({
+            owner: this.config.owner,
+            repo: this.config.repo,
+            pull_number: this.config.pullNumber,
+        });
+        if (prResponse.status !== 200) {
+            throw new Error(`Failed to list commits for pr #${this.config.pullNumber}, status: ${prResponse.status}`);
+        }
+        return {
+            number: prResponse.data.number,
+            title: prResponse.data.title,
+            body: prResponse.data.body ? prResponse.data.body : undefined,
+            head: prResponse.data.head.sha,
+            base: prResponse.data.base.sha,
+            commitCount: prResponse.data.commits,
+        };
+    }
+    async compareCommits(base, head) {
+        try {
+            const response = await this.octokit.rest.repos.compareCommitsWithBasehead({
+                owner: this.config.owner,
+                repo: this.config.repo,
+                basehead: `${base}...${head}`,
+            });
+            if (response.status !== 200) {
+                throw new Error(`Failed to compare commit head ${head} to base ${base}, status: ${response.status}`);
+            }
+            const patches = (response.data.files || [])
+                .filter((file) => !!file.patch && file.patch.length > 0)
+                .map((file) => ({
+                filename: file.filename,
+                patch: file.patch,
+            }));
+            return {
+                base,
+                head,
+                commits: response.data.commits.map((commit) => ({
+                    sha: commit.sha,
+                    message: commit.commit.message,
+                    patches: [], // get patches for each commit to base
+                })),
+                patches,
+            };
+        }
+        catch (error) {
+            throw new Error(`Failed to compare commits: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+    async getCommitDetails(sha) {
+        try {
+            const response = await this.octokit.rest.repos.getCommit({
+                owner: this.config.owner,
+                repo: this.config.repo,
+                ref: sha,
+            });
+            if (response.status !== 200) {
+                throw new Error(`Failed to get commit details for ${sha}, status: ${response.status}`);
+            }
+            const patches = (response.data.files || [])
+                .filter((file) => !!file.patch && file.patch.length > 0)
+                .map((file) => ({
+                filename: file.filename,
+                patch: file.patch,
+            }));
+            return {
+                sha,
+                message: response.data.commit.message,
+                patches,
+            };
+        }
+        catch (error) {
+            throw new Error(`Failed to get commit details: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+}
+
 ;// CONCATENATED MODULE: ./node_modules/openai/internal/qs/formats.mjs
 const default_format = 'RFC3986';
 const formatters = {
@@ -49422,431 +49804,16 @@ If you have no comments, return an empty comments array. Respond in JSON format.
     }
 }
 
-;// CONCATENATED MODULE: ./src/diffparser.ts
-/**
- * Finds the line position of a specified line number (newFileLine) within a unified diff patch.
- *
- * Algorithm explanation:
- * 1. Split the patch into lines and iterate through them.
- * 2. Ignore lines until the first '@@' hunk header is encountered.
- * 3. From that point on, increment a counter for each line that is an addition ("+") or unmodified line (" ").
- * 4. If the counter matches the target newFileLine, the position returned is how many lines have passed
- *    since the first '@@' hunk header.
- *
- * According to GitHub's specification:
- * "The position value equals the number of lines down from the first '@@' hunk header
- * in the file. The line just below the '@@' line is position 1, the next line is
- * position 2, and so on. The position in the diff continues to increase through
- * lines of whitespace and additional hunks until the beginning of a new file."
- *
- * @param patch       Unified diff string
- * @param targetLine  Line number in the "side" of the file to locate
- * @param side        Side of the diff to search for the line
- * @returns           Position in the diff, or null if not found
- */
-function findPositionInDiff(patch, targetLine, side) {
-    // Split into lines
-    const lines = patch.split("\n");
-    // Tracks the current line number in the old file and new file
-    let trackedOldLine = 0;
-    let trackedNewLine = 0;
-    // Indicates if we've encountered the first "@@" hunk header
-    let hasFoundFirstHunk = false;
-    // Zero-based index of the line where the first "@@" occurs
-    let firstHunkLineIndex = -1;
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        // Detect a hunk header, e.g. "@@ -123,4 +567,8 @@"
-        if (line.startsWith("@@ ")) {
-            // Attempt to parse the old/new line starts
-            const match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
-            if (match) {
-                // We only care about the starting line numbers, ignoring lengths for this purpose
-                const oldStart = parseInt(match[1], 10);
-                const newStart = parseInt(match[3], 10);
-                trackedOldLine = oldStart - 1;
-                trackedNewLine = newStart - 1;
-                if (!hasFoundFirstHunk) {
-                    hasFoundFirstHunk = true;
-                    firstHunkLineIndex = i;
-                }
-            }
-            continue;
-        }
-        // Skip lines until we've encountered the first "@@"
-        if (!hasFoundFirstHunk) {
-            continue;
-        }
-        // In a unified diff:
-        //   - lines starting with " " appear in both old and new
-        //   - lines starting with "-" only appear in old
-        //   - lines starting with "+" only appear in new
-        if (line.startsWith(" ")) {
-            // Unmodified line on both sides
-            trackedOldLine++;
-            trackedNewLine++;
-        }
-        else if (line.startsWith("-")) {
-            // Deleted line, only on old (LEFT)
-            trackedOldLine++;
-        }
-        else if (line.startsWith("+")) {
-            // Added line, only on new (RIGHT)
-            trackedNewLine++;
-        }
-        // Check if we've hit the target line for the requested side
-        if (side === "LEFT" && trackedOldLine === targetLine) {
-            return i - firstHunkLineIndex;
-        }
-        if (side === "RIGHT" && trackedNewLine === targetLine) {
-            return i - firstHunkLineIndex;
-        }
-    }
-    // If we exhaust the patch lines without matching targetLine, return null
-    return null;
-}
-
-;// CONCATENATED MODULE: ./src/githubService.ts
-
-
-
-class GitHubService {
-    octokit;
-    config;
-    constructor(config) {
-        this.octokit = github.getOctokit(config.token);
-        this.config = config;
-    }
-    verifyCommentLineInPatch(filename, line, side, patches) {
-        const target = patches.find((p) => p.filename === filename);
-        if (!target) {
-            core.warning(`No patch found for file: ${filename}`);
-            return false;
-        }
-        const position = findPositionInDiff(target.patch, line, side);
-        core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
-        return position !== null;
-    }
-    async createReview(event, review, sha) {
-        core.debug(`Creating ${event} review for ${sha} with ${review.length} comments`);
-        await this.octokit.rest.pulls.createReview({
-            owner: this.config.owner,
-            repo: this.config.repo,
-            pull_number: this.config.pullNumber,
-            commit_id: sha,
-            event: event,
-            comments: review.map((c) => ({
-                path: c.file,
-                line: c.line,
-                side: c.side,
-                body: c.comment,
-            })),
-        });
-    }
-    async postReviewComments(comments, changesThreshold, commits) {
-        // Order of severity levels
-        const severityOrder = ["info", "warning", "error"];
-        const thresholdIndex = severityOrder.indexOf(changesThreshold);
-        // Separate comments that are outside the diff patch
-        const issueComments = [];
-        // group comments by commit
-        const commentsByCommit = comments.reduce((acc, c) => {
-            const commit = commits.find((d) => d.commit.sha === c.sha);
-            if (!commit) {
-                core.warning(`No commit found for sha: ${c.sha}`);
-                issueComments.push(c);
-                return acc;
-            }
-            if (!this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches)) {
-                core.warning(`Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`);
-                issueComments.push(c);
-                return acc;
-            }
-            const group = acc.find((g) => g.sha === c.sha);
-            if (group) {
-                group.comments.push(c);
-            }
-            else {
-                acc.push({
-                    sha: c.sha,
-                    commit,
-                    comments: [c],
-                });
-            }
-            return acc;
-        }, []);
-        const allChanges = [];
-        const allComments = [];
-        // process each sha separately
-        for (const group of commentsByCommit) {
-            // Build up the array of comments that meet or exceed the threshold to require changes
-            const groupChanges = group.comments.filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex);
-            if (groupChanges.length) {
-                await this.createReview("REQUEST_CHANGES", groupChanges, group.sha);
-                allChanges.push(...groupChanges);
-            }
-            // The remaining comments will be posted as informational comments
-            const groupComments = group.comments.filter((c) => !groupChanges.includes(c));
-            if (groupComments.length) {
-                await this.createReview("COMMENT", groupComments, group.sha);
-                allComments.push(...groupComments);
-            }
-        }
-        // Post fallback comments as issue comments
-        for (const comment of issueComments) {
-            await this.octokit.rest.issues.createComment({
-                owner: this.config.owner,
-                repo: this.config.repo,
-                issue_number: this.config.pullNumber,
-                body: `Comment on line ${comment.line} (${comment.side}) of file ${comment.file}: ${comment.comment}`,
-            });
-        }
-        return {
-            reviewChanges: allChanges.length,
-            reviewComments: allComments.length,
-            issueComments: issueComments.length,
-        };
-    }
-    // load the PR details, including xx commits in chronological order (or specific commits based on mode)
-    async getPrDetails(diffMode, commitLimit) {
-        if (commitLimit > 100) {
-            // max allowed, could paginate in the future but context is still limited
-            throw new Error("Cannot request more than 100 commits");
-        }
-        const prResponse = await this.octokit.rest.pulls.get({
-            owner: this.config.owner,
-            repo: this.config.repo,
-            pull_number: this.config.pullNumber,
-        });
-        if (prResponse.status !== 200) {
-            throw new Error(`Failed to list commits for pr #${this.config.pullNumber}, status: ${prResponse.status}`);
-        }
-        const commits = [];
-        if (diffMode === "last-commit") {
-            commits.push({ sha: prResponse.data.head.sha });
-        }
-        else if (diffMode === "last-push") {
-            const pushedAt = prResponse.data.head.repo?.pushed_at ??
-                prResponse.data.base.repo.pushed_at;
-            core.debug(`Listing commits since last push at ${pushedAt}`);
-            // Get all commits and filter by the last push timestamp
-            const commitsResponse = await this.octokit.rest.repos.listCommits({
-                owner: this.config.owner,
-                repo: this.config.repo,
-                pull_number: this.config.pullNumber,
-                sha: prResponse.data.head.sha,
-                since: pushedAt,
-                per_page: commitLimit,
-            });
-            if (commitsResponse.status !== 200) {
-                throw new Error(`Failed to list commits for pr #${this.config.pullNumber} since ${pushedAt}, status: ${commitsResponse.status}`);
-            }
-            const lastPushCommits = commitsResponse.data;
-            core.debug(`Found ${lastPushCommits.length} commits since last push`);
-            commits.push(...lastPushCommits.map((c) => ({ sha: c.sha })));
-        }
-        else {
-            const commitsResponse = await this.octokit.rest.pulls.listCommits({
-                owner: this.config.owner,
-                repo: this.config.repo,
-                pull_number: this.config.pullNumber,
-                per_page: commitLimit,
-            });
-            if (commitsResponse.status !== 200) {
-                throw new Error(`Failed to list commits for pr #${this.config.pullNumber}, status: ${commitsResponse.status}`);
-            }
-            core.debug(`Found ${commitsResponse.data.length} commits`);
-            commits.push(...commitsResponse.data.map((c) => ({ sha: c.sha })));
-        }
-        return {
-            pull_number: prResponse.data.number,
-            title: prResponse.data.title,
-            body: prResponse.data.body,
-            headSha: prResponse.data.head.sha,
-            baseSha: prResponse.data.base.sha,
-            commitCount: prResponse.data.commits,
-            commits,
-        };
-    }
-    async compareCommits(baseSha, headSha) {
-        try {
-            const response = await this.octokit.rest.repos.compareCommitsWithBasehead({
-                owner: this.config.owner,
-                repo: this.config.repo,
-                basehead: `${baseSha}...${headSha}`,
-            });
-            if (response.status !== 200) {
-                throw new Error(`Failed to compare commit head ${headSha} to base ${baseSha}, status: ${response.status}`);
-            }
-            const patches = (response.data.files || [])
-                .filter((file) => !!file.patch && file.patch.length > 0)
-                .map((file) => ({
-                filename: file.filename,
-                patch: file.patch,
-            }));
-            return patches;
-        }
-        catch (error) {
-            throw new Error(`Failed to compare commits: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
-    async getCommitDetails(sha) {
-        try {
-            const response = await this.octokit.rest.repos.getCommit({
-                owner: this.config.owner,
-                repo: this.config.repo,
-                ref: sha,
-            });
-            if (response.status !== 200) {
-                throw new Error(`Failed to get commit details for ${sha}, status: ${response.status}`);
-            }
-            const patches = (response.data.files || [])
-                .filter((file) => !!file.patch && file.patch.length > 0)
-                .map((file) => ({
-                filename: file.filename,
-                patch: file.patch,
-            }));
-            return {
-                sha,
-                message: response.data.commit.message,
-                patches,
-            };
-        }
-        catch (error) {
-            throw new Error(`Failed to get commit details: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
-}
-
-;// CONCATENATED MODULE: ./src/reviewer.ts
-
-
-
-
-
-function packCommit(accumulated, commit, tokenLimit) {
-    core.debug(`Packing commit: ${commit.sha}`);
-    let commitBlock = `\n## COMMIT SHA: ${commit.sha}\n\n${commit.message}\n`;
-    const skippedPatches = [];
-    const usedPatches = [];
-    for (const p of commit.patches) {
-        core.debug(`Packing patch: ${p.filename}`);
-        const patchBlock = `\n### FILE: ${p.filename}\n\n\`\`\`diff\n${p.patch}\n\`\`\`\n`;
-        // Check if we can add this patch without exceeding limit
-        const combinedPreview = accumulated + commitBlock + patchBlock;
-        // isWithinTokenLimit returns false if limit exceeded
-        const check = isWithinTokenLimit(combinedPreview, tokenLimit);
-        if (!check) {
-            // Skip adding this patch
-            core.debug(`Skipping patch ${p.filename} due to token limit.`);
-            skippedPatches.push(p);
-            continue;
-        }
-        // If within limit, add it
-        core.debug(`Adding patch ${p.filename} to commit block.`);
-        commitBlock += patchBlock;
-        usedPatches.push(p);
-    }
-    if (usedPatches.length === 0) {
-        core.warning("No patches fit within token limit.");
-        return null;
-    }
-    else if (skippedPatches.length > 0) {
-        core.warning(`${skippedPatches.length} patches did not fit within tokenLimit = ${tokenLimit}.`);
-    }
-    return {
-        block: commitBlock,
-        usedPatches,
-        skippedPatches,
-    };
-}
-async function buildPrompt(githubService, diffMode, tokenLimit, commitLimit) {
-    const prDetails = await githubService.getPrDetails(diffMode, commitLimit);
-    core.debug(`Loaded PR #${prDetails.pull_number} with ${prDetails.commits.length} commits.`);
-    // check that prDetails.headSha is contained in prDetails.commits
-    if (!prDetails.commits.find((c) => c.sha === prDetails.headSha)) {
-        core.warning(`PR head commit ${prDetails.headSha} was not included in PR commits.`);
-    }
-    if (prDetails.commits.length === 0) {
-        core.info("No commits found to review.");
-        return null;
-    }
-    core.info(`Building prompt for PR #${prDetails.pull_number}: ${prDetails.title}`);
-    let prompt = `# ${prDetails.title}\n`;
-    if (prDetails.body) {
-        prompt += `\n${prDetails.body}\n`;
-    }
-    const packedCommits = [];
-    for (const c of prDetails.commits) {
-        core.debug(`Processing commit: ${c.sha}`);
-        const commitDetails = await githubService.getCommitDetails(c.sha);
-        core.debug(`Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`);
-        const packed = packCommit(prompt, commitDetails, tokenLimit);
-        if (!packed) {
-            core.warning(`Could not pack commit ${c.sha} within token limit.`);
-            break;
-        }
-        core.debug(`Patches Used: ${packed.usedPatches.length}, Patches Skipped: ${packed.skippedPatches.length}`);
-        core.info(`Packed commit ${c.sha} with ${packed.usedPatches.length} patches into prompt.`);
-        core.info(`Commit message: ${commitDetails.message}`);
-        prompt += packed.block;
-        packedCommits.push({ commit: commitDetails, patches: packed.usedPatches });
-    }
-    // final token count check
-    const tokenCount = isWithinTokenLimit(prompt, tokenLimit);
-    core.info(`Total Prompt Length: ${prompt.length}, Token Count: ${tokenCount}`);
-    return {
-        prompt,
-        commits: packedCommits,
-    };
-}
-async function review(options) {
-    const { owner, repo, number: pull_number } = github.context.issue;
-    const githubService = new GitHubService({
-        token: options.githubToken,
-        owner,
-        repo,
-        pullNumber: pull_number,
-    });
-    const pr = await buildPrompt(githubService, options.diffMode, options.tokenLimit, options.commitLimit);
-    if (!pr || !pr.commits || pr.commits.length === 0) {
-        core.info("No commits found to review.");
-        return;
-    }
-    // 3. Setup Azure OpenAI Service
-    const azureConfig = {
-        endpoint: core.getInput("azureOpenAIEndpoint"),
-        deployment: core.getInput("azureOpenAIDeployment"),
-        apiKey: core.getInput("azureOpenAIKey"),
-        apiVersion: core.getInput("azureOpenAIVersion") || "2024-12-01-preview",
-    };
-    const azureService = new AzureOpenAIService(azureConfig);
-    core.info("Calling Azure OpenAI...");
-    const response = await azureService.runReviewPrompt(pr.prompt, {
-        reasoningEffort: options.reasoningEffort,
-    });
-    if (!response?.comments || response.comments.length === 0) {
-        core.info("No suggestions from AI.");
-        return;
-    }
-    core.info(`Got ${response.comments.length} suggestions from AI.`);
-    // 4. Post Comments to PR
-    const result = await githubService.postReviewComments(response.comments, options.changesThreshold, pr.commits);
-    core.info(`Posted ${result.reviewComments} comments and requested ${result.reviewChanges} changes.`);
-}
-
 ;// CONCATENATED MODULE: ./src/index.ts
+
+
+
 
 
 
 async function run() {
     try {
         // 1. Validate Inputs
-        const diffMode = core.getInput("diffMode") || "last-push";
-        if (!isValidDiffMode(diffMode)) {
-            core.setFailed(`Invalid diff mode: ${diffMode}`);
-            return;
-        }
         const changesThreshold = core.getInput("severity") || "error";
         if (!isValidSeverityLevel(changesThreshold)) {
             core.setFailed(`Invalid severity: ${changesThreshold}`);
@@ -49874,10 +49841,65 @@ async function run() {
             core.setFailed("Missing GITHUB_TOKEN in environment.");
             return;
         }
+        // Validate Azure-related inputs
+        const azureOpenAIEndpoint = core.getInput("azureOpenAIEndpoint");
+        if (!isValidAzureEndpoint(azureOpenAIEndpoint)) {
+            core.setFailed(`Invalid Azure OpenAI endpoint: ${azureOpenAIEndpoint}`);
+            return;
+        }
+        const azureOpenAIDeployment = core.getInput("azureOpenAIDeployment");
+        if (!isValidAzureDeployment(azureOpenAIDeployment)) {
+            core.setFailed(`Invalid Azure OpenAI deployment: ${azureOpenAIDeployment}`);
+            return;
+        }
+        const azureOpenAIKey = core.getInput("azureOpenAIKey");
+        if (!isValidAzureApiKey(azureOpenAIKey)) {
+            core.setFailed("Invalid Azure OpenAI API key");
+            return;
+        }
+        core.setSecret(azureOpenAIKey); // Treat the API key as a secret
+        const azureOpenAIVersion = core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
+        if (!isValidAzureApiVersion(azureOpenAIVersion)) {
+            core.setFailed(`Invalid Azure OpenAI API version: ${azureOpenAIVersion}`);
+            return;
+        }
+        // Check the pull_request event in the payload
+        const action = github.context.payload.action;
+        let base = core.getInput("base"); // possibly empty
+        let head = core.getInput("head"); // possibly empty
+        // If user hasn't explicitly given base/head, override from the event:
+        if (!base && !head) {
+            if (action === "opened") {
+                base = github.context.payload.pull_request?.base?.sha;
+                head = github.context.payload.pull_request?.head?.sha;
+            }
+            else if (action === "synchronize") {
+                base = github.context.payload.before;
+                head = github.context.payload.after;
+            }
+        }
+        if (!base || !head) {
+            core.setFailed("Missing base or head sha to review.");
+            return;
+        }
+        const { owner, repo, number: pullNumber } = github.context.issue;
+        const githubService = new GitHubService({
+            token: githubToken,
+            owner,
+            repo,
+            pullNumber,
+        });
+        const azureService = new AzureOpenAIService({
+            endpoint: azureOpenAIEndpoint,
+            deployment: azureOpenAIDeployment,
+            apiKey: azureOpenAIKey,
+            apiVersion: azureOpenAIVersion,
+        });
         // 2. Run Reviewer
-        await review({
-            githubToken,
-            diffMode,
+        const reviewerService = new ReviewService(githubService, azureService);
+        await reviewerService.review({
+            base,
+            head,
             tokenLimit,
             changesThreshold,
             reasoningEffort,
