@@ -1,22 +1,18 @@
 import * as core from "@actions/core";
+import * as github from "@actions/github";
 import {
-  isValidDiffMode,
   isValidSeverityLevel,
   isValidReasoningEffort,
   isValidTokenLimit,
   isValidCommitLimit,
 } from "./validators.js";
-import { review } from "./reviewer.js";
+import { ReviewService } from "./reviewer.js";
+import { GitHubService } from "./githubService.js";
+import { AzureOpenAIService } from "./azureOpenAIService.js";
 
 export async function run(): Promise<void> {
   try {
     // 1. Validate Inputs
-    const diffMode = core.getInput("diffMode") || "last-push";
-    if (!isValidDiffMode(diffMode)) {
-      core.setFailed(`Invalid diff mode: ${diffMode}`);
-      return;
-    }
-
     const changesThreshold = core.getInput("severity") || "error";
     if (!isValidSeverityLevel(changesThreshold)) {
       core.setFailed(`Invalid severity: ${changesThreshold}`);
@@ -49,10 +45,47 @@ export async function run(): Promise<void> {
       return;
     }
 
+    // Check the pull_request event in the payload
+    const action = github.context.payload.action;
+    let base = core.getInput("base"); // possibly empty
+    let head = core.getInput("head"); // possibly empty
+
+    // If user hasn't explicitly given base/head, override from the event:
+    if (!base && !head) {
+      if (action === "opened") {
+        base = github.context.payload.pull_request?.base?.sha;
+        head = github.context.payload.pull_request?.head?.sha;
+      } else if (action === "synchronize") {
+        base = github.context.payload.before;
+        head = github.context.payload.after;
+      }
+    }
+
+    if (!base || !head) {
+      core.setFailed("Missing base or head sha to review.");
+      return;
+    }
+
+    const { owner, repo, number: pullNumber } = github.context.issue;
+    const githubService = new GitHubService({
+      token: githubToken,
+      owner,
+      repo,
+      pullNumber,
+    });
+
+    const azureService = new AzureOpenAIService({
+      endpoint: core.getInput("azureOpenAIEndpoint"),
+      deployment: core.getInput("azureOpenAIDeployment"),
+      apiKey: core.getInput("azureOpenAIKey"),
+      apiVersion: core.getInput("azureOpenAIVersion") || "2024-12-01-preview",
+    });
+
     // 2. Run Reviewer
-    await review({
-      githubToken,
-      diffMode,
+    const reviewerService = new ReviewService(githubService, azureService);
+    await reviewerService.review({
+      base,
+      head,
       tokenLimit,
       changesThreshold,
       reasoningEffort,

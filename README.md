@@ -10,7 +10,7 @@ This GitHub Action uses Azure OpenAI to automatically review pull request diffs 
 
 ## Usage
 
-1. **Create a workflow file** (e.g. `.github/workflows/ai-review.yml` in your target repo):
+**Create a workflow file** (e.g. `.github/workflows/ai-review.yml` in your target repo):
 
 ```yaml
 name: AI Code Review
@@ -30,27 +30,28 @@ jobs:
           azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_REASONING_ENDPOINT }}
           azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_REASONING_DEPLOYMENT }}
           azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
-          diffMode: "last-push" # optional, defaults to "last-push"
-          severity: "error" # optional, defaults to "error"
-          reasoningEffort: "medium" # optional, defaults to "medium"
-          tokenLimit: 50000 # optional, defaults to 50000
-          commitLimit: 100 # optional, defaults to 100
         env:
           # Make sure GITHUB_TOKEN has write permissions to create reviews
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-2. **Options**
+### **Options**
+
+#### Required
 
 - azureOpenAIKey: Your Azure OpenAI API key.
 - azureOpenAIEndpoint: Azure OpenAI endpoint URL to an o1 reasoning model. (e.g. <https://my-o1-resource.openai.azure.com/openai/deployments/...>)
 - azureOpenAIDeployment: Azure OpenAI deployment name for the o1 reasoning model. (e.g. my-o1-deployment)
 - azureOpenAIVersion: Version of the Azure OpenAI API used for calling the reasoning model. (e.g. 2024-12-01-preview)
-- diffMode: Controls which patches are sent to Azure OpenAI. Options are "last-push" (default), "last-commit" or "entire-pr".
-- severity: The minimum severity level for requesting changes. Lower severity levels will be posted as informational comments. Options are "info", "warning", or "error".
+
+#### Optional
+
+- base: The base commit SHA to compare against. Defaults to the base branch of the PR for "opened" events and the "before" commit for "synchronize" events.
+- head: The head commit SHA to compare against. Defaults to the head branch of the PR for "opened" events and the "after" commit for "synchronize" events.
+- severity: The minimum severity level for requesting changes, "info", "warning", or "error" (default). Lower severity levels will be posted as review comments.
 - reasoningEffort: The level of reasoning effort to use when generating comments. Options are "low", "medium" (default), or "high".
-- tokenLimit: The maximum number of tokens to send to Azure OpenAI. The default is 50 000, o1 supports up to 200 000 but the REST API seems to support ~190 000.
-- commitLimit: The maximum number of commits to load when using "entire-pr" diff mode. The default is maximum value 100.
+- tokenLimit: The maximum number of tokens to send to Azure OpenAI. The default is 50 000, o1 supports up to 200 000 but the REST API seems to only support ~190 000.
+- commitLimit: The maximum number of commits to load for reviewing. The default is 100.
 
 ## Development & Contributing
 
