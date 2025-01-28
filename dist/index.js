@@ -37478,6 +37478,7 @@ class GitHubService {
     }
     async compareCommits(base, head) {
         try {
+            core.info(`Comparing commits ${head} to ${base}`);
             const response = await this.octokit.rest.repos.compareCommitsWithBasehead({
                 owner: this.config.owner,
                 repo: this.config.repo,
