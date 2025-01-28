@@ -37269,7 +37269,7 @@ class ReviewService {
         core.info(`Got ${response.comments.length} suggestions from AI.`);
         // 4. Post Comments to PR
         const result = await this.githubService.postReviewComments(response.comments, options.changesThreshold, pr.commits);
-        core.info(`Posted ${result.reviewComments} comments and requested ${result.reviewChanges} changes.`);
+        core.info(`Posted ${result.reviewComments} review comments, requested ${result.reviewChanges} changes and wrote ${result.issueComments} issue comments.`);
     }
 }
 

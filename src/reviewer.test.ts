@@ -175,6 +175,11 @@ commit diff
     expect(infoSpy).toHaveBeenCalledWith(
       expect.stringContaining("Token Count: 1234")
     );
+
+    // Verify success message was logged
+    expect(core.info).toHaveBeenCalledWith(
+      "Posted 1 review comments, requested 0 changes and wrote 0 issue comments."
+    );
   });
 
   /* eslint-disable @typescript-eslint/no-unused-vars */

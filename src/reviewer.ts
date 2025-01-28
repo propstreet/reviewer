@@ -181,7 +181,7 @@ export class ReviewService {
     );
 
     core.info(
-      `Posted ${result.reviewComments} comments and requested ${result.reviewChanges} changes.`
+      `Posted ${result.reviewComments} review comments, requested ${result.reviewChanges} changes and wrote ${result.issueComments} issue comments.`
     );
   }
 }
