@@ -402,6 +402,120 @@ commit diff
     expect(core.info).toHaveBeenCalledWith("No commits found to review.");
   });
 
+  it("should skip merge commits with multiple parents", async () => {
+    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1000
+    );
+
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "merge-sha",
+      message: "Regular commit message",
+      patches: [{ filename: "test.ts", patch: "test diff" }],
+      parents: [{ sha: "parent1" }, { sha: "parent2" }],
+    });
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review(reviewOptions);
+
+    expect(AzureOpenAIService.prototype.runReviewPrompt).not.toHaveBeenCalled();
+    expect(core.info).toHaveBeenCalledWith(
+      expect.stringContaining("Skipping merge/rebase commit")
+    );
+  });
+
+  it("should process normal commits while skipping merge commits", async () => {
+    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1000
+    );
+
+    // Mock a mix of merge and normal commits
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [
+        {
+          sha: "merge-sha",
+          message: "Merge branch 'feature' into main",
+          patches: [],
+          parents: [{ sha: "parent1" }, { sha: "parent2" }],
+        },
+        {
+          sha: "normal-sha",
+          message: "Normal commit",
+          patches: [{ filename: "test.ts", patch: "test diff" }],
+          parents: [{ sha: "parent1" }],
+        },
+      ],
+      patches: [{ filename: "test.ts", patch: "test diff" }],
+    });
+
+    // Mock commit details for both commits
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockImplementation(
+      async (sha: string) => {
+        if (sha === "merge-sha") {
+          return {
+            sha: "merge-sha",
+            message: "Merge branch 'feature' into main",
+            patches: [],
+            parents: [{ sha: "parent1" }, { sha: "parent2" }],
+          };
+        }
+        return {
+          sha: "normal-sha",
+          message: "Normal commit",
+          patches: [{ filename: "test.ts", patch: "test diff" }],
+          parents: [{ sha: "parent1" }],
+        };
+      }
+    );
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review(reviewOptions);
+
+    // Verify that Azure was called with only the normal commit
+    expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalledWith(
+      expect.stringContaining("normal-sha"),
+      expect.any(Object)
+    );
+    expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalledWith(
+      expect.not.stringContaining("merge-sha"),
+      expect.any(Object)
+    );
+  });
+
+  it("should skip commits with merge/rebase message pattern", async () => {
+    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1000
+    );
+
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "merge-sha",
+      message: "Merge branch 'feature' into main",
+      patches: [{ filename: "test.ts", patch: "test diff" }],
+      parents: [{ sha: "parent1" }],
+    });
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review(reviewOptions);
+
+    expect(AzureOpenAIService.prototype.runReviewPrompt).not.toHaveBeenCalled();
+    expect(core.info).toHaveBeenCalledWith(
+      expect.stringContaining("Skipping merge/rebase commit")
+    );
+  });
+
   it("should warn if head sha was not in the loaded commits", async () => {
     // Mock GitHubService to return commits without head sha
     vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({

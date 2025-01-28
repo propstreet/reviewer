@@ -35,6 +35,7 @@ export interface CommitDetails {
   sha: string;
   message: string;
   patches: PatchInfo[];
+  parents?: { sha: string }[];
 }
 
 export interface PrDetails {
@@ -244,6 +245,7 @@ export class GitHubService {
           sha: commit.sha,
           message: commit.commit.message,
           patches: [], // get patches for each commit to base
+          parents: commit.parents,
         })),
         patches,
       };
@@ -279,6 +281,7 @@ export class GitHubService {
         sha,
         message: response.data.commit.message,
         patches,
+        parents: response.data.parents,
       };
     } catch (error) {
       throw new Error(

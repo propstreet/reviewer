@@ -7,6 +7,14 @@ import {
 } from "./azureOpenAIService.js";
 import { CommitDetails, GitHubService, PatchInfo } from "./githubService.js";
 
+function isMergeOrRebaseCommit(commit: CommitDetails): boolean {
+  if (commit.parents && commit.parents.length > 1) {
+    return true;
+  }
+  const trimmedMsg = commit.message.trim().toLowerCase();
+  return trimmedMsg.startsWith("merge") || trimmedMsg.startsWith("rebase");
+}
+
 export type ReviewOptions = {
   base: string;
   head: string;
@@ -114,6 +122,13 @@ export class ReviewService {
     for (const c of results.commits) {
       core.debug(`Processing commit: ${c.sha}`);
       const commitDetails = await this.githubService.getCommitDetails(c.sha);
+
+      if (isMergeOrRebaseCommit(commitDetails)) {
+        core.info(
+          `Skipping merge/rebase commit ${c.sha}: ${commitDetails.message}`
+        );
+        continue;
+      }
 
       core.debug(
         `Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`
