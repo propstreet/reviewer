@@ -7,7 +7,10 @@
     "outDir": "out",
     "strict": true,
     "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": true,
     "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noEmitOnError": true,
     "noFallthroughCasesInSwitch": true,
     "noUnusedParameters": true,
     "types": ["vitest/globals"]
