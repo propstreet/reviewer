@@ -11,7 +11,7 @@ vi.mock("@actions/core");
 vi.mock("@actions/github");
 vi.mock("./azureOpenAIService.js");
 vi.mock("./githubService.js");
-vi.mock("gpt-tokenizer", () => ({
+vi.mock("gpt-tokenizer/encoding/o200k_base", () => ({
   isWithinTokenLimit: vi.fn(),
 }));
 
@@ -73,7 +73,9 @@ describe("reviewer", () => {
   /* eslint-disable @typescript-eslint/no-unused-vars */
   it("should handle successful review flow", async () => {
     // Mock isWithinTokenLimit to allow diff processing and return token count
-    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+    const { isWithinTokenLimit } = await import(
+      "gpt-tokenizer/encoding/o200k_base"
+    );
     vi.mocked(isWithinTokenLimit).mockImplementation(
       (_input: unknown, _tokenLimit: number) => 1234 // Return specific token count for verification
     );
@@ -180,7 +182,9 @@ commit diff
   /* eslint-disable @typescript-eslint/no-unused-vars */
   it("should handle patches exceeding token limit", async () => {
     // Mock isWithinTokenLimit to simulate token limit exceeded
-    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+    const { isWithinTokenLimit } = await import(
+      "gpt-tokenizer/encoding/o200k_base"
+    );
 
     vi.mocked(isWithinTokenLimit).mockImplementation(
       (_input: unknown, _tokenLimit: number) => {
@@ -214,7 +218,9 @@ commit diff
   /* eslint-disable @typescript-eslint/no-unused-vars */
   it("should handle some patches within token limit", async () => {
     // Mock isWithinTokenLimit to simulate selective patch inclusion
-    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+    const { isWithinTokenLimit } = await import(
+      "gpt-tokenizer/encoding/o200k_base"
+    );
     const infoSpy = vi.spyOn(core, "info");
 
     vi.mocked(isWithinTokenLimit).mockImplementation(
@@ -313,7 +319,9 @@ commit diff
 
   it("should handle empty AI response", async () => {
     // Mock isWithinTokenLimit to allow diff processing
-    const { isWithinTokenLimit } = await import("gpt-tokenizer");
+    const { isWithinTokenLimit } = await import(
+      "gpt-tokenizer/encoding/o200k_base"
+    );
     vi.mocked(isWithinTokenLimit).mockImplementation(
       (_input: unknown, _tokenLimit: number) => 1000 // Return token count instead of boolean
     );

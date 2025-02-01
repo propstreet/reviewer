@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import { SeverityLevel } from "./validators.js";
-import { isWithinTokenLimit } from "gpt-tokenizer";
+import { isWithinTokenLimit } from "gpt-tokenizer/encoding/o200k_base";
 import {
   AzureOpenAIService,
   type ReasoningEffort,
