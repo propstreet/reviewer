@@ -1,7 +1,7 @@
 import * as core from "@actions/core";
 import { AzureOpenAIService } from "./azureOpenAIService.js";
 import { GitHubService } from "./githubService.js";
-import { ReviewService, ReviewOptions } from "./reviewer.js";
+import { ReviewService, ReviewOptions, shouldExcludeFile } from "./reviewer.js";
 
 // Mock types
 //type MockType = ReturnType<typeof vi.fn>;
@@ -14,6 +14,32 @@ vi.mock("./githubService.js");
 vi.mock("gpt-tokenizer/encoding/o200k_base", () => ({
   isWithinTokenLimit: vi.fn(),
 }));
+
+describe("shouldExcludeFile", () => {
+  it("should match glob patterns", () => {
+    expect(shouldExcludeFile("test.ts", ["*.ts"])).toBe(true);
+    expect(shouldExcludeFile("src/test.ts", ["src/**/*.ts"])).toBe(true);
+    expect(shouldExcludeFile("test.js", ["*.ts"])).toBe(false);
+  });
+
+  it("should handle multiple patterns", () => {
+    expect(shouldExcludeFile("test.ts", ["*.js", "*.ts"])).toBe(true);
+    expect(shouldExcludeFile("test.js", ["*.js", "*.ts"])).toBe(true);
+    expect(shouldExcludeFile("test.jsx", ["*.js", "*.ts"])).toBe(false);
+  });
+
+  it("should handle nested paths", () => {
+    expect(shouldExcludeFile("dist/bundle.js", ["dist/**/*"])).toBe(true);
+    expect(shouldExcludeFile("src/dist/bundle.js", ["dist/**/*"])).toBe(false);
+    expect(shouldExcludeFile("src/dist/bundle.js", ["**/dist/**/*"])).toBe(
+      true
+    );
+  });
+
+  it("should handle empty pattern list", () => {
+    expect(shouldExcludeFile("test.ts", [])).toBe(false);
+  });
+});
 
 describe("reviewer", () => {
   const reviewOptions: ReviewOptions = {

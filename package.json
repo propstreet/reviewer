@@ -16,7 +16,9 @@
         "@actions/core": "^1.11.1",
         "@actions/github": "^6.0.0",
         "@azure/openai": "^2.0.0",
+        "@types/minimatch": "^5.1.2",
         "gpt-tokenizer": "^2.8.1",
+        "minimatch": "^10.0.1",
         "openai": "^4.79.1"
     },
     "devDependencies": {

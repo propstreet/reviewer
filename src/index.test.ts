@@ -140,6 +140,7 @@ describe("index", () => {
       changesThreshold: "error",
       reasoningEffort: "medium",
       commitLimit: 100,
+      excludePatterns: [],
     });
   });
 
@@ -170,6 +171,7 @@ describe("index", () => {
       changesThreshold: "error",
       reasoningEffort: "medium",
       commitLimit: 100,
+      excludePatterns: [],
     });
   });
 
@@ -202,6 +204,7 @@ describe("index", () => {
       changesThreshold: "error",
       reasoningEffort: "medium",
       commitLimit: 100,
+      excludePatterns: [],
     });
   });
 
@@ -253,6 +256,7 @@ describe("index", () => {
       changesThreshold: "warning",
       reasoningEffort: "high",
       commitLimit: 99,
+      excludePatterns: [],
     });
   });
 

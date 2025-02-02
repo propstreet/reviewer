@@ -4,6 +4,7 @@ import {
   isValidSeverityLevel,
   isValidReasoningEffort,
   isValidTokenLimit,
+  isValidExcludePatterns,
   isValidCommitLimit,
   isValidAzureEndpoint,
   isValidAzureDeployment,
@@ -17,6 +18,15 @@ import { AzureOpenAIService } from "./azureOpenAIService.js";
 export async function run(): Promise<void> {
   try {
     // 1. Validate Inputs
+    const excludePatternsInput = core.getInput("exclude") || "";
+    if (!isValidExcludePatterns(excludePatternsInput)) {
+      core.setFailed(`Invalid exclude patterns: ${excludePatternsInput}`);
+      return;
+    }
+    const excludePatterns = excludePatternsInput
+      ? excludePatternsInput.split(",").map((p) => p.trim())
+      : [];
+
     const changesThreshold = core.getInput("severity") || "error";
     if (!isValidSeverityLevel(changesThreshold)) {
       core.setFailed(`Invalid severity: ${changesThreshold}`);
@@ -123,6 +133,7 @@ export async function run(): Promise<void> {
       changesThreshold,
       reasoningEffort,
       commitLimit,
+      excludePatterns,
     });
 
     // 3. Done
