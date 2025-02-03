@@ -43,6 +43,31 @@ describe("shouldExcludeFile", () => {
   it("should handle empty pattern list", () => {
     expect(shouldExcludeFile("test.ts", [])).toBe(false);
   });
+
+  it("should handle empty pattern string", () => {
+    expect(shouldExcludeFile("test.ts", [""])).toBe(false);
+    expect(shouldExcludeFile("", ["*.ts"])).toBe(false);
+    expect(shouldExcludeFile("", [""])).toBe(false);
+  });
+
+  it("should handle edge cases", () => {
+    // Trailing/leading whitespace should be trimmed
+    expect(shouldExcludeFile("test.ts", [" *.ts "])).toBe("*.ts"); // Pattern should be trimmed
+    expect(shouldExcludeFile("test.ts", ["  "])).toBe(false);
+
+    // Special characters
+    expect(shouldExcludeFile("test.ts", ["*.ts,"])).toBe(false); // trailing comma
+    expect(shouldExcludeFile("test.ts", [",*.ts"])).toBe(false); // leading comma
+    expect(shouldExcludeFile("test.ts", ["*.ts;"])).toBe(false); // trailing semicolon
+
+    // Multiple dots
+    expect(shouldExcludeFile("test.min.js", ["*.min.*"])).toBe("*.min.*");
+    expect(shouldExcludeFile("test..js", ["*..js"])).toBe("*..js");
+
+    // Unicode characters
+    expect(shouldExcludeFile("test.🚀.ts", ["*.🚀.*"])).toBe("*.🚀.*");
+    expect(shouldExcludeFile("test.ts", ["*.📝"])).toBe(false);
+  });
 });
 
 describe("reviewer", () => {

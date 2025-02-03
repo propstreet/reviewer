@@ -28,8 +28,16 @@ export const shouldExcludeFile = (
   patterns: string[]
 ): string | false => {
   for (const pattern of patterns) {
-    if (minimatch(filename, pattern)) {
-      return pattern;
+    // Skip empty patterns or filenames
+    if (!pattern || !filename) {
+      continue;
+    }
+    const trimmedPattern = pattern.trim();
+    if (!trimmedPattern) {
+      continue;
+    }
+    if (minimatch(filename, trimmedPattern)) {
+      return trimmedPattern;
     }
   }
   return false;
