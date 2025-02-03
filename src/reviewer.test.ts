@@ -17,22 +17,26 @@ vi.mock("gpt-tokenizer/encoding/o200k_base", () => ({
 
 describe("shouldExcludeFile", () => {
   it("should match glob patterns", () => {
-    expect(shouldExcludeFile("test.ts", ["*.ts"])).toBe(true);
-    expect(shouldExcludeFile("src/test.ts", ["src/**/*.ts"])).toBe(true);
+    expect(shouldExcludeFile("test.ts", ["*.ts"])).toBe("*.ts");
+    expect(shouldExcludeFile("src/test.ts", ["src/**/*.ts"])).toBe(
+      "src/**/*.ts"
+    );
     expect(shouldExcludeFile("test.js", ["*.ts"])).toBe(false);
   });
 
   it("should handle multiple patterns", () => {
-    expect(shouldExcludeFile("test.ts", ["*.js", "*.ts"])).toBe(true);
-    expect(shouldExcludeFile("test.js", ["*.js", "*.ts"])).toBe(true);
+    expect(shouldExcludeFile("test.ts", ["*.js", "*.ts"])).toBe("*.ts");
+    expect(shouldExcludeFile("test.js", ["*.js", "*.ts"])).toBe("*.js");
     expect(shouldExcludeFile("test.jsx", ["*.js", "*.ts"])).toBe(false);
   });
 
   it("should handle nested paths", () => {
-    expect(shouldExcludeFile("dist/bundle.js", ["dist/**/*"])).toBe(true);
+    expect(shouldExcludeFile("dist/bundle.js", ["dist/**/*"])).toBe(
+      "dist/**/*"
+    );
     expect(shouldExcludeFile("src/dist/bundle.js", ["dist/**/*"])).toBe(false);
     expect(shouldExcludeFile("src/dist/bundle.js", ["**/dist/**/*"])).toBe(
-      true
+      "**/dist/**/*"
     );
   });
 

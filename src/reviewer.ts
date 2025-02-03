@@ -26,7 +26,14 @@ export type PackedCommit = {
 export const shouldExcludeFile = (
   filename: string,
   patterns: string[]
-): boolean => patterns.some((pattern) => minimatch(filename, pattern));
+): string | false => {
+  for (const pattern of patterns) {
+    if (minimatch(filename, pattern)) {
+      return pattern;
+    }
+  }
+  return false;
+};
 
 export class ReviewService {
   private githubService: GitHubService;
@@ -50,8 +57,11 @@ export class ReviewService {
     const usedPatches: PatchInfo[] = [];
 
     for (const p of commit.patches) {
-      if (shouldExcludeFile(p.filename, excludePatterns)) {
-        core.debug(`Skipping excluded file: ${p.filename}`);
+      const excludePattern = shouldExcludeFile(p.filename, excludePatterns);
+      if (excludePattern) {
+        core.debug(
+          `Skipping excluded file: ${p.filename} (matched pattern: ${excludePattern})`
+        );
         skippedPatches.push(p);
         continue;
       }
