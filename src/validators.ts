@@ -39,3 +39,15 @@ export function isValidAzureApiKey(apiKey: string): boolean {
 export function isValidAzureApiVersion(apiVersion: string): boolean {
   return apiVersion.length > 0; // Add further validation if necessary
 }
+
+export function isValidExcludePatterns(patterns: string): boolean {
+  if (!patterns) return true; // Empty string is valid
+  const patternList = patterns.split(",").map((p) => p.trim());
+  return patternList.every((pattern) => {
+    if (pattern.length === 0) return false;
+    if (pattern.includes("..")) return false;
+    if (pattern.startsWith("/")) return false;
+    if (pattern.startsWith("~")) return false;
+    return true;
+  });
+}

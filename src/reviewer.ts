@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import { SeverityLevel } from "./validators.js";
+import { minimatch } from "minimatch";
 import { isWithinTokenLimit } from "gpt-tokenizer/encoding/o200k_base";
 import {
   AzureOpenAIService,
@@ -14,11 +15,32 @@ export type ReviewOptions = {
   changesThreshold: SeverityLevel;
   reasoningEffort: ReasoningEffort;
   commitLimit: number;
+  excludePatterns?: string[];
 };
 
 export type PackedCommit = {
   commit: CommitDetails;
   patches: PatchInfo[];
+};
+
+export const shouldExcludeFile = (
+  filename: string,
+  patterns: string[]
+): string | false => {
+  for (const pattern of patterns) {
+    // Skip empty patterns or filenames
+    if (!pattern || !filename) {
+      continue;
+    }
+    const trimmedPattern = pattern.trim();
+    if (!trimmedPattern) {
+      continue;
+    }
+    if (minimatch(filename, trimmedPattern)) {
+      return trimmedPattern;
+    }
+  }
+  return false;
 };
 
 export class ReviewService {
@@ -33,7 +55,8 @@ export class ReviewService {
   private packCommit(
     accumulated: string,
     commit: CommitDetails,
-    tokenLimit: number
+    tokenLimit: number,
+    excludePatterns: string[] = []
   ) {
     core.debug(`Packing commit: ${commit.sha}`);
 
@@ -42,6 +65,14 @@ export class ReviewService {
     const usedPatches: PatchInfo[] = [];
 
     for (const p of commit.patches) {
+      const excludePattern = shouldExcludeFile(p.filename, excludePatterns);
+      if (excludePattern) {
+        core.debug(
+          `Skipping excluded file: ${p.filename} (matched pattern: ${excludePattern})`
+        );
+        skippedPatches.push(p);
+        continue;
+      }
       core.debug(`Packing patch: ${p.filename}`);
 
       const patchBlock = `\n### FILE: ${p.filename}\n\n\`\`\`diff\n${p.patch}\n\`\`\`\n`;
@@ -118,7 +149,12 @@ export class ReviewService {
       core.debug(
         `Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`
       );
-      const packed = this.packCommit(prompt, commitDetails, options.tokenLimit);
+      const packed = this.packCommit(
+        prompt,
+        commitDetails,
+        options.tokenLimit,
+        options.excludePatterns
+      );
 
       if (!packed) {
         core.warning(`Could not pack commit ${c.sha} within token limit.`);

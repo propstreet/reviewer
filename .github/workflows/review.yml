@@ -17,6 +17,7 @@ jobs:
           severity: "error"
           reasoningEffort: "high"
           tokenLimit: 150000
+          exclude: "dist/**/*"
         env:
           # Make sure GITHUB_TOKEN has write permissions to create reviews
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

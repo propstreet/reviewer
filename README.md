@@ -52,6 +52,7 @@ jobs:
 - reasoningEffort: The level of reasoning effort to use when generating comments. Options are "low", "medium" (default), or "high".
 - tokenLimit: The maximum number of tokens to send to Azure OpenAI. The default is 50 000, o1 supports up to 200 000 but the REST API seems to only support ~190 000.
 - commitLimit: The maximum number of commits to load for reviewing. The default is 100.
+- exclude: Comma-separated glob patterns to exclude files from review (e.g., "*.test.ts,dist/**/*"). Default is no excluded files.
 
 ## Development & Contributing
 
