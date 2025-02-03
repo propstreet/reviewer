@@ -264,7 +264,7 @@ commit diff
 
     // Verify warning was logged
     expect(core.warning).toHaveBeenCalledWith(
-      "No patches fit within token limit."
+      "No patches used in commit block."
     );
     // Verify Azure OpenAI service was not called
     expect(AzureOpenAIService.prototype.runReviewPrompt).not.toHaveBeenCalled();
@@ -337,7 +337,7 @@ commit diff
 
     // Verify warning about skipped patches
     expect(core.warning).toHaveBeenCalledWith(
-      "1 patches did not fit within tokenLimit = 1234."
+      "1 patches were skipped due to exclusion patterns or token limit."
     );
     // Verify Azure OpenAI service was called (since some patches fit)
     expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalled();
