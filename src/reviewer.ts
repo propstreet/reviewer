@@ -82,7 +82,9 @@ export class ReviewService {
       const check = isWithinTokenLimit(combinedPreview, tokenLimit);
       if (!check) {
         // Skip adding this patch
-        core.debug(`Skipping patch ${p.filename} due to token limit.`);
+        core.debug(
+          `Skipping patch ${p.filename} due to token limit ${tokenLimit}.`
+        );
         skippedPatches.push(p);
         continue;
       }
@@ -93,11 +95,11 @@ export class ReviewService {
     }
 
     if (usedPatches.length === 0) {
-      core.warning("No patches fit within token limit.");
+      core.warning("No patches used in commit block.");
       return null;
     } else if (skippedPatches.length > 0) {
       core.warning(
-        `${skippedPatches.length} patches did not fit within tokenLimit = ${tokenLimit}.`
+        `${skippedPatches.length} patches were skipped due to exclusion patterns or token limit.`
       );
     }
 
@@ -169,7 +171,7 @@ export class ReviewService {
       );
 
       if (!packed) {
-        core.warning(`Could not pack commit ${c.sha} within token limit.`);
+        core.warning(`Commit ${c.sha} was not packed into prompt.`);
         break;
       }
 
