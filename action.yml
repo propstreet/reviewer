@@ -6,10 +6,6 @@ runs:
   main: "dist/index.js" # compiled output
 
 inputs:
-  exclude:
-    description: "Glob patterns to exclude files from review (e.g. '*.test.ts' or 'dist/**/*')"
-    required: false
-    default: ""
   azureOpenAIEndpoint:
     description: "Azure OpenAI endpoint (e.g., https://your-resource.openai.azure.com/openai/deployments/...)"
     required: true
@@ -45,3 +41,7 @@ inputs:
     description: "Maximum number of commits to load for 'entire-pr' diff mode."
     required: false
     default: "100"
+  exclude:
+    description: "Glob patterns to exclude files from review (e.g. '*.test.ts' or 'dist/**/*')"
+    required: false
+    default: ""
