@@ -1,5 +1,11 @@
 {
-    "recommendations": [
-        "propstreet.bundle-tabs"
-    ]
+  "recommendations": [
+    "propstreet.bundle-tabs",
+    "vitest.explorer",
+    "dbaeumer.vscode-eslint",
+    "github.vscode-github-actions",
+    "github.vscode-pull-request-github",
+    "esbenp.prettier-vscode",
+    "redhat.vscode-yaml"
+  ]
 }

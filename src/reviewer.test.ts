@@ -103,7 +103,7 @@ describe("reviewer", () => {
       head: "head-sha",
       commits: [
         {
-          sha: "test-sha",
+          sha: "head-sha",
           message: "test commit",
           patches: [{ filename: "commit.ts", patch: "commit diff" }],
         },
@@ -122,6 +122,16 @@ describe("reviewer", () => {
           base: "base-sha",
         };
       }
+    );
+
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "head-sha",
+      message: "test commit",
+      patches: [{ filename: "commit.ts", patch: "commit diff" }],
+    });
+
+    vi.mocked(GitHubService.prototype.commitBelongsToPR).mockResolvedValue(
+      true
     );
   });
 
@@ -142,7 +152,7 @@ describe("reviewer", () => {
     const mockAzureResponse = {
       comments: [
         {
-          sha: "test-sha",
+          sha: "head-sha",
           file: "test.ts",
           line: 1,
           side: "RIGHT" as const,
@@ -166,18 +176,15 @@ describe("reviewer", () => {
     vi.mocked(GitHubService.prototype.postReviewComments).mockResolvedValue(
       mockGitHubResponse
     );
-    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
-      sha: "test-sha",
-      message: "test commit",
-      patches: [{ filename: "commit.ts", patch: "commit diff" }],
-    });
 
     // Import and run the reviewer
     const reviewService = new ReviewService(
       mockedGithubService,
       mockedAzureService
     );
-    await reviewService.review(reviewOptions);
+    const result = await reviewService.review(reviewOptions);
+
+    expect(result).toBe(true);
 
     // Verify Azure OpenAI service was called
     expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalledWith(
@@ -185,7 +192,7 @@ describe("reviewer", () => {
 
 test body
 
-## COMMIT SHA: test-sha
+## COMMIT SHA: head-sha
 
 test commit
 
@@ -213,7 +220,7 @@ commit diff
                 patch: "commit diff",
               },
             ],
-            sha: "test-sha",
+            sha: "head-sha",
           },
           patches: [
             {
@@ -248,23 +255,18 @@ commit diff
       }
     );
 
-    // Mock GitHubService to return some patches
-    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
-      sha: "test-sha",
-      message: "test commit",
-      patches: [{ filename: "large.ts", patch: "very large diff" }],
-    });
-
     // Import and run the reviewer
     const reviewService = new ReviewService(
       mockedGithubService,
       mockedAzureService
     );
-    await reviewService.review(reviewOptions);
+    const result = await reviewService.review(reviewOptions);
+
+    expect(result).toBe(false);
 
     // Verify warning was logged
     expect(core.warning).toHaveBeenCalledWith(
-      "No patches fit within token limit."
+      "No patches used in commit block."
     );
     // Verify Azure OpenAI service was not called
     expect(AzureOpenAIService.prototype.runReviewPrompt).not.toHaveBeenCalled();
@@ -333,11 +335,13 @@ commit diff
       mockedGithubService,
       mockedAzureService
     );
-    await reviewService.review(reviewOptions);
+    const result = await reviewService.review(reviewOptions);
+
+    expect(result).toBe(true);
 
     // Verify warning about skipped patches
     expect(core.warning).toHaveBeenCalledWith(
-      "1 patches did not fit within tokenLimit = 1234."
+      "1 patches were skipped due to exclusion patterns or token limit."
     );
     // Verify Azure OpenAI service was called (since some patches fit)
     expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalled();
@@ -349,7 +353,7 @@ commit diff
   });
 
   it("should handle no diff found", async () => {
-    // Mock GitHubService to return empty patches
+    // Mock compareCommits to return empty results
     vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
       base: "base-sha",
       head: "head-sha",
@@ -357,12 +361,20 @@ commit diff
       patches: [],
     });
 
-    // Import and run the reviewer
+    // Mock getCommitDetails to ensure it doesn't add the head commit
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "head-sha",
+      message: "head commit",
+      patches: [], // Empty patches
+    });
+
     const reviewService = new ReviewService(
       mockedGithubService,
       mockedAzureService
     );
-    await reviewService.review(reviewOptions);
+    const result = await reviewService.review(reviewOptions);
+
+    expect(result).toBe(false);
 
     // Verify services were not called
     expect(AzureOpenAIService.prototype.runReviewPrompt).not.toHaveBeenCalled();
@@ -387,7 +399,7 @@ commit diff
       head: "head-sha",
       commits: [
         {
-          sha: "test-sha",
+          sha: "head-sha",
           message: "test commit",
           patches: [{ filename: "commit.ts", patch: "commit diff" }],
         },
@@ -405,17 +417,12 @@ commit diff
       mockedGithubService,
       mockedAzureService
     );
-    await reviewService.review({
-      tokenLimit: 1234,
-      changesThreshold: "error",
-      reasoningEffort: "low",
-      commitLimit: 10,
-      base: "base-sha",
-      head: "head-sha",
-    });
+    const result = await reviewService.review(reviewOptions);
 
-    // Verify appropriate message was logged
+    expect(result).toBe(false);
+
     expect(core.info).toHaveBeenCalledWith("No suggestions from AI.");
+
     // Verify GitHub service was not called for posting comments
     expect(GitHubService.prototype.postReviewComments).not.toHaveBeenCalled();
   });
@@ -454,18 +461,25 @@ commit diff
       patches: [],
     });
 
-    // Import and run the reviewer
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "head-sha",
+      message: "test commit",
+      patches: [],
+    });
+
     const reviewService = new ReviewService(
       mockedGithubService,
       mockedAzureService
     );
-    await reviewService.review(reviewOptions);
+    const result = await reviewService.review(reviewOptions);
+
+    expect(result).toBe(false);
 
     // Verify appropriate message was logged
     expect(core.info).toHaveBeenCalledWith("No commits found to review.");
   });
 
-  it("should warn if head sha was not in the loaded commits", async () => {
+  it("should silently add missing head commit", async () => {
     // Mock GitHubService to return commits without head sha
     vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({
       number: 1,
@@ -489,16 +503,44 @@ commit diff
       patches: [{ filename: "commit.ts", patch: "commit diff" }],
     });
 
-    // Import and run the reviewer
     const reviewService = new ReviewService(
       mockedGithubService,
       mockedAzureService
     );
-    await reviewService.review(reviewOptions);
+    const result = await reviewService.review(reviewOptions);
 
-    // Verify warning was logged
-    expect(core.warning).toHaveBeenCalledWith(
-      "PR head commit head-sha was not included in commit comparison."
+    expect(result).toBe(false);
+
+    // Verify getCommitDetails was called for head commit
+    expect(GitHubService.prototype.getCommitDetails).toHaveBeenCalledWith(
+      "head-sha"
     );
+
+    // Verify debug message was logged
+    expect(core.debug).toHaveBeenCalledWith(
+      "Added missing head commit head-sha to results."
+    );
+  });
+
+  // Add new test for skipping commits not belonging to PR
+  it("should skip commits not belonging to PR", async () => {
+    // Mock commitBelongsToPR to return false
+    vi.mocked(GitHubService.prototype.commitBelongsToPR).mockResolvedValue(
+      false
+    );
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    const result = await reviewService.review(reviewOptions);
+
+    expect(result).toBe(false);
+
+    // Verify skip message was logged
+    expect(core.info).toHaveBeenCalledWith(
+      "Skipping commit head-sha as it does not belong to the current PR."
+    );
+    expect(core.info).toHaveBeenCalledWith("No commits found to review.");
   });
 });

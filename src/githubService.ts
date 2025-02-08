@@ -286,4 +286,23 @@ export class GitHubService {
       );
     }
   }
+
+  async commitBelongsToPR(sha: string): Promise<boolean> {
+    try {
+      const response =
+        await this.octokit.rest.repos.listPullRequestsAssociatedWithCommit({
+          owner: this.config.owner,
+          repo: this.config.repo,
+          commit_sha: sha,
+        });
+
+      return response.data.some((pr) => pr.number === this.config.pullNumber);
+    } catch (error) {
+      throw new Error(
+        `Failed to list PRs associated with commit ${sha}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
 }

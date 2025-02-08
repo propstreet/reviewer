@@ -82,7 +82,9 @@ export class ReviewService {
       const check = isWithinTokenLimit(combinedPreview, tokenLimit);
       if (!check) {
         // Skip adding this patch
-        core.debug(`Skipping patch ${p.filename} due to token limit.`);
+        core.debug(
+          `Skipping patch ${p.filename} due to token limit ${tokenLimit}.`
+        );
         skippedPatches.push(p);
         continue;
       }
@@ -93,11 +95,11 @@ export class ReviewService {
     }
 
     if (usedPatches.length === 0) {
-      core.warning("No patches fit within token limit.");
+      core.warning("No patches used in commit block.");
       return null;
     } else if (skippedPatches.length > 0) {
       core.warning(
-        `${skippedPatches.length} patches did not fit within tokenLimit = ${tokenLimit}.`
+        `${skippedPatches.length} patches were skipped due to exclusion patterns or token limit.`
       );
     }
 
@@ -119,11 +121,13 @@ export class ReviewService {
       options.head
     );
 
-    // check that prDetails.head is contained in patches.commits
+    // If the head commit is missing from the compare results, fetch and push it silently.
     if (!results.commits.find((c) => c.sha === prDetails.head)) {
-      core.warning(
-        `PR head commit ${prDetails.head} was not included in commit comparison.`
+      const headCommit = await this.githubService.getCommitDetails(
+        prDetails.head
       );
+      results.commits.push(headCommit);
+      core.debug(`Added missing head commit ${headCommit.sha} to results.`);
     }
 
     if (results.commits.length === 0) {
@@ -144,6 +148,16 @@ export class ReviewService {
 
     for (const c of results.commits) {
       core.debug(`Processing commit: ${c.sha}`);
+
+      // Verify that the commit belongs to the current PR
+      const belongs = await this.githubService.commitBelongsToPR(c.sha);
+      if (!belongs) {
+        core.info(
+          `Skipping commit ${c.sha} as it does not belong to the current PR.`
+        );
+        continue;
+      }
+
       const commitDetails = await this.githubService.getCommitDetails(c.sha);
 
       core.debug(
@@ -157,7 +171,7 @@ export class ReviewService {
       );
 
       if (!packed) {
-        core.warning(`Could not pack commit ${c.sha} within token limit.`);
+        core.warning(`Commit ${c.sha} was not packed into prompt.`);
         break;
       }
 
@@ -193,7 +207,7 @@ export class ReviewService {
     const pr = await this.buildPrompt(options);
     if (!pr || !pr.commits || pr.commits.length === 0) {
       core.info("No commits found to review.");
-      return;
+      return false;
     }
 
     core.info("Calling Azure OpenAI...");
@@ -204,7 +218,7 @@ export class ReviewService {
 
     if (!response?.comments || response.comments.length === 0) {
       core.info("No suggestions from AI.");
-      return;
+      return false;
     }
 
     core.info(`Got ${response.comments.length} suggestions from AI.`);
@@ -219,5 +233,7 @@ export class ReviewService {
     core.info(
       `Posted ${result.reviewComments} comments and requested ${result.reviewChanges} changes.`
     );
+
+    return true;
   }
 }
