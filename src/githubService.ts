@@ -60,15 +60,18 @@ export class GitHubService {
     line: number,
     side: "LEFT" | "RIGHT",
     patches: PatchInfo[]
-  ): boolean {
+  ): { patch?: string; position?: number; found: boolean } {
     const target = patches.find((p) => p.filename === filename);
     if (!target) {
-      core.warning(`No patch found for file: ${filename}`);
-      return false;
+      return { found: false };
     }
     const position = findPositionInDiff(target.patch, line, side);
     core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
-    return position !== null;
+    return {
+      patch: target.patch,
+      position: position === null ? undefined : position,
+      found: position !== null,
+    };
   }
 
   private async createReview(
@@ -104,7 +107,10 @@ export class GitHubService {
     const thresholdIndex = severityOrder.indexOf(changesThreshold);
 
     // Separate comments that are outside the diff patch
-    const issueComments: z.infer<typeof CodeReviewComment>[] = [];
+    const issueComments: {
+      comment: z.infer<typeof CodeReviewComment>;
+      patch?: string;
+    }[] = [];
 
     // group comments by commit
     const commentsByCommit = comments.reduce(
@@ -112,17 +118,28 @@ export class GitHubService {
         const commit = commits.find((d) => d.commit.sha === c.sha);
         if (!commit) {
           core.warning(`No commit found for sha: ${c.sha}`);
-          issueComments.push(c);
+          issueComments.push({ comment: c });
           return acc;
         }
 
-        if (
-          !this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches)
-        ) {
+        const { patch, found } = this.verifyCommentLineInPatch(
+          c.file,
+          c.line,
+          c.side,
+          commit.patches
+        );
+        if (!found) {
           core.warning(
-            `Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`
+            `Could not generate inline comment for ${c.file}: ${c.comment}`
           );
-          issueComments.push(c);
+          if (!patch) {
+            core.warning(`- patch not found in commit ${c.sha}`);
+          } else {
+            core.warning(
+              `- line position not found in patch ${c.line}:${c.side}`
+            );
+          }
+          issueComments.push({ comment: c, patch: patch });
           return acc;
         }
 
@@ -175,12 +192,15 @@ export class GitHubService {
     }
 
     // Post fallback comments as issue comments
-    for (const comment of issueComments) {
+    for (const { comment, patch } of issueComments) {
+      const body = patch
+        ? `${comment.comment}\n\n${comment.file}:${comment.line} (${comment.side})\n\`\`\`diff\n${patch}\n\`\`\`\n`
+        : `Comment on line ${comment.line} (${comment.side}) of file ${comment.file}:\n\n${comment.comment}`;
       await this.octokit.rest.issues.createComment({
         owner: this.config.owner,
         repo: this.config.repo,
         issue_number: this.config.pullNumber,
-        body: `Comment on line ${comment.line} (${comment.side}) of file ${comment.file}: ${comment.comment}`,
+        body: body,
       });
     }
 
