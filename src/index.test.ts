@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { ReviewOptions, ReviewService } from "./reviewer.js";
+import { ReviewService } from "./reviewer.js";
 
 // Mock types
 type MockType = ReturnType<typeof vi.fn>;
@@ -91,12 +91,7 @@ describe("index", () => {
     delete process.env.GITHUB_TOKEN;
   });
 
-  /* eslint-disable @typescript-eslint/no-unused-vars */
   it("should require base and head sha", async () => {
-    vi.mocked(ReviewService.prototype.review).mockImplementation(
-      (_options: ReviewOptions) => Promise.resolve()
-    );
-
     // Import and run the index file
     const { run } = await import("./index.js");
     await run();
@@ -105,6 +100,9 @@ describe("index", () => {
     expect(core.setFailed).toHaveBeenCalledWith(
       "Missing base or head sha to review."
     );
+
+    // Verify reviewer was not called
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
   });
 
   it("should use base and head from getInput", async () => {
@@ -121,9 +119,7 @@ describe("index", () => {
       }
     });
 
-    vi.mocked(ReviewService.prototype.review).mockImplementation(
-      (_options: ReviewOptions) => Promise.resolve()
-    );
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
 
     // Import and run the index file
     const { run } = await import("./index.js");
@@ -152,9 +148,7 @@ describe("index", () => {
       after: "head-sha",
     } as Context["payload"];
 
-    vi.mocked(ReviewService.prototype.review).mockImplementation(
-      (_options: ReviewOptions) => Promise.resolve()
-    );
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
 
     // Import and run the index file
     const { run } = await import("./index.js");
@@ -185,9 +179,7 @@ describe("index", () => {
       },
     } as Context["payload"];
 
-    vi.mocked(ReviewService.prototype.review).mockImplementation(
-      (_options: ReviewOptions) => Promise.resolve()
-    );
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
 
     // Import and run the index file
     const { run } = await import("./index.js");
@@ -237,9 +229,7 @@ describe("index", () => {
       }
     });
 
-    vi.mocked(ReviewService.prototype.review).mockImplementation(
-      (_options: ReviewOptions) => Promise.resolve()
-    );
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
 
     // Import and run the index file
     const { run } = await import("./index.js");

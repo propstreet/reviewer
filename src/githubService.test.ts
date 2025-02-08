@@ -648,4 +648,99 @@ describe("GitHubService", () => {
       ).rejects.toThrow("Failed to compare commits: Test error");
     });
   });
+
+  describe("commitBelongsToPR", () => {
+    it("should return true when commit belongs to PR", async () => {
+      const mockListPRs = vi.fn().mockResolvedValue({
+        data: [
+          { number: 1 }, // Matches PR number from config
+          { number: 2 },
+        ],
+      });
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            listPullRequestsAssociatedWithCommit: mockListPRs,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.commitBelongsToPR("test-sha");
+
+      expect(result).toBe(true);
+      expect(mockListPRs).toHaveBeenCalledWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        commit_sha: "test-sha",
+      });
+    });
+
+    it("should return false when commit does not belong to PR", async () => {
+      const mockListPRs = vi.fn().mockResolvedValue({
+        data: [
+          { number: 2 }, // Different PR number
+          { number: 3 },
+        ],
+      });
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            listPullRequestsAssociatedWithCommit: mockListPRs,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.commitBelongsToPR("test-sha");
+
+      expect(result).toBe(false);
+    });
+
+    it("should return false when commit has no associated PRs", async () => {
+      const mockListPRs = vi.fn().mockResolvedValue({
+        data: [], // Empty array - no PRs
+      });
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            listPullRequestsAssociatedWithCommit: mockListPRs,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.commitBelongsToPR("test-sha");
+
+      expect(result).toBe(false);
+    });
+
+    it("should handle API errors", async () => {
+      const mockListPRs = vi.fn().mockRejectedValue(new Error("API Error"));
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            listPullRequestsAssociatedWithCommit: mockListPRs,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await expect(service.commitBelongsToPR("test-sha")).rejects.toThrow(
+        "Failed to list PRs associated with commit test-sha: API Error"
+      );
+    });
+  });
 });
