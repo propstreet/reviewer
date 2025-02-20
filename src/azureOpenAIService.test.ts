@@ -67,10 +67,12 @@ describe("AzureOpenAIService", () => {
 
     const parseCall = parseMock.mock.calls[0][0];
     expect(parseCall.messages[0].content).toContain(
-      "Here are some custom instructions: Focus on security issues"
+      "Additional code review instructions: Focus on security issues"
     );
     expect(
-      parseCall.messages[0].content.indexOf("Here are some custom instructions")
+      parseCall.messages[0].content.indexOf(
+        "Additional code review instructions"
+      )
     ).toBeGreaterThan(0);
   });
 

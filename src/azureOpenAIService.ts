@@ -34,7 +34,7 @@ Each comment must include the associated commit sha, file, line, side and severi
 Only comment on lines that need improvement. Comments may be formatted as markdown.
 If you have no comments, return an empty comments array. Respond in JSON format.${
       config.customPrompt
-        ? `\n\nHere are some custom instructions: ${config.customPrompt}`
+        ? `\n\nAdditional code review instructions: ${config.customPrompt}`
         : ""
     }`;
 
