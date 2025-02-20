@@ -78,6 +78,7 @@ describe("reviewer", () => {
     commitLimit: 10,
     base: "base-sha",
     head: "head-sha",
+    customPrompt: "Focus on security issues",
   };
 
   const mockedGithubService = new GitHubService({
@@ -202,7 +203,10 @@ test commit
 commit diff
 \`\`\`
 `,
-      { reasoningEffort: "low" }
+      {
+        reasoningEffort: "low",
+        customPrompt: "Focus on security issues",
+      }
     );
 
     // Verify GitHub service was called
@@ -382,6 +386,36 @@ commit diff
 
     // Verify appropriate message was logged
     expect(core.info).toHaveBeenCalledWith("No commits found to review.");
+  });
+
+  it("should handle review with no custom prompt", async () => {
+    // Mock isWithinTokenLimit to allow diff processing
+    const { isWithinTokenLimit } = await import(
+      "gpt-tokenizer/encoding/o200k_base"
+    );
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1000
+    );
+
+    const optionsWithoutCustomPrompt: ReviewOptions = {
+      ...reviewOptions,
+      customPrompt: undefined,
+    };
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    const result = await reviewService.review(optionsWithoutCustomPrompt);
+
+    expect(result).toBe(true);
+    expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalledWith(
+      expect.any(String),
+      {
+        reasoningEffort: "low",
+        customPrompt: undefined,
+      }
+    );
   });
 
   it("should handle empty AI response", async () => {

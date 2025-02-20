@@ -16,6 +16,7 @@ export type ReviewOptions = {
   reasoningEffort: ReasoningEffort;
   commitLimit: number;
   excludePatterns?: string[];
+  customPrompt?: string; // Optional custom instructions for the LLM
 };
 
 export type PackedCommit = {
@@ -214,6 +215,7 @@ export class ReviewService {
 
     const response = await this.azureService.runReviewPrompt(pr.prompt, {
       reasoningEffort: options.reasoningEffort,
+      customPrompt: options.customPrompt,
     });
 
     if (!response?.comments || response.comments.length === 0) {

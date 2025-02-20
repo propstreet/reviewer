@@ -51,3 +51,8 @@ export function isValidExcludePatterns(patterns: string): boolean {
     return true;
   });
 }
+
+export function isValidCustomPrompt(prompt: string): boolean {
+  if (!prompt) return true; // Empty string is valid (optional parameter)
+  return prompt.length > 0 && prompt.length <= 1000; // Reasonable length limit
+}

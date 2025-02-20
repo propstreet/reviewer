@@ -13,6 +13,7 @@ export type ReasoningEffort = "low" | "medium" | "high";
 
 export interface ReviewPromptConfig {
   reasoningEffort: ReasoningEffort;
+  customPrompt?: string;
 }
 
 export class AzureOpenAIService {
@@ -28,15 +29,21 @@ export class AzureOpenAIService {
   }
 
   async runReviewPrompt(prompt: string, config: ReviewPromptConfig) {
+    const systemPrompt = `You are a helpful code reviewer. Review this pull request and provide any suggestions.
+Each comment must include the associated commit sha, file, line, side and severity: 'info', 'warning', or 'error'.
+Only comment on lines that need improvement. Comments may be formatted as markdown.
+If you have no comments, return an empty comments array. Respond in JSON format.${
+      config.customPrompt
+        ? `\n\nHere are some custom instructions: ${config.customPrompt}`
+        : ""
+    }`;
+
     const completion = await this.client.beta.chat.completions.parse({
       model: "",
       messages: [
         {
           role: "developer",
-          content: `You are a helpful code reviewer. Review this pull request and provide any suggestions.
-Each comment must include the associated commit sha, file, line, side and severity: 'info', 'warning', or 'error'.
-Only comment on lines that need improvement. Comments may be formatted as markdown.
-If you have no comments, return an empty comments array. Respond in JSON format.`,
+          content: systemPrompt,
         },
         {
           role: "user",

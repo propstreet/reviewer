@@ -43,6 +43,60 @@ describe("AzureOpenAIService", () => {
     expect(AzureOpenAI).toHaveBeenCalledExactlyOnceWith(mockConfig);
   });
 
+  it("should append custom prompt when provided", async () => {
+    const service = new AzureOpenAIService(mockConfig);
+    const parseMock = vi.fn().mockResolvedValue({
+      choices: [
+        { finish_reason: "stop", message: { parsed: { comments: [] } } },
+      ],
+    });
+    (
+      service as unknown as {
+        client: {
+          beta: { chat: { completions: { parse: typeof parseMock } } };
+        };
+      }
+    ).client.beta.chat.completions.parse = parseMock;
+
+    const configWithCustomPrompt: ReviewPromptConfig = {
+      reasoningEffort: "medium",
+      customPrompt: "Focus on security issues",
+    };
+
+    await service.runReviewPrompt(mockInput, configWithCustomPrompt);
+
+    const parseCall = parseMock.mock.calls[0][0];
+    expect(parseCall.messages[0].content).toContain(
+      "Here are some custom instructions: Focus on security issues"
+    );
+    expect(
+      parseCall.messages[0].content.indexOf("Here are some custom instructions")
+    ).toBeGreaterThan(0);
+  });
+
+  it("should not append custom prompt when not provided", async () => {
+    const service = new AzureOpenAIService(mockConfig);
+    const parseMock = vi.fn().mockResolvedValue({
+      choices: [
+        { finish_reason: "stop", message: { parsed: { comments: [] } } },
+      ],
+    });
+    (
+      service as unknown as {
+        client: {
+          beta: { chat: { completions: { parse: typeof parseMock } } };
+        };
+      }
+    ).client.beta.chat.completions.parse = parseMock;
+
+    await service.runReviewPrompt(mockInput, mockReviewConfig);
+
+    const parseCall = parseMock.mock.calls[0][0];
+    expect(parseCall.messages[0].content).not.toContain(
+      "Here are some custom instructions"
+    );
+  });
+
   it("should handle successful review prompt", async () => {
     const mockResponse = {
       choices: [
