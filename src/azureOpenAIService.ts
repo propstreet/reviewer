@@ -1,6 +1,7 @@
 import { AzureOpenAI } from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { CodeReviewCommentArray } from "./schemas.js";
+import { ReasoningEffort } from "openai/resources.mjs";
 
 export interface AzureOpenAIConfig {
   endpoint: string;
@@ -8,8 +9,6 @@ export interface AzureOpenAIConfig {
   apiKey: string;
   apiVersion: string;
 }
-
-export type ReasoningEffort = "low" | "medium" | "high";
 
 export interface ReviewPromptConfig {
   reasoningEffort: ReasoningEffort;

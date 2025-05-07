@@ -8,8 +8,8 @@ defaultTest:
     provider: file://providers/provider-gpt4o.yaml
 
 prompts:
-  - raw: file://./prompts/review-o1.json
-    label: review-o1
+  - raw: file://./prompts/review-reasoning.json
+    label: review-reasoning
     config:
       response_format: file://./prompts/review-format.json
   - raw: file://./prompts/review-gpt4o.json
@@ -18,36 +18,36 @@ prompts:
       response_format: file://./prompts/review-format.json
 
 providers:
-  - id: azureopenai:chat:{{env.AZURE_OPENAI_GPT4O_DEPLOYMENT}}
+  - id: azure:chat:{{env.AZURE_OPENAI_GPT4O_DEPLOYMENT}}
     label: gpt4o
     config:
-      apiVersion: 2024-08-01-preview
+      apiVersion: 2025-03-01-preview
     prompts:
       - review-gpt4o
-  - id: azureopenai:chat:{{env.AZURE_OPENAI_O1_DEPLOYMENT}}
-    label: o1-low
+  - id: azure:chat:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
+    label: reasoning-low
     config:
-      apiVersion: 2024-12-01-preview
+      apiVersion: 2025-03-01-preview
       reasoning_effort: "low"
-      o1: true
+      isReasoningModel: true
     prompts:
-      - review-o1
-  - id: azureopenai:chat:{{env.AZURE_OPENAI_O1_DEPLOYMENT}}
-    label: o1-medium
+      - review-reasoning
+  - id: azure:chat:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
+    label: reasoning-medium
     config:
-      apiVersion: 2024-12-01-preview
+      apiVersion: 2025-03-01-preview
       reasoning_effort: "medium"
-      o1: true
+      isReasoningModel: true
     prompts:
-      - review-o1
-  - id: azureopenai:chat:{{env.AZURE_OPENAI_O1_DEPLOYMENT}}
-    label: o1-high
+      - review-reasoning
+  - id: azure:chat:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
+    label: reasoning-high
     config:
-      apiVersion: 2024-12-01-preview
+      apiVersion: 2025-03-01-preview
       reasoning_effort: "high"
-      o1: true
+      isReasoningModel: true
     prompts:
-      - review-o1
+      - review-reasoning
 
 tests:
   - vars:
@@ -67,5 +67,4 @@ tests:
           }
       - type: javascript
         value: |
-          output.comments[0].comment.includes("any") && [7,8,9].some(l => l === output.comments[0].line) && output.comments[0].file === "src/example.ts" && output.comments[0].severity === "warning"
-
+          output.comments[0].comment.includes("any") && output.comments[0].line === 7 && output.comments[0].file === "src/example.ts" && output.comments[0].severity === "warning"

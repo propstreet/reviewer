@@ -23,7 +23,7 @@ describe("AzureOpenAIService", () => {
     endpoint: "https://AZURE_ENDPOINT",
     deployment: "AZURE_DEPLOYMENT",
     apiKey: "AZURE_API_KEY",
-    apiVersion: "2024-12-01-preview",
+    apiVersion: "2025-03-01-preview",
   };
 
   const mockReviewConfig: ReviewPromptConfig = {

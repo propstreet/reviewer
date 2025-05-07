@@ -1,26 +1,10 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { ReviewService } from "./reviewer.js";
+import { Context } from "@actions/github/lib/context.js";
 
 // Mock types
 type MockType = ReturnType<typeof vi.fn>;
-type Context = {
-  payload: Record<string, unknown>;
-  eventName: string;
-  sha: string;
-  ref: string;
-  workflow: string;
-  action: string;
-  actor: string;
-  job: string;
-  runNumber: number;
-  runId: number;
-  apiUrl: string;
-  serverUrl: string;
-  graphqlUrl: string;
-  issue: { owner: string; repo: string; number: number };
-  repo: { owner: string; repo: string };
-};
 
 // Mock dependencies
 vi.mock("@actions/core");
@@ -37,7 +21,7 @@ describe("index", () => {
       case "azureOpenAIKey":
         return "AZURE_API_KEY";
       case "azureOpenAIVersion":
-        return "2024-12-01-preview";
+        return "2025-03-01-preview";
       case "severity":
         return "error";
       case "reasoningEffort":
@@ -79,12 +63,13 @@ describe("index", () => {
       action: "test-action",
       actor: "test-actor",
       job: "test-job",
+      runAttempt: 1,
       runNumber: 1,
       runId: 1,
       apiUrl: "https://api.github.com",
       serverUrl: "https://github.com",
       graphqlUrl: "https://api.github.com/graphql",
-    } as Context;
+    };
   });
 
   afterEach(() => {
@@ -174,6 +159,7 @@ describe("index", () => {
     vi.mocked(github).context.payload = {
       action: "opened",
       pull_request: {
+        number: 1,
         base: { sha: "base-sha" },
         head: { sha: "head-sha" },
       },

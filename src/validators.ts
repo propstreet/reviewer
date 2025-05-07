@@ -1,11 +1,14 @@
-import { ChatCompletionReasoningEffort } from "openai/resources/index.mjs";
+import { ReasoningEffort } from "openai/resources.mjs";
 
 export type SeverityLevel = "info" | "warning" | "error";
 
 export function isValidReasoningEffort(
-  reasoningEffort: string
-): reasoningEffort is ChatCompletionReasoningEffort {
-  return ["low", "medium", "high"].includes(reasoningEffort);
+  reasoningEffort: string | null
+): reasoningEffort is ReasoningEffort {
+  return (
+    reasoningEffort === null ||
+    ["low", "medium", "high"].includes(reasoningEffort)
+  );
 }
 
 export function isValidSeverityLevel(

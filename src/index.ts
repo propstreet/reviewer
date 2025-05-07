@@ -82,7 +82,7 @@ export async function run(): Promise<void> {
     core.setSecret(azureOpenAIKey); // Treat the API key as a secret
 
     const azureOpenAIVersion =
-      core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
+      core.getInput("azureOpenAIVersion") || "2025-03-01-preview";
     if (!isValidAzureApiVersion(azureOpenAIVersion)) {
       core.setFailed(`Invalid Azure OpenAI API version: ${azureOpenAIVersion}`);
       return;

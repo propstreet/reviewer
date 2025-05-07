@@ -5,7 +5,7 @@
 ### src/example.ts
 
 ```diff
-@@ -1,5 +1,9 @@
+@@ -1,5 +1,10 @@
  export class Calculator {
      add(a: number, b: number): number {
          return a + b;
