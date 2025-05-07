@@ -16,9 +16,9 @@ inputs:
     description: "API key for Azure OpenAI"
     required: true
   azureOpenAIVersion:
-    description: "Azure OpenAI version (e.g., 2024-12-01-preview)"
+    description: "Azure OpenAI version (e.g., 2025-03-01-preview)"
     required: false
-    default: "2024-12-01-preview"
+    default: "2025-03-01-preview"
   base:
     description: "Base commit SHA to compare against."
     required: false

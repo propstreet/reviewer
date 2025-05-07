@@ -37,7 +37,7 @@ describe("index", () => {
       case "azureOpenAIKey":
         return "AZURE_API_KEY";
       case "azureOpenAIVersion":
-        return "2024-12-01-preview";
+        return "2025-03-01-preview";
       case "severity":
         return "error";
       case "reasoningEffort":

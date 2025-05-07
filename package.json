@@ -10,6 +10,7 @@
         "lint": "eslint ./src",
         "test": "vitest",
         "test-prompts": "npx --yes promptfoo@latest eval -c promptfoo",
+        "view-prompts": "npx --yes promptfoo@latest view --yes",
         "coverage": "vitest run --coverage"
     },
     "dependencies": {

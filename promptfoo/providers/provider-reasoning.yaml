@@ -1,0 +1,5 @@
+id: azure:chat:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
+label: reasoning
+config:
+  apiVersion: 2025-03-01-preview
+  isReasoningModel: true
