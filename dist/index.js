@@ -1871,6 +1871,7 @@ class Context {
         this.action = process.env.GITHUB_ACTION;
         this.actor = process.env.GITHUB_ACTOR;
         this.job = process.env.GITHUB_JOB;
+        this.runAttempt = parseInt(process.env.GITHUB_RUN_ATTEMPT, 10);
         this.runNumber = parseInt(process.env.GITHUB_RUN_NUMBER, 10);
         this.runId = parseInt(process.env.GITHUB_RUN_ID, 10);
         this.apiUrl = (_a = process.env.GITHUB_API_URL) !== null && _a !== void 0 ? _a : `https://api.github.com`;
@@ -3714,7 +3715,7 @@ module.exports = __toCommonJS(dist_src_exports);
 var import_universal_user_agent = __nccwpck_require__(3843);
 
 // pkg/dist-src/version.js
-var VERSION = "9.0.5";
+var VERSION = "9.0.6";
 
 // pkg/dist-src/defaults.js
 var userAgent = `octokit-endpoint.js/${VERSION} ${(0, import_universal_user_agent.getUserAgent)()}`;
@@ -3819,9 +3820,9 @@ function addQueryParameters(url, parameters) {
 }
 
 // pkg/dist-src/util/extract-url-variable-names.js
-var urlVariableRegex = /\{[^}]+\}/g;
+var urlVariableRegex = /\{[^{}}]+\}/g;
 function removeNonChars(variableName) {
-  return variableName.replace(/^\W+|\W+$/g, "").split(/,/);
+  return variableName.replace(/(?:^\W+)|(?:(?<!\W)\W+$)/g, "").split(/,/);
 }
 function extractUrlVariableNames(url) {
   const matches = url.match(urlVariableRegex);
@@ -4007,7 +4008,7 @@ function parse(options) {
     }
     if (url.endsWith("/graphql")) {
       if (options.mediaType.previews?.length) {
-        const previewsFromAcceptHeader = headers.accept.match(/[\w-]+(?=-preview)/g) || [];
+        const previewsFromAcceptHeader = headers.accept.match(/(?<![\w-])[\w-]+(?=-preview)/g) || [];
         headers.accept = previewsFromAcceptHeader.concat(options.mediaType.previews).map((preview) => {
           const format = options.mediaType.format ? `.${options.mediaType.format}` : "+json";
           return `application/vnd.github.${preview}-preview${format}`;
@@ -4254,7 +4255,7 @@ __export(dist_src_exports, {
 module.exports = __toCommonJS(dist_src_exports);
 
 // pkg/dist-src/version.js
-var VERSION = "9.2.1";
+var VERSION = "9.2.2";
 
 // pkg/dist-src/normalize-paginated-list-response.js
 function normalizePaginatedListResponse(response) {
@@ -4302,7 +4303,7 @@ function iterator(octokit, route, parameters) {
           const response = await requestMethod({ method, url, headers });
           const normalizedResponse = normalizePaginatedListResponse(response);
           url = ((normalizedResponse.headers.link || "").match(
-            /<([^>]+)>;\s*rel="next"/
+            /<([^<>]+)>;\s*rel="next"/
           ) || [])[1];
           return { value: normalizedResponse };
         } catch (error) {
@@ -6852,7 +6853,7 @@ var RequestError = class extends Error {
     if (options.request.headers.authorization) {
       requestCopy.headers = Object.assign({}, options.request.headers, {
         authorization: options.request.headers.authorization.replace(
-          / .*$/,
+          /(?<! ) .*$/,
           " [REDACTED]"
         )
       });
@@ -6919,7 +6920,7 @@ var import_endpoint = __nccwpck_require__(4471);
 var import_universal_user_agent = __nccwpck_require__(3843);
 
 // pkg/dist-src/version.js
-var VERSION = "8.4.0";
+var VERSION = "8.4.1";
 
 // pkg/dist-src/is-plain-object.js
 function isPlainObject(value) {
@@ -6978,7 +6979,7 @@ function fetchWrapper(requestOptions) {
       headers[keyAndValue[0]] = keyAndValue[1];
     }
     if ("deprecation" in headers) {
-      const matches = headers.link && headers.link.match(/<([^>]+)>; rel="deprecation"/);
+      const matches = headers.link && headers.link.match(/<([^<>]+)>; rel="deprecation"/);
       const deprecationLink = matches && matches.pop();
       log.warn(
         `[@octokit/request] "${requestOptions.method} ${requestOptions.url}" is deprecated. It is scheduled to be removed on ${headers.sunset}${deprecationLink ? `. See ${deprecationLink}` : ""}`
@@ -35755,7 +35756,7 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
-/***/ 3156:
+/***/ 3217:
 /***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
 
@@ -35770,7 +35771,8 @@ var core = __nccwpck_require__(7484);
 var github = __nccwpck_require__(3228);
 ;// CONCATENATED MODULE: ./src/validators.ts
 function isValidReasoningEffort(reasoningEffort) {
-    return ["low", "medium", "high"].includes(reasoningEffort);
+    return (reasoningEffort === null ||
+        ["low", "medium", "high"].includes(reasoningEffort));
 }
 function isValidSeverityLevel(severity) {
     return ["info", "warning", "error"].includes(severity);
@@ -38155,7 +38157,28 @@ const gpt4oAugust2024 = {
     context: 128_000,
     maxOutput: 16_384,
     trainingData: '2023-10',
-    cost: { input: 2.5, output: 10, batchInput: 1.25, batchOutput: 5 },
+    cost: {
+        input: 2.5,
+        output: 10,
+        batchInput: 1.25,
+        batchOutput: 5,
+        cachedInput: 1.25,
+    },
+};
+const gpt4oNovember2024 = {
+    humanName: 'GPT-4o (Nov 2024)',
+    description: 'November 2024 snapshot of the GPT-4o model with enhanced capabilities.',
+    encoding: 'o200k_base',
+    context: 128_000,
+    maxOutput: 16_384,
+    trainingData: '2023-10',
+    cost: {
+        input: 2.5,
+        output: 10,
+        batchInput: 1.25,
+        batchOutput: 5,
+        cachedInput: 1.25,
+    },
 };
 const gpt4oMay2024 = {
     humanName: 'GPT-4o',
@@ -38173,16 +38196,43 @@ const gpt4oMiniJuly2024 = {
     context: 128_000,
     maxOutput: 16_384,
     trainingData: '2023-10',
-    cost: { input: 0.15, output: 0.6, batchInput: 0.075, batchOutput: 0.3 },
+    cost: {
+        input: 0.15,
+        output: 0.6,
+        batchInput: 0.075,
+        batchOutput: 0.3,
+        cachedInput: 0.075,
+    },
 };
-const o1PreviewSeptember2024 = {
-    humanName: 'OpenAI o1-preview',
-    description: 'Points to the most recent snapshot of the o1 model: o1-preview-2024-09-12.',
+const o1December2024 = {
+    humanName: 'OpenAI o1',
+    description: 'Our most intelligent model, optimal for complex tasks requiring deep understanding and expertise. Currently points to o1-2024-12-17.',
     encoding: 'o200k_base',
     context: 128_000,
     maxOutput: 32_768,
     trainingData: '2023-10',
-    cost: { input: 15, output: 60 },
+    cost: {
+        input: 15,
+        output: 60,
+        batchInput: 7.5,
+        batchOutput: 30,
+        cachedInput: 7.5,
+    },
+};
+const o1PreviewSeptember2024 = {
+    humanName: 'OpenAI o1-preview',
+    description: 'Preview version of the o1 model: o1-preview-2024-09-12.',
+    encoding: 'o200k_base',
+    context: 128_000,
+    maxOutput: 32_768,
+    trainingData: '2023-10',
+    cost: {
+        input: 15,
+        output: 60,
+        batchInput: 7.5,
+        batchOutput: 30,
+        cachedInput: 7.5,
+    },
 };
 const o1MiniSeptember2024 = {
     humanName: 'OpenAI o1-mini',
@@ -38191,7 +38241,28 @@ const o1MiniSeptember2024 = {
     context: 128_000,
     maxOutput: 65_536,
     trainingData: '2023-10',
-    cost: { input: 3, output: 12 },
+    cost: {
+        input: 1.1,
+        output: 4.4,
+        batchInput: 0.55,
+        batchOutput: 2.2,
+        cachedInput: 0.55,
+    },
+};
+const o3MiniModel = {
+    humanName: 'OpenAI o3-mini',
+    description: "Small cost-efficient reasoning model that's optimized for coding, math, and science, and supports tools and Structured Outputs.",
+    encoding: 'o200k_base',
+    context: 200_000,
+    maxOutput: 65_536,
+    trainingData: '2023-10',
+    cost: {
+        input: 1.1,
+        output: 4.4,
+        batchInput: 0.55,
+        batchOutput: 2.2,
+        cachedInput: 0.55,
+    },
 };
 const textEmbedding3Small = {
     humanName: 'Text Embedding 3 Small',
@@ -38222,6 +38293,11 @@ const gpt4oRealtimePreview = {
     context: 128_000,
     maxOutput: 4_096,
     trainingData: '2023-10',
+    cost: {
+        input: 5,
+        output: 20,
+        cachedInput: 2.5,
+    },
 };
 const gpt4oRealtimePreview20241001 = {
     humanName: 'GPT-4o Realtime Preview (Oct 2024)',
@@ -38230,6 +38306,37 @@ const gpt4oRealtimePreview20241001 = {
     context: 128_000,
     maxOutput: 4_096,
     trainingData: '2023-10',
+    cost: {
+        input: 5,
+        output: 20,
+        cachedInput: 2.5,
+    },
+};
+const gpt4oRealtimePreviewDecember2024 = {
+    humanName: 'GPT-4o Realtime Preview (Dec 2024)',
+    encoding: 'o200k_base',
+    description: 'December 2024 snapshot for the Realtime API model.',
+    context: 128_000,
+    maxOutput: 4_096,
+    trainingData: '2023-10',
+    cost: {
+        input: 5,
+        output: 20,
+        cachedInput: 2.5,
+    },
+};
+const gpt4oMiniRealtimePreviewDecember2024 = {
+    humanName: 'GPT-4o Mini Realtime Preview (Dec 2024)',
+    encoding: 'o200k_base',
+    description: 'Mini version for the Realtime API with December 2024 snapshot.',
+    context: 128_000,
+    maxOutput: 4_096,
+    trainingData: '2023-10',
+    cost: {
+        input: 0.6,
+        output: 2.4,
+        cachedInput: 0.3,
+    },
 };
 const gpt4oAudioPreview = {
     humanName: 'GPT-4o Audio Preview',
@@ -38238,6 +38345,10 @@ const gpt4oAudioPreview = {
     context: 128_000,
     maxOutput: 16_384,
     trainingData: '2023-10',
+    cost: {
+        input: 2.5,
+        output: 10,
+    },
 };
 const gpt4oAudioPreview20241001 = {
     humanName: 'GPT-4o Audio Preview (Oct 2024)',
@@ -38246,25 +38357,73 @@ const gpt4oAudioPreview20241001 = {
     context: 128_000,
     maxOutput: 16_384,
     trainingData: '2023-10',
+    cost: {
+        input: 2.5,
+        output: 10,
+    },
+};
+const gpt4oAudioPreviewDecember2024 = {
+    humanName: 'GPT-4o Audio Preview (Dec 2024)',
+    encoding: 'o200k_base',
+    description: 'December 2024 snapshot for the Audio API model.',
+    context: 128_000,
+    maxOutput: 16_384,
+    trainingData: '2023-10',
+    cost: {
+        input: 2.5,
+        output: 10,
+    },
+};
+const gpt4oMiniAudioPreviewDecember2024 = {
+    humanName: 'GPT-4o Mini Audio Preview (Dec 2024)',
+    encoding: 'o200k_base',
+    description: 'Mini version for the Audio API with December 2024 snapshot.',
+    context: 128_000,
+    maxOutput: 16_384,
+    trainingData: '2023-10',
+    cost: {
+        input: 0.15,
+        output: 0.6,
+    },
 };
 // finetuning and training
 const gpt4oFinetuning = {
     humanName: 'GPT-4o 2024-08-06 Finetuning',
     description: 'GPT-4o finetuned for custom tasks.',
     encoding: 'o200k_base',
-    cost: { input: 3.75, output: 15, batchInput: 1.875, batchOutput: 7.5 },
+    cost: {
+        input: 3.75,
+        output: 15,
+        batchInput: 1.875,
+        batchOutput: 7.5,
+        cachedInput: 1.875,
+        training: 25,
+    },
 };
 const gpt4oMiniFinetuning = {
     humanName: 'GPT-4o Mini 2024-07-18 Finetuning',
     description: 'GPT-4o mini finetuned for custom tasks.',
     encoding: 'o200k_base',
-    cost: { input: 0.3, output: 1.2, batchInput: 0.15, batchOutput: 0.6 },
+    cost: {
+        input: 0.3,
+        output: 1.2,
+        batchInput: 0.15,
+        batchOutput: 0.6,
+        cachedInput: 0.15,
+        training: 3,
+    },
 };
 const gpt35TurboFinetune = {
     humanName: 'GPT-3.5 Turbo Finetuning',
     description: 'Finetuning GPT-3.5 Turbo with custom data.',
     encoding: 'cl100k_base',
-    cost: { input: 3, output: 6, batchInput: 1.5, batchOutput: 3 },
+    cost: {
+        input: 3,
+        output: 6,
+        batchInput: 1.5,
+        batchOutput: 3,
+        training: 8,
+    },
 };
 const gpt4oMiniTrainingJuly2024 = {
     humanName: 'GPT-4o Mini Training',
@@ -38354,6 +38513,18 @@ const davinci002 = {
     trainingData: '2021-09',
     cost: { input: 2, output: 2, batchInput: 1, batchOutput: 1 },
 };
+const davinci002Finetune = {
+    humanName: 'Davinci-002 Finetuning',
+    description: 'Davinci-002 finetuned for custom tasks.',
+    encoding: 'p50k_base',
+    cost: {
+        input: 12,
+        output: 12,
+        batchInput: 6,
+        batchOutput: 6,
+        training: 6,
+    },
+};
 const babbage002 = {
     humanName: 'Babbage 002',
     description: 'Replacement for the GPT-3 ada and babbage base models.',
@@ -38361,6 +38532,18 @@ const babbage002 = {
     context: 16_384,
     trainingData: '2021-09',
     cost: { input: 0.4, output: 0.4, batchInput: 0.2, batchOutput: 0.2 },
+};
+const babbage002Finetune = {
+    humanName: 'Babbage-002 Finetuning',
+    description: 'Babbage-002 finetuned for custom tasks.',
+    encoding: 'p50k_base',
+    cost: {
+        input: 1.6,
+        output: 1.6,
+        batchInput: 0.8,
+        batchOutput: 0.8,
+        training: 0.4,
+    },
 };
 // deprecated models:
 const gpt432k0613 = {
@@ -38683,12 +38866,16 @@ const textSearchDavinciQuery001 = {
     cost: { input: 200 },
 };
 const chatEnabledModels = {
+    o1: o1December2024,
+    'o1-2024-12-17': o1December2024,
     'o1-preview': o1PreviewSeptember2024,
     'o1-preview-2024-09-12': o1PreviewSeptember2024,
     'o1-mini': o1MiniSeptember2024,
     'o1-mini-2024-09-12': o1MiniSeptember2024,
+    'o3-mini': o3MiniModel,
     'chatgpt-4o-latest': chatgpt4oLatest,
     'gpt-4o': gpt4oAugust2024,
+    'gpt-4o-2024-11-20': gpt4oNovember2024,
     'gpt-4o-2024-08-06': gpt4oAugust2024,
     'gpt-4o-2024-05-13': gpt4oMay2024,
     'gpt-4o-mini': gpt4oMiniJuly2024,
@@ -38696,13 +38883,21 @@ const chatEnabledModels = {
     // audio models:
     'gpt-4o-realtime-preview': gpt4oRealtimePreview,
     'gpt-4o-realtime-preview-2024-10-01': gpt4oRealtimePreview20241001,
+    'gpt-4o-realtime-preview-2024-12-17': gpt4oRealtimePreviewDecember2024,
+    'gpt-4o-mini-realtime-preview': gpt4oMiniRealtimePreviewDecember2024,
+    'gpt-4o-mini-realtime-preview-2024-12-17': gpt4oMiniRealtimePreviewDecember2024,
     'gpt-4o-audio-preview': gpt4oAudioPreview,
     'gpt-4o-audio-preview-2024-10-01': gpt4oAudioPreview20241001,
+    'gpt-4o-audio-preview-2024-12-17': gpt4oAudioPreviewDecember2024,
+    'gpt-4o-mini-audio-preview': gpt4oMiniAudioPreviewDecember2024,
+    'gpt-4o-mini-audio-preview-2024-12-17': gpt4oMiniAudioPreviewDecember2024,
     // finetune and training:
     'gpt-4o-2024-08-06-finetune': gpt4oFinetuning,
     'gpt-4o-mini-2024-07-18-finetune': gpt4oMiniFinetuning,
     'gpt-4o-mini-training': gpt4oMiniTrainingJuly2024,
     'gpt-4o-mini-training-2024-07-18': gpt4oMiniTrainingJuly2024,
+    'davinci-002-finetune': davinci002Finetune,
+    'babbage-002-finetune': babbage002Finetune,
     // older models:
     'gpt-4-turbo': gpt4TurboApril2024,
     'gpt-4-turbo-2024-04-09': gpt4TurboApril2024,
@@ -38947,6 +39142,7 @@ function getEncodingParams(encodingName, getMergeableRanks) {
 
 
 
+
 class GptEncoding {
     static EndOfPrompt = EndOfPrompt;
     static EndOfText = EndOfText;
@@ -38994,6 +39190,7 @@ class GptEncoding {
         this.countTokens = this.countTokens.bind(this);
         this.setMergeCacheSize = this.setMergeCacheSize.bind(this);
         this.clearMergeCache = this.clearMergeCache.bind(this);
+        this.estimateCost = this.estimateCost.bind(this);
         this.modelName = modelName;
     }
     static getEncodingApi(encodingName, getMergeableRanks) {
@@ -39231,6 +39428,43 @@ class GptEncoding {
         }
         return buffer;
     }
+    /**
+     * Estimates the cost of processing a given token count using the model's pricing.
+     *
+     * @param tokenCount - The number of tokens to estimate cost for
+     * @param modelName - Optional model name to use for cost calculation (defaults to this.modelName)
+     * @returns Cost estimate object with applicable price components (input, output, batchInput, batchOutput)
+     */
+    estimateCost(tokenCount, modelName = this.modelName) {
+        if (!modelName) {
+            throw new Error('Model name must be provided either during initialization or passed in to the method.');
+        }
+        const model = models[modelName];
+        if (!model) {
+            throw new Error(`Unknown model: ${modelName}`);
+        }
+        if (!model.cost) {
+            throw new Error(`No cost information available for model: ${modelName}`);
+        }
+        const costPerMillion = model.cost;
+        const result = {};
+        // Calculate cost per token and multiply by token count
+        // eslint-disable-next-line no-magic-numbers
+        const millionTokens = tokenCount / 1_000_000;
+        if (costPerMillion.input !== undefined) {
+            result.input = costPerMillion.input * millionTokens;
+        }
+        if (costPerMillion.output !== undefined) {
+            result.output = costPerMillion.output * millionTokens;
+        }
+        if (costPerMillion.batchInput !== undefined) {
+            result.batchInput = costPerMillion.batchInput * millionTokens;
+        }
+        if (costPerMillion.batchOutput !== undefined) {
+            result.batchOutput = costPerMillion.batchOutput * millionTokens;
+        }
+        return result;
+    }
 }
 //# sourceMappingURL=GptEncoding.js.map
 ;// CONCATENATED MODULE: ./node_modules/gpt-tokenizer/esm/encoding/o200k_base.js
@@ -39240,7 +39474,7 @@ class GptEncoding {
 
 
 const api = GptEncoding.getEncodingApi('o200k_base', () => o200k_base);
-const { decode, decodeAsyncGenerator, decodeGenerator, encode, encodeGenerator, isWithinTokenLimit, countTokens, encodeChat, encodeChatGenerator, vocabularySize, setMergeCacheSize, clearMergeCache, } = api;
+const { decode, decodeAsyncGenerator, decodeGenerator, encode, encodeGenerator, isWithinTokenLimit, countTokens, encodeChat, encodeChatGenerator, vocabularySize, setMergeCacheSize, clearMergeCache, estimateCost, } = api;
 
 // eslint-disable-next-line import/no-default-export
 /* harmony default export */ const encoding_o200k_base = ((/* unused pure expression or super */ null && (api)));
@@ -40168,7 +40402,7 @@ function stringify(object, opts = {}) {
 }
 //# sourceMappingURL=stringify.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/version.mjs
-const VERSION = '4.79.1'; // x-release-please-version
+const VERSION = '4.97.0'; // x-release-please-version
 //# sourceMappingURL=version.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/_shims/registry.mjs
 let auto = false;
@@ -40665,8 +40899,12 @@ function getRuntime() {
  */
 
 
-if (!kind) setShims(getRuntime(), { auto: true });
+const init = () => {
+  if (!kind) setShims(getRuntime(), { auto: true });
+};
 
+
+init();
 
 ;// CONCATENATED MODULE: ./node_modules/openai/error.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
@@ -40782,6 +41020,18 @@ class ContentFilterFinishReasonError extends error_OpenAIError {
 }
 //# sourceMappingURL=error.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/internal/decoders/line.mjs
+var line_classPrivateFieldSet = (undefined && undefined.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
+    if (kind === "m") throw new TypeError("Private method is not writable");
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
+    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
+};
+var line_classPrivateFieldGet = (undefined && undefined.__classPrivateFieldGet) || function (receiver, state, kind, f) {
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
+    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
+};
+var _LineDecoder_carriageReturnIndex;
 
 /**
  * A re-implementation of httpx's `LineDecoder` in Python that handles incrementally
@@ -40789,41 +41039,44 @@ class ContentFilterFinishReasonError extends error_OpenAIError {
  *
  * https://github.com/encode/httpx/blob/920333ea98118e9cf617f246905d7b202510941c/httpx/_decoders.py#L258
  */
-class line_LineDecoder {
+class LineDecoder {
     constructor() {
-        this.buffer = [];
-        this.trailingCR = false;
+        _LineDecoder_carriageReturnIndex.set(this, void 0);
+        this.buffer = new Uint8Array();
+        line_classPrivateFieldSet(this, _LineDecoder_carriageReturnIndex, null, "f");
     }
     decode(chunk) {
-        let text = this.decodeText(chunk);
-        if (this.trailingCR) {
-            text = '\r' + text;
-            this.trailingCR = false;
-        }
-        if (text.endsWith('\r')) {
-            this.trailingCR = true;
-            text = text.slice(0, -1);
-        }
-        if (!text) {
+        if (chunk == null) {
             return [];
         }
-        const trailingNewline = line_LineDecoder.NEWLINE_CHARS.has(text[text.length - 1] || '');
-        let lines = text.split(line_LineDecoder.NEWLINE_REGEXP);
-        // if there is a trailing new line then the last entry will be an empty
-        // string which we don't care about
-        if (trailingNewline) {
-            lines.pop();
-        }
-        if (lines.length === 1 && !trailingNewline) {
-            this.buffer.push(lines[0]);
-            return [];
-        }
-        if (this.buffer.length > 0) {
-            lines = [this.buffer.join('') + lines[0], ...lines.slice(1)];
-            this.buffer = [];
-        }
-        if (!trailingNewline) {
-            this.buffer = [lines.pop() || ''];
+        const binaryChunk = chunk instanceof ArrayBuffer ? new Uint8Array(chunk)
+            : typeof chunk === 'string' ? new TextEncoder().encode(chunk)
+                : chunk;
+        let newData = new Uint8Array(this.buffer.length + binaryChunk.length);
+        newData.set(this.buffer);
+        newData.set(binaryChunk, this.buffer.length);
+        this.buffer = newData;
+        const lines = [];
+        let patternIndex;
+        while ((patternIndex = findNewlineIndex(this.buffer, line_classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f"))) != null) {
+            if (patternIndex.carriage && line_classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f") == null) {
+                // skip until we either get a corresponding `\n`, a new `\r` or nothing
+                line_classPrivateFieldSet(this, _LineDecoder_carriageReturnIndex, patternIndex.index, "f");
+                continue;
+            }
+            // we got double \r or \rtext\n
+            if (line_classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f") != null &&
+                (patternIndex.index !== line_classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f") + 1 || patternIndex.carriage)) {
+                lines.push(this.decodeText(this.buffer.slice(0, line_classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f") - 1)));
+                this.buffer = this.buffer.slice(line_classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f"));
+                line_classPrivateFieldSet(this, _LineDecoder_carriageReturnIndex, null, "f");
+                continue;
+            }
+            const endIndex = line_classPrivateFieldGet(this, _LineDecoder_carriageReturnIndex, "f") !== null ? patternIndex.preceding - 1 : patternIndex.preceding;
+            const line = this.decodeText(this.buffer.slice(0, endIndex));
+            lines.push(line);
+            this.buffer = this.buffer.slice(patternIndex.index);
+            line_classPrivateFieldSet(this, _LineDecoder_carriageReturnIndex, null, "f");
         }
         return lines;
     }
@@ -40853,20 +41106,104 @@ class line_LineDecoder {
         throw new error_OpenAIError(`Unexpected: neither Buffer nor TextDecoder are available as globals. Please report this error.`);
     }
     flush() {
-        if (!this.buffer.length && !this.trailingCR) {
+        if (!this.buffer.length) {
             return [];
         }
-        const lines = [this.buffer.join('')];
-        this.buffer = [];
-        this.trailingCR = false;
-        return lines;
+        return this.decode('\n');
     }
 }
+_LineDecoder_carriageReturnIndex = new WeakMap();
 // prettier-ignore
-line_LineDecoder.NEWLINE_CHARS = new Set(['\n', '\r']);
-line_LineDecoder.NEWLINE_REGEXP = /\r\n|[\n\r]/g;
+LineDecoder.NEWLINE_CHARS = new Set(['\n', '\r']);
+LineDecoder.NEWLINE_REGEXP = /\r\n|[\n\r]/g;
+/**
+ * This function searches the buffer for the end patterns, (\r or \n)
+ * and returns an object with the index preceding the matched newline and the
+ * index after the newline char. `null` is returned if no new line is found.
+ *
+ * ```ts
+ * findNewLineIndex('abc\ndef') -> { preceding: 2, index: 3 }
+ * ```
+ */
+function findNewlineIndex(buffer, startIndex) {
+    const newline = 0x0a; // \n
+    const carriage = 0x0d; // \r
+    for (let i = startIndex ?? 0; i < buffer.length; i++) {
+        if (buffer[i] === newline) {
+            return { preceding: i, index: i + 1, carriage: false };
+        }
+        if (buffer[i] === carriage) {
+            return { preceding: i, index: i + 1, carriage: true };
+        }
+    }
+    return null;
+}
+function findDoubleNewlineIndex(buffer) {
+    // This function searches the buffer for the end patterns (\r\r, \n\n, \r\n\r\n)
+    // and returns the index right after the first occurrence of any pattern,
+    // or -1 if none of the patterns are found.
+    const newline = 0x0a; // \n
+    const carriage = 0x0d; // \r
+    for (let i = 0; i < buffer.length - 1; i++) {
+        if (buffer[i] === newline && buffer[i + 1] === newline) {
+            // \n\n
+            return i + 2;
+        }
+        if (buffer[i] === carriage && buffer[i + 1] === carriage) {
+            // \r\r
+            return i + 2;
+        }
+        if (buffer[i] === carriage &&
+            buffer[i + 1] === newline &&
+            i + 3 < buffer.length &&
+            buffer[i + 2] === carriage &&
+            buffer[i + 3] === newline) {
+            // \r\n\r\n
+            return i + 4;
+        }
+    }
+    return -1;
+}
 //# sourceMappingURL=line.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/internal/stream-utils.mjs
+/**
+ * Most browsers don't yet have async iterable support for ReadableStream,
+ * and Node has a very different way of reading bytes from its "ReadableStream".
+ *
+ * This polyfill was pulled from https://github.com/MattiasBuelens/web-streams-polyfill/pull/122#issuecomment-1627354490
+ */
+function ReadableStreamToAsyncIterable(stream) {
+    if (stream[Symbol.asyncIterator])
+        return stream;
+    const reader = stream.getReader();
+    return {
+        async next() {
+            try {
+                const result = await reader.read();
+                if (result?.done)
+                    reader.releaseLock(); // release lock when stream becomes closed
+                return result;
+            }
+            catch (e) {
+                reader.releaseLock(); // release lock when stream becomes errored
+                throw e;
+            }
+        },
+        async return() {
+            const cancelPromise = reader.cancel();
+            reader.releaseLock();
+            await cancelPromise;
+            return { done: true, value: undefined };
+        },
+        [Symbol.asyncIterator]() {
+            return this;
+        },
+    };
+}
+//# sourceMappingURL=stream-utils.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/streaming.mjs
+
+
 
 
 
@@ -40892,7 +41229,9 @@ class Stream {
                         done = true;
                         continue;
                     }
-                    if (sse.event === null) {
+                    if (sse.event === null ||
+                        sse.event.startsWith('response.') ||
+                        sse.event.startsWith('transcript.')) {
                         let data;
                         try {
                             data = JSON.parse(sse.data);
@@ -40903,7 +41242,7 @@ class Stream {
                             throw e;
                         }
                         if (data && data.error) {
-                            throw new APIError(undefined, data.error, undefined, undefined);
+                            throw new APIError(undefined, data.error, undefined, createResponseHeaders(response.headers));
                         }
                         yield data;
                     }
@@ -40947,8 +41286,8 @@ class Stream {
     static fromReadableStream(readableStream, controller) {
         let consumed = false;
         async function* iterLines() {
-            const lineDecoder = new line_LineDecoder();
-            const iter = readableStreamAsyncIterable(readableStream);
+            const lineDecoder = new LineDecoder();
+            const iter = ReadableStreamToAsyncIterable(readableStream);
             for await (const chunk of iter) {
                 for (const line of lineDecoder.decode(chunk)) {
                     yield line;
@@ -41052,8 +41391,8 @@ async function* _iterSSEMessages(response, controller) {
         throw new error_OpenAIError(`Attempted to iterate over a response with no body`);
     }
     const sseDecoder = new SSEDecoder();
-    const lineDecoder = new line_LineDecoder();
-    const iter = readableStreamAsyncIterable(response.body);
+    const lineDecoder = new LineDecoder();
+    const iter = ReadableStreamToAsyncIterable(response.body);
     for await (const sseChunk of iterSSEChunks(iter)) {
         for (const line of lineDecoder.decode(sseChunk)) {
             const sse = sseDecoder.decode(line);
@@ -41093,32 +41432,6 @@ async function* iterSSEChunks(iterator) {
     if (data.length > 0) {
         yield data;
     }
-}
-function findDoubleNewlineIndex(buffer) {
-    // This function searches the buffer for the end patterns (\r\r, \n\n, \r\n\r\n)
-    // and returns the index right after the first occurrence of any pattern,
-    // or -1 if none of the patterns are found.
-    const newline = 0x0a; // \n
-    const carriage = 0x0d; // \r
-    for (let i = 0; i < buffer.length - 2; i++) {
-        if (buffer[i] === newline && buffer[i + 1] === newline) {
-            // \n\n
-            return i + 2;
-        }
-        if (buffer[i] === carriage && buffer[i + 1] === carriage) {
-            // \r\r
-            return i + 2;
-        }
-        if (buffer[i] === carriage &&
-            buffer[i + 1] === newline &&
-            i + 3 < buffer.length &&
-            buffer[i + 2] === carriage &&
-            buffer[i + 3] === newline) {
-            // \r\n\r\n
-            return i + 4;
-        }
-    }
-    return -1;
 }
 class SSEDecoder {
     constructor() {
@@ -41161,55 +41474,12 @@ class SSEDecoder {
         return null;
     }
 }
-/** This is an internal helper function that's just used for testing */
-function _decodeChunks(chunks) {
-    const decoder = new LineDecoder();
-    const lines = [];
-    for (const chunk of chunks) {
-        lines.push(...decoder.decode(chunk));
-    }
-    return lines;
-}
 function partition(str, delimiter) {
     const index = str.indexOf(delimiter);
     if (index !== -1) {
         return [str.substring(0, index), delimiter, str.substring(index + delimiter.length)];
     }
     return [str, '', ''];
-}
-/**
- * Most browsers don't yet have async iterable support for ReadableStream,
- * and Node has a very different way of reading bytes from its "ReadableStream".
- *
- * This polyfill was pulled from https://github.com/MattiasBuelens/web-streams-polyfill/pull/122#issuecomment-1627354490
- */
-function readableStreamAsyncIterable(stream) {
-    if (stream[Symbol.asyncIterator])
-        return stream;
-    const reader = stream.getReader();
-    return {
-        async next() {
-            try {
-                const result = await reader.read();
-                if (result?.done)
-                    reader.releaseLock(); // release lock when stream becomes closed
-                return result;
-            }
-            catch (e) {
-                reader.releaseLock(); // release lock when stream becomes errored
-                throw e;
-            }
-        },
-        async return() {
-            const cancelPromise = reader.cancel();
-            reader.releaseLock();
-            await cancelPromise;
-            return { done: true, value: undefined };
-        },
-        [Symbol.asyncIterator]() {
-            return this;
-        },
-    };
 }
 //# sourceMappingURL=streaming.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/uploads.mjs
@@ -41388,6 +41658,8 @@ var _AbstractPage_client;
 
 
 
+// try running side effects outside of _shims/index to workaround https://github.com/vercel/next.js/issues/76881
+init();
 
 
 async function defaultParseResponse(props) {
@@ -41409,7 +41681,8 @@ async function defaultParseResponse(props) {
         return response;
     }
     const contentType = response.headers.get('content-type');
-    const isJSON = contentType?.includes('application/json') || contentType?.includes('application/vnd.api+json');
+    const mediaType = contentType?.split(';')[0]?.trim();
+    const isJSON = mediaType?.includes('application/json') || mediaType?.endsWith('+json');
     if (isJSON) {
         const json = await response.json();
         debug('response', response.status, response.url, response.headers, json);
@@ -41578,7 +41851,8 @@ class APIClient {
         }
         return null;
     }
-    buildRequest(options, { retryCount = 0 } = {}) {
+    buildRequest(inputOptions, { retryCount = 0 } = {}) {
+        const options = { ...inputOptions };
         const { method, path, query, headers: headers = {} } = options;
         const body = ArrayBuffer.isView(options.body) || (options.__binaryRequest && typeof options.body === 'string') ?
             options.body
@@ -41589,9 +41863,9 @@ class APIClient {
         const url = this.buildURL(path, query);
         if ('timeout' in options)
             validatePositiveInteger('timeout', options.timeout);
-        const timeout = options.timeout ?? this.timeout;
+        options.timeout = options.timeout ?? this.timeout;
         const httpAgent = options.httpAgent ?? this.httpAgent ?? getDefaultAgent(url);
-        const minAgentTimeout = timeout + 1000;
+        const minAgentTimeout = options.timeout + 1000;
         if (typeof httpAgent?.options?.timeout === 'number' &&
             minAgentTimeout > (httpAgent.options.timeout ?? 0)) {
             // Allow any given request to bump our agent active socket timeout.
@@ -41601,9 +41875,9 @@ class APIClient {
             httpAgent.options.timeout = minAgentTimeout;
         }
         if (this.idempotencyHeader && method !== 'get') {
-            if (!options.idempotencyKey)
-                options.idempotencyKey = this.defaultIdempotencyKey();
-            headers[this.idempotencyHeader] = options.idempotencyKey;
+            if (!inputOptions.idempotencyKey)
+                inputOptions.idempotencyKey = this.defaultIdempotencyKey();
+            headers[this.idempotencyHeader] = inputOptions.idempotencyKey;
         }
         const reqHeaders = this.buildHeaders({ options, headers, contentLength, retryCount });
         const req = {
@@ -41615,7 +41889,7 @@ class APIClient {
             // not compatible with standard web types
             signal: options.signal ?? null,
         };
-        return { req, url, timeout };
+        return { req, url, timeout: options.timeout };
     }
     buildHeaders({ options, headers, contentLength, retryCount, }) {
         const reqHeaders = {};
@@ -41629,12 +41903,17 @@ class APIClient {
         if (isMultipartBody(options.body) && kind !== 'node') {
             delete reqHeaders['content-type'];
         }
-        // Don't set the retry count header if it was already set or removed through default headers or by the
-        // caller. We check `defaultHeaders` and `headers`, which can contain nulls, instead of `reqHeaders` to
-        // account for the removal case.
+        // Don't set theses headers if they were already set or removed through default headers or by the caller.
+        // We check `defaultHeaders` and `headers`, which can contain nulls, instead of `reqHeaders` to account
+        // for the removal case.
         if (getHeader(defaultHeaders, 'x-stainless-retry-count') === undefined &&
             getHeader(headers, 'x-stainless-retry-count') === undefined) {
             reqHeaders['x-stainless-retry-count'] = String(retryCount);
+        }
+        if (getHeader(defaultHeaders, 'x-stainless-timeout') === undefined &&
+            getHeader(headers, 'x-stainless-timeout') === undefined &&
+            options.timeout) {
+            reqHeaders['x-stainless-timeout'] = String(Math.trunc(options.timeout / 1000));
         }
         this.validateHeaders(reqHeaders, headers);
         return reqHeaders;
@@ -41925,6 +42204,7 @@ const requestOptionsKeys = {
     httpAgent: true,
     signal: true,
     idempotencyKey: true,
+    __metadata: true,
     __binaryRequest: true,
     __binaryResponse: true,
     __streamClass: true,
@@ -42293,6 +42573,28 @@ const toBase64 = (str) => {
     }
     throw new OpenAIError('Cannot generate b64 string; Expected `Buffer` or `btoa` to be defined');
 };
+/**
+ * Converts a Base64 encoded string to a Float32Array.
+ * @param base64Str - The Base64 encoded string.
+ * @returns An Array of numbers interpreted as Float32 values.
+ */
+const toFloat32Array = (base64Str) => {
+    if (typeof Buffer !== 'undefined') {
+        // for Node.js environment
+        const buf = Buffer.from(base64Str, 'base64');
+        return Array.from(new Float32Array(buf.buffer, buf.byteOffset, buf.length / Float32Array.BYTES_PER_ELEMENT));
+    }
+    else {
+        // for legacy web platform APIs
+        const binaryStr = atob(base64Str);
+        const len = binaryStr.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
+        }
+        return Array.from(new Float32Array(bytes.buffer));
+    }
+};
 function isObj(obj) {
     return obj != null && typeof obj === 'object' && !Array.isArray(obj);
 }
@@ -42314,40 +42616,21 @@ class Completions extends APIResource {
     }
 }
 //# sourceMappingURL=completions.mjs.map
-;// CONCATENATED MODULE: ./node_modules/openai/resources/chat/completions.mjs
-// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
-
-class completions_Completions extends APIResource {
-    create(body, options) {
-        return this._client.post('/chat/completions', { body, ...options, stream: body.stream ?? false });
-    }
-}
-//# sourceMappingURL=completions.mjs.map
-;// CONCATENATED MODULE: ./node_modules/openai/resources/chat/chat.mjs
+;// CONCATENATED MODULE: ./node_modules/openai/resources/chat/completions/messages.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 
 
-class Chat extends APIResource {
-    constructor() {
-        super(...arguments);
-        this.completions = new completions_Completions(this._client);
+class Messages extends APIResource {
+    list(completionId, query = {}, options) {
+        if (isRequestOptions(query)) {
+            return this.list(completionId, {}, query);
+        }
+        return this._client.getAPIList(`/chat/completions/${completionId}/messages`, ChatCompletionStoreMessagesPage, { query, ...options });
     }
 }
-Chat.Completions = completions_Completions;
-//# sourceMappingURL=chat.mjs.map
-;// CONCATENATED MODULE: ./node_modules/openai/resources/embeddings.mjs
-// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-class Embeddings extends APIResource {
-    /**
-     * Creates an embedding vector representing the input text.
-     */
-    create(body, options) {
-        return this._client.post('/embeddings', { body, ...options });
-    }
-}
-//# sourceMappingURL=embeddings.mjs.map
+//# sourceMappingURL=messages.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/pagination.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
@@ -42379,9 +42662,16 @@ class CursorPage extends AbstractPage {
     constructor(client, response, body, options) {
         super(client, response, body, options);
         this.data = body.data || [];
+        this.has_more = body.has_more || false;
     }
     getPaginatedItems() {
         return this.data ?? [];
+    }
+    hasNextPage() {
+        if (this.has_more === false) {
+            return false;
+        }
+        return super.hasNextPage();
     }
     // @deprecated Please use `nextPageInfo()` instead
     nextPageParams() {
@@ -42408,6 +42698,115 @@ class CursorPage extends AbstractPage {
     }
 }
 //# sourceMappingURL=pagination.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/chat/completions/completions.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+
+
+class completions_Completions extends APIResource {
+    constructor() {
+        super(...arguments);
+        this.messages = new Messages(this._client);
+    }
+    create(body, options) {
+        return this._client.post('/chat/completions', { body, ...options, stream: body.stream ?? false });
+    }
+    /**
+     * Get a stored chat completion. Only Chat Completions that have been created with
+     * the `store` parameter set to `true` will be returned.
+     */
+    retrieve(completionId, options) {
+        return this._client.get(`/chat/completions/${completionId}`, options);
+    }
+    /**
+     * Modify a stored chat completion. Only Chat Completions that have been created
+     * with the `store` parameter set to `true` can be modified. Currently, the only
+     * supported modification is to update the `metadata` field.
+     */
+    update(completionId, body, options) {
+        return this._client.post(`/chat/completions/${completionId}`, { body, ...options });
+    }
+    list(query = {}, options) {
+        if (isRequestOptions(query)) {
+            return this.list({}, query);
+        }
+        return this._client.getAPIList('/chat/completions', ChatCompletionsPage, { query, ...options });
+    }
+    /**
+     * Delete a stored chat completion. Only Chat Completions that have been created
+     * with the `store` parameter set to `true` can be deleted.
+     */
+    del(completionId, options) {
+        return this._client.delete(`/chat/completions/${completionId}`, options);
+    }
+}
+class ChatCompletionsPage extends CursorPage {
+}
+class ChatCompletionStoreMessagesPage extends CursorPage {
+}
+completions_Completions.ChatCompletionsPage = ChatCompletionsPage;
+completions_Completions.Messages = Messages;
+//# sourceMappingURL=completions.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/chat/chat.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+class Chat extends APIResource {
+    constructor() {
+        super(...arguments);
+        this.completions = new completions_Completions(this._client);
+    }
+}
+Chat.Completions = completions_Completions;
+Chat.ChatCompletionsPage = ChatCompletionsPage;
+//# sourceMappingURL=chat.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/embeddings.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+class Embeddings extends APIResource {
+    /**
+     * Creates an embedding vector representing the input text.
+     */
+    create(body, options) {
+        const hasUserProvidedEncodingFormat = !!body.encoding_format;
+        // No encoding_format specified, defaulting to base64 for performance reasons
+        // See https://github.com/openai/openai-node/pull/1312
+        let encoding_format = hasUserProvidedEncodingFormat ? body.encoding_format : 'base64';
+        if (hasUserProvidedEncodingFormat) {
+            debug('Request', 'User defined encoding_format:', body.encoding_format);
+        }
+        const response = this._client.post('/embeddings', {
+            body: {
+                ...body,
+                encoding_format: encoding_format,
+            },
+            ...options,
+        });
+        // if the user specified an encoding_format, return the response as-is
+        if (hasUserProvidedEncodingFormat) {
+            return response;
+        }
+        // in this stage, we are sure the user did not specify an encoding_format
+        // and we defaulted to base64 for performance reasons
+        // we are sure then that the response is base64 encoded, let's decode it
+        // the returned result will be a float32 array since this is OpenAI API's default encoding
+        debug('response', 'Decoding base64 embeddings to float32 array');
+        return response._thenUnwrap((response) => {
+            if (response && response.data) {
+                response.data.forEach((embeddingBase64Obj) => {
+                    const embeddingBase64Str = embeddingBase64Obj.embedding;
+                    embeddingBase64Obj.embedding = toFloat32Array(embeddingBase64Str);
+                });
+            }
+            return response;
+        });
+    }
+}
+//# sourceMappingURL=embeddings.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/files.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
@@ -42508,19 +42907,21 @@ Files.FileObjectsPage = FileObjectsPage;
 
 class Images extends APIResource {
     /**
-     * Creates a variation of a given image.
+     * Creates a variation of a given image. This endpoint only supports `dall-e-2`.
      */
     createVariation(body, options) {
         return this._client.post('/images/variations', multipartFormRequestOptions({ body, ...options }));
     }
     /**
-     * Creates an edited or extended image given an original image and a prompt.
+     * Creates an edited or extended image given one or more source images and a
+     * prompt. This endpoint only supports `gpt-image-1` and `dall-e-2`.
      */
     edit(body, options) {
         return this._client.post('/images/edits', multipartFormRequestOptions({ body, ...options }));
     }
     /**
      * Creates an image given a prompt.
+     * [Learn more](https://platform.openai.com/docs/guides/images).
      */
     generate(body, options) {
         return this._client.post('/images/generations', { body, ...options });
@@ -42550,7 +42951,12 @@ class Speech extends APIResource {
 
 class Transcriptions extends APIResource {
     create(body, options) {
-        return this._client.post('/audio/transcriptions', multipartFormRequestOptions({ body, ...options }));
+        return this._client.post('/audio/transcriptions', multipartFormRequestOptions({
+            body,
+            ...options,
+            stream: body.stream ?? false,
+            __metadata: { model: body.model },
+        }));
     }
 }
 //# sourceMappingURL=transcriptions.mjs.map
@@ -42560,7 +42966,7 @@ class Transcriptions extends APIResource {
 
 class Translations extends APIResource {
     create(body, options) {
-        return this._client.post('/audio/translations', multipartFormRequestOptions({ body, ...options }));
+        return this._client.post('/audio/translations', multipartFormRequestOptions({ body, ...options, __metadata: { model: body.model } }));
     }
 }
 //# sourceMappingURL=translations.mjs.map
@@ -42632,12 +43038,67 @@ class ModelsPage extends Page {
 }
 Models.ModelsPage = ModelsPage;
 //# sourceMappingURL=models.mjs.map
-;// CONCATENATED MODULE: ./node_modules/openai/resources/fine-tuning/jobs/checkpoints.mjs
+;// CONCATENATED MODULE: ./node_modules/openai/resources/fine-tuning/checkpoints/permissions.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+class Permissions extends APIResource {
+    /**
+     * **NOTE:** Calling this endpoint requires an [admin API key](../admin-api-keys).
+     *
+     * This enables organization owners to share fine-tuned models with other projects
+     * in their organization.
+     */
+    create(fineTunedModelCheckpoint, body, options) {
+        return this._client.getAPIList(`/fine_tuning/checkpoints/${fineTunedModelCheckpoint}/permissions`, PermissionCreateResponsesPage, { body, method: 'post', ...options });
+    }
+    retrieve(fineTunedModelCheckpoint, query = {}, options) {
+        if (isRequestOptions(query)) {
+            return this.retrieve(fineTunedModelCheckpoint, {}, query);
+        }
+        return this._client.get(`/fine_tuning/checkpoints/${fineTunedModelCheckpoint}/permissions`, {
+            query,
+            ...options,
+        });
+    }
+    /**
+     * **NOTE:** This endpoint requires an [admin API key](../admin-api-keys).
+     *
+     * Organization owners can use this endpoint to delete a permission for a
+     * fine-tuned model checkpoint.
+     */
+    del(fineTunedModelCheckpoint, permissionId, options) {
+        return this._client.delete(`/fine_tuning/checkpoints/${fineTunedModelCheckpoint}/permissions/${permissionId}`, options);
+    }
+}
+/**
+ * Note: no pagination actually occurs yet, this is for forwards-compatibility.
+ */
+class PermissionCreateResponsesPage extends Page {
+}
+Permissions.PermissionCreateResponsesPage = PermissionCreateResponsesPage;
+//# sourceMappingURL=permissions.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/fine-tuning/checkpoints/checkpoints.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 
 
 class Checkpoints extends APIResource {
+    constructor() {
+        super(...arguments);
+        this.permissions = new Permissions(this._client);
+    }
+}
+Checkpoints.Permissions = Permissions;
+Checkpoints.PermissionCreateResponsesPage = PermissionCreateResponsesPage;
+//# sourceMappingURL=checkpoints.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/fine-tuning/jobs/checkpoints.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+class checkpoints_Checkpoints extends APIResource {
     list(fineTuningJobId, query = {}, options) {
         if (isRequestOptions(query)) {
             return this.list(fineTuningJobId, {}, query);
@@ -42647,7 +43108,7 @@ class Checkpoints extends APIResource {
 }
 class FineTuningJobCheckpointsPage extends CursorPage {
 }
-Checkpoints.FineTuningJobCheckpointsPage = FineTuningJobCheckpointsPage;
+checkpoints_Checkpoints.FineTuningJobCheckpointsPage = FineTuningJobCheckpointsPage;
 //# sourceMappingURL=checkpoints.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/fine-tuning/jobs/jobs.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
@@ -42659,7 +43120,7 @@ Checkpoints.FineTuningJobCheckpointsPage = FineTuningJobCheckpointsPage;
 class Jobs extends APIResource {
     constructor() {
         super(...arguments);
-        this.checkpoints = new Checkpoints(this._client);
+        this.checkpoints = new checkpoints_Checkpoints(this._client);
     }
     /**
      * Creates a fine-tuning job which begins the process of creating a new model from
@@ -42709,7 +43170,7 @@ class FineTuningJobEventsPage extends CursorPage {
 }
 Jobs.FineTuningJobsPage = FineTuningJobsPage;
 Jobs.FineTuningJobEventsPage = FineTuningJobEventsPage;
-Jobs.Checkpoints = Checkpoints;
+Jobs.Checkpoints = checkpoints_Checkpoints;
 Jobs.FineTuningJobCheckpointsPage = FineTuningJobCheckpointsPage;
 //# sourceMappingURL=jobs.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/fine-tuning/fine-tuning.mjs
@@ -42717,18 +43178,400 @@ Jobs.FineTuningJobCheckpointsPage = FineTuningJobCheckpointsPage;
 
 
 
+
+
 class FineTuning extends APIResource {
     constructor() {
         super(...arguments);
         this.jobs = new Jobs(this._client);
+        this.checkpoints = new Checkpoints(this._client);
     }
 }
 FineTuning.Jobs = Jobs;
 FineTuning.FineTuningJobsPage = FineTuningJobsPage;
 FineTuning.FineTuningJobEventsPage = FineTuningJobEventsPage;
+FineTuning.Checkpoints = Checkpoints;
 //# sourceMappingURL=fine-tuning.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/lib/Util.mjs
+/**
+ * Like `Promise.allSettled()` but throws an error if any promises are rejected.
+ */
+const allSettledWithThrow = async (promises) => {
+    const results = await Promise.allSettled(promises);
+    const rejected = results.filter((result) => result.status === 'rejected');
+    if (rejected.length) {
+        for (const result of rejected) {
+            console.error(result.reason);
+        }
+        throw new Error(`${rejected.length} promise(s) failed - see the above errors`);
+    }
+    // Note: TS was complaining about using `.filter().map()` here for some reason
+    const values = [];
+    for (const result of results) {
+        if (result.status === 'fulfilled') {
+            values.push(result.value);
+        }
+    }
+    return values;
+};
+//# sourceMappingURL=Util.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/vector-stores/files.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+class files_Files extends APIResource {
+    /**
+     * Create a vector store file by attaching a
+     * [File](https://platform.openai.com/docs/api-reference/files) to a
+     * [vector store](https://platform.openai.com/docs/api-reference/vector-stores/object).
+     */
+    create(vectorStoreId, body, options) {
+        return this._client.post(`/vector_stores/${vectorStoreId}/files`, {
+            body,
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    /**
+     * Retrieves a vector store file.
+     */
+    retrieve(vectorStoreId, fileId, options) {
+        return this._client.get(`/vector_stores/${vectorStoreId}/files/${fileId}`, {
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    /**
+     * Update attributes on a vector store file.
+     */
+    update(vectorStoreId, fileId, body, options) {
+        return this._client.post(`/vector_stores/${vectorStoreId}/files/${fileId}`, {
+            body,
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    list(vectorStoreId, query = {}, options) {
+        if (isRequestOptions(query)) {
+            return this.list(vectorStoreId, {}, query);
+        }
+        return this._client.getAPIList(`/vector_stores/${vectorStoreId}/files`, VectorStoreFilesPage, {
+            query,
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    /**
+     * Delete a vector store file. This will remove the file from the vector store but
+     * the file itself will not be deleted. To delete the file, use the
+     * [delete file](https://platform.openai.com/docs/api-reference/files/delete)
+     * endpoint.
+     */
+    del(vectorStoreId, fileId, options) {
+        return this._client.delete(`/vector_stores/${vectorStoreId}/files/${fileId}`, {
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    /**
+     * Attach a file to the given vector store and wait for it to be processed.
+     */
+    async createAndPoll(vectorStoreId, body, options) {
+        const file = await this.create(vectorStoreId, body, options);
+        return await this.poll(vectorStoreId, file.id, options);
+    }
+    /**
+     * Wait for the vector store file to finish processing.
+     *
+     * Note: this will return even if the file failed to process, you need to check
+     * file.last_error and file.status to handle these cases
+     */
+    async poll(vectorStoreId, fileId, options) {
+        const headers = { ...options?.headers, 'X-Stainless-Poll-Helper': 'true' };
+        if (options?.pollIntervalMs) {
+            headers['X-Stainless-Custom-Poll-Interval'] = options.pollIntervalMs.toString();
+        }
+        while (true) {
+            const fileResponse = await this.retrieve(vectorStoreId, fileId, {
+                ...options,
+                headers,
+            }).withResponse();
+            const file = fileResponse.data;
+            switch (file.status) {
+                case 'in_progress':
+                    let sleepInterval = 5000;
+                    if (options?.pollIntervalMs) {
+                        sleepInterval = options.pollIntervalMs;
+                    }
+                    else {
+                        const headerInterval = fileResponse.response.headers.get('openai-poll-after-ms');
+                        if (headerInterval) {
+                            const headerIntervalMs = parseInt(headerInterval);
+                            if (!isNaN(headerIntervalMs)) {
+                                sleepInterval = headerIntervalMs;
+                            }
+                        }
+                    }
+                    await sleep(sleepInterval);
+                    break;
+                case 'failed':
+                case 'completed':
+                    return file;
+            }
+        }
+    }
+    /**
+     * Upload a file to the `files` API and then attach it to the given vector store.
+     *
+     * Note the file will be asynchronously processed (you can use the alternative
+     * polling helper method to wait for processing to complete).
+     */
+    async upload(vectorStoreId, file, options) {
+        const fileInfo = await this._client.files.create({ file: file, purpose: 'assistants' }, options);
+        return this.create(vectorStoreId, { file_id: fileInfo.id }, options);
+    }
+    /**
+     * Add a file to a vector store and poll until processing is complete.
+     */
+    async uploadAndPoll(vectorStoreId, file, options) {
+        const fileInfo = await this.upload(vectorStoreId, file, options);
+        return await this.poll(vectorStoreId, fileInfo.id, options);
+    }
+    /**
+     * Retrieve the parsed contents of a vector store file.
+     */
+    content(vectorStoreId, fileId, options) {
+        return this._client.getAPIList(`/vector_stores/${vectorStoreId}/files/${fileId}/content`, FileContentResponsesPage, { ...options, headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers } });
+    }
+}
+class VectorStoreFilesPage extends CursorPage {
+}
+/**
+ * Note: no pagination actually occurs yet, this is for forwards-compatibility.
+ */
+class FileContentResponsesPage extends Page {
+}
+files_Files.VectorStoreFilesPage = VectorStoreFilesPage;
+files_Files.FileContentResponsesPage = FileContentResponsesPage;
+//# sourceMappingURL=files.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/vector-stores/file-batches.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+
+
+class FileBatches extends APIResource {
+    /**
+     * Create a vector store file batch.
+     */
+    create(vectorStoreId, body, options) {
+        return this._client.post(`/vector_stores/${vectorStoreId}/file_batches`, {
+            body,
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    /**
+     * Retrieves a vector store file batch.
+     */
+    retrieve(vectorStoreId, batchId, options) {
+        return this._client.get(`/vector_stores/${vectorStoreId}/file_batches/${batchId}`, {
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    /**
+     * Cancel a vector store file batch. This attempts to cancel the processing of
+     * files in this batch as soon as possible.
+     */
+    cancel(vectorStoreId, batchId, options) {
+        return this._client.post(`/vector_stores/${vectorStoreId}/file_batches/${batchId}/cancel`, {
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    /**
+     * Create a vector store batch and poll until all files have been processed.
+     */
+    async createAndPoll(vectorStoreId, body, options) {
+        const batch = await this.create(vectorStoreId, body);
+        return await this.poll(vectorStoreId, batch.id, options);
+    }
+    listFiles(vectorStoreId, batchId, query = {}, options) {
+        if (isRequestOptions(query)) {
+            return this.listFiles(vectorStoreId, batchId, {}, query);
+        }
+        return this._client.getAPIList(`/vector_stores/${vectorStoreId}/file_batches/${batchId}/files`, VectorStoreFilesPage, { query, ...options, headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers } });
+    }
+    /**
+     * Wait for the given file batch to be processed.
+     *
+     * Note: this will return even if one of the files failed to process, you need to
+     * check batch.file_counts.failed_count to handle this case.
+     */
+    async poll(vectorStoreId, batchId, options) {
+        const headers = { ...options?.headers, 'X-Stainless-Poll-Helper': 'true' };
+        if (options?.pollIntervalMs) {
+            headers['X-Stainless-Custom-Poll-Interval'] = options.pollIntervalMs.toString();
+        }
+        while (true) {
+            const { data: batch, response } = await this.retrieve(vectorStoreId, batchId, {
+                ...options,
+                headers,
+            }).withResponse();
+            switch (batch.status) {
+                case 'in_progress':
+                    let sleepInterval = 5000;
+                    if (options?.pollIntervalMs) {
+                        sleepInterval = options.pollIntervalMs;
+                    }
+                    else {
+                        const headerInterval = response.headers.get('openai-poll-after-ms');
+                        if (headerInterval) {
+                            const headerIntervalMs = parseInt(headerInterval);
+                            if (!isNaN(headerIntervalMs)) {
+                                sleepInterval = headerIntervalMs;
+                            }
+                        }
+                    }
+                    await sleep(sleepInterval);
+                    break;
+                case 'failed':
+                case 'cancelled':
+                case 'completed':
+                    return batch;
+            }
+        }
+    }
+    /**
+     * Uploads the given files concurrently and then creates a vector store file batch.
+     *
+     * The concurrency limit is configurable using the `maxConcurrency` parameter.
+     */
+    async uploadAndPoll(vectorStoreId, { files, fileIds = [] }, options) {
+        if (files == null || files.length == 0) {
+            throw new Error(`No \`files\` provided to process. If you've already uploaded files you should use \`.createAndPoll()\` instead`);
+        }
+        const configuredConcurrency = options?.maxConcurrency ?? 5;
+        // We cap the number of workers at the number of files (so we don't start any unnecessary workers)
+        const concurrencyLimit = Math.min(configuredConcurrency, files.length);
+        const client = this._client;
+        const fileIterator = files.values();
+        const allFileIds = [...fileIds];
+        // This code is based on this design. The libraries don't accommodate our environment limits.
+        // https://stackoverflow.com/questions/40639432/what-is-the-best-way-to-limit-concurrency-when-using-es6s-promise-all
+        async function processFiles(iterator) {
+            for (let item of iterator) {
+                const fileObj = await client.files.create({ file: item, purpose: 'assistants' }, options);
+                allFileIds.push(fileObj.id);
+            }
+        }
+        // Start workers to process results
+        const workers = Array(concurrencyLimit).fill(fileIterator).map(processFiles);
+        // Wait for all processing to complete.
+        await allSettledWithThrow(workers);
+        return await this.createAndPoll(vectorStoreId, {
+            file_ids: allFileIds,
+        });
+    }
+}
+
+//# sourceMappingURL=file-batches.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/vector-stores/vector-stores.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+
+
+
+
+class VectorStores extends APIResource {
+    constructor() {
+        super(...arguments);
+        this.files = new files_Files(this._client);
+        this.fileBatches = new FileBatches(this._client);
+    }
+    /**
+     * Create a vector store.
+     */
+    create(body, options) {
+        return this._client.post('/vector_stores', {
+            body,
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    /**
+     * Retrieves a vector store.
+     */
+    retrieve(vectorStoreId, options) {
+        return this._client.get(`/vector_stores/${vectorStoreId}`, {
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    /**
+     * Modifies a vector store.
+     */
+    update(vectorStoreId, body, options) {
+        return this._client.post(`/vector_stores/${vectorStoreId}`, {
+            body,
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    list(query = {}, options) {
+        if (isRequestOptions(query)) {
+            return this.list({}, query);
+        }
+        return this._client.getAPIList('/vector_stores', VectorStoresPage, {
+            query,
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    /**
+     * Delete a vector store.
+     */
+    del(vectorStoreId, options) {
+        return this._client.delete(`/vector_stores/${vectorStoreId}`, {
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+    /**
+     * Search a vector store for relevant chunks based on a query and file attributes
+     * filter.
+     */
+    search(vectorStoreId, body, options) {
+        return this._client.getAPIList(`/vector_stores/${vectorStoreId}/search`, VectorStoreSearchResponsesPage, {
+            body,
+            method: 'post',
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+}
+class VectorStoresPage extends CursorPage {
+}
+/**
+ * Note: no pagination actually occurs yet, this is for forwards-compatibility.
+ */
+class VectorStoreSearchResponsesPage extends Page {
+}
+VectorStores.VectorStoresPage = VectorStoresPage;
+VectorStores.VectorStoreSearchResponsesPage = VectorStoreSearchResponsesPage;
+VectorStores.Files = files_Files;
+VectorStores.VectorStoreFilesPage = VectorStoreFilesPage;
+VectorStores.FileContentResponsesPage = FileContentResponsesPage;
+VectorStores.FileBatches = FileBatches;
+//# sourceMappingURL=vector-stores.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/beta/assistants.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
 
 
 
@@ -43043,6 +43886,20 @@ function makeParseableResponseFormat(response_format, parser) {
     });
     return obj;
 }
+function parser_makeParseableTextFormat(response_format, parser) {
+    const obj = { ...response_format };
+    Object.defineProperties(obj, {
+        $brand: {
+            value: 'auto-parseable-response-format',
+            enumerable: false,
+        },
+        $parseRaw: {
+            value: parser,
+            enumerable: false,
+        },
+    });
+    return obj;
+}
 function isAutoParsableResponseFormat(response_format) {
     return response_format?.['$brand'] === 'auto-parseable-response-format';
 }
@@ -43073,7 +43930,15 @@ function maybeParseChatCompletion(completion, params) {
             ...completion,
             choices: completion.choices.map((choice) => ({
                 ...choice,
-                message: { ...choice.message, parsed: null, tool_calls: choice.message.tool_calls ?? [] },
+                message: {
+                    ...choice.message,
+                    parsed: null,
+                    ...(choice.message.tool_calls ?
+                        {
+                            tool_calls: choice.message.tool_calls,
+                        }
+                        : undefined),
+                },
             })),
         };
     }
@@ -43091,7 +43956,11 @@ function parseChatCompletion(completion, params) {
             ...choice,
             message: {
                 ...choice.message,
-                tool_calls: choice.message.tool_calls?.map((toolCall) => parseToolCall(params, toolCall)) ?? [],
+                ...(choice.message.tool_calls ?
+                    {
+                        tool_calls: choice.message.tool_calls?.map((toolCall) => parseToolCall(params, toolCall)) ?? undefined,
+                    }
+                    : undefined),
                 parsed: choice.message.content && !choice.message.refusal ?
                     parseResponseFormat(params, choice.message.content)
                     : null,
@@ -44402,8 +45271,32 @@ class Sessions extends APIResource {
     }
 }
 //# sourceMappingURL=sessions.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/beta/realtime/transcription-sessions.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+class TranscriptionSessions extends APIResource {
+    /**
+     * Create an ephemeral API token for use in client-side applications with the
+     * Realtime API specifically for realtime transcriptions. Can be configured with
+     * the same session parameters as the `transcription_session.update` client event.
+     *
+     * It responds with a session object, plus a `client_secret` key which contains a
+     * usable ephemeral API token that can be used to authenticate browser clients for
+     * the Realtime API.
+     */
+    create(body, options) {
+        return this._client.post('/realtime/transcription_sessions', {
+            body,
+            ...options,
+            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
+        });
+    }
+}
+//# sourceMappingURL=transcription-sessions.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/beta/realtime/realtime.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
 
 
 
@@ -44411,9 +45304,11 @@ class Realtime extends APIResource {
     constructor() {
         super(...arguments);
         this.sessions = new Sessions(this._client);
+        this.transcriptionSessions = new TranscriptionSessions(this._client);
     }
 }
 Realtime.Sessions = Sessions;
+Realtime.TranscriptionSessions = TranscriptionSessions;
 //# sourceMappingURL=realtime.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/lib/AssistantStream.mjs
 var AssistantStream_classPrivateFieldGet = (undefined && undefined.__classPrivateFieldGet) || function (receiver, state, kind, f) {
@@ -44725,6 +45620,7 @@ _AssistantStream_addEvent = function _AssistantStream_addEvent(event) {
         case 'thread.run.in_progress':
         case 'thread.run.requires_action':
         case 'thread.run.completed':
+        case 'thread.run.incomplete':
         case 'thread.run.failed':
         case 'thread.run.cancelling':
         case 'thread.run.cancelled':
@@ -44750,6 +45646,8 @@ _AssistantStream_addEvent = function _AssistantStream_addEvent(event) {
         case 'error':
             //This is included for completeness, but errors are processed in the SSE event processing so this should not occur
             throw new Error('Encountered an error event in event processing - errors should be processed earlier');
+        default:
+            AssistantStream_assertNever(event);
     }
 }, _AssistantStream_endRequest = function _AssistantStream_endRequest() {
     if (this.ended) {
@@ -44969,13 +45867,14 @@ _AssistantStream_addEvent = function _AssistantStream_addEvent(event) {
             break;
     }
 };
+function AssistantStream_assertNever(_x) { }
 //# sourceMappingURL=AssistantStream.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/beta/threads/messages.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 
 
-class Messages extends APIResource {
+class messages_Messages extends APIResource {
     /**
      * Create a message.
      */
@@ -45027,7 +45926,7 @@ class Messages extends APIResource {
 }
 class MessagesPage extends CursorPage {
 }
-Messages.MessagesPage = MessagesPage;
+messages_Messages.MessagesPage = MessagesPage;
 //# sourceMappingURL=messages.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/beta/threads/runs/steps.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
@@ -45236,7 +46135,7 @@ class Threads extends APIResource {
     constructor() {
         super(...arguments);
         this.runs = new Runs(this._client);
-        this.messages = new Messages(this._client);
+        this.messages = new messages_Messages(this._client);
     }
     create(body = {}, options) {
         if (isRequestOptions(body)) {
@@ -45302,349 +46201,11 @@ class Threads extends APIResource {
 }
 Threads.Runs = Runs;
 Threads.RunsPage = RunsPage;
-Threads.Messages = Messages;
+Threads.Messages = messages_Messages;
 Threads.MessagesPage = MessagesPage;
 //# sourceMappingURL=threads.mjs.map
-;// CONCATENATED MODULE: ./node_modules/openai/lib/Util.mjs
-/**
- * Like `Promise.allSettled()` but throws an error if any promises are rejected.
- */
-const allSettledWithThrow = async (promises) => {
-    const results = await Promise.allSettled(promises);
-    const rejected = results.filter((result) => result.status === 'rejected');
-    if (rejected.length) {
-        for (const result of rejected) {
-            console.error(result.reason);
-        }
-        throw new Error(`${rejected.length} promise(s) failed - see the above errors`);
-    }
-    // Note: TS was complaining about using `.filter().map()` here for some reason
-    const values = [];
-    for (const result of results) {
-        if (result.status === 'fulfilled') {
-            values.push(result.value);
-        }
-    }
-    return values;
-};
-//# sourceMappingURL=Util.mjs.map
-;// CONCATENATED MODULE: ./node_modules/openai/resources/beta/vector-stores/files.mjs
-// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
-
-
-
-class files_Files extends APIResource {
-    /**
-     * Create a vector store file by attaching a
-     * [File](https://platform.openai.com/docs/api-reference/files) to a
-     * [vector store](https://platform.openai.com/docs/api-reference/vector-stores/object).
-     */
-    create(vectorStoreId, body, options) {
-        return this._client.post(`/vector_stores/${vectorStoreId}/files`, {
-            body,
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-    /**
-     * Retrieves a vector store file.
-     */
-    retrieve(vectorStoreId, fileId, options) {
-        return this._client.get(`/vector_stores/${vectorStoreId}/files/${fileId}`, {
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-    list(vectorStoreId, query = {}, options) {
-        if (isRequestOptions(query)) {
-            return this.list(vectorStoreId, {}, query);
-        }
-        return this._client.getAPIList(`/vector_stores/${vectorStoreId}/files`, VectorStoreFilesPage, {
-            query,
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-    /**
-     * Delete a vector store file. This will remove the file from the vector store but
-     * the file itself will not be deleted. To delete the file, use the
-     * [delete file](https://platform.openai.com/docs/api-reference/files/delete)
-     * endpoint.
-     */
-    del(vectorStoreId, fileId, options) {
-        return this._client.delete(`/vector_stores/${vectorStoreId}/files/${fileId}`, {
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-    /**
-     * Attach a file to the given vector store and wait for it to be processed.
-     */
-    async createAndPoll(vectorStoreId, body, options) {
-        const file = await this.create(vectorStoreId, body, options);
-        return await this.poll(vectorStoreId, file.id, options);
-    }
-    /**
-     * Wait for the vector store file to finish processing.
-     *
-     * Note: this will return even if the file failed to process, you need to check
-     * file.last_error and file.status to handle these cases
-     */
-    async poll(vectorStoreId, fileId, options) {
-        const headers = { ...options?.headers, 'X-Stainless-Poll-Helper': 'true' };
-        if (options?.pollIntervalMs) {
-            headers['X-Stainless-Custom-Poll-Interval'] = options.pollIntervalMs.toString();
-        }
-        while (true) {
-            const fileResponse = await this.retrieve(vectorStoreId, fileId, {
-                ...options,
-                headers,
-            }).withResponse();
-            const file = fileResponse.data;
-            switch (file.status) {
-                case 'in_progress':
-                    let sleepInterval = 5000;
-                    if (options?.pollIntervalMs) {
-                        sleepInterval = options.pollIntervalMs;
-                    }
-                    else {
-                        const headerInterval = fileResponse.response.headers.get('openai-poll-after-ms');
-                        if (headerInterval) {
-                            const headerIntervalMs = parseInt(headerInterval);
-                            if (!isNaN(headerIntervalMs)) {
-                                sleepInterval = headerIntervalMs;
-                            }
-                        }
-                    }
-                    await sleep(sleepInterval);
-                    break;
-                case 'failed':
-                case 'completed':
-                    return file;
-            }
-        }
-    }
-    /**
-     * Upload a file to the `files` API and then attach it to the given vector store.
-     *
-     * Note the file will be asynchronously processed (you can use the alternative
-     * polling helper method to wait for processing to complete).
-     */
-    async upload(vectorStoreId, file, options) {
-        const fileInfo = await this._client.files.create({ file: file, purpose: 'assistants' }, options);
-        return this.create(vectorStoreId, { file_id: fileInfo.id }, options);
-    }
-    /**
-     * Add a file to a vector store and poll until processing is complete.
-     */
-    async uploadAndPoll(vectorStoreId, file, options) {
-        const fileInfo = await this.upload(vectorStoreId, file, options);
-        return await this.poll(vectorStoreId, fileInfo.id, options);
-    }
-}
-class VectorStoreFilesPage extends CursorPage {
-}
-files_Files.VectorStoreFilesPage = VectorStoreFilesPage;
-//# sourceMappingURL=files.mjs.map
-;// CONCATENATED MODULE: ./node_modules/openai/resources/beta/vector-stores/file-batches.mjs
-// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
-
-
-
-
-
-class FileBatches extends APIResource {
-    /**
-     * Create a vector store file batch.
-     */
-    create(vectorStoreId, body, options) {
-        return this._client.post(`/vector_stores/${vectorStoreId}/file_batches`, {
-            body,
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-    /**
-     * Retrieves a vector store file batch.
-     */
-    retrieve(vectorStoreId, batchId, options) {
-        return this._client.get(`/vector_stores/${vectorStoreId}/file_batches/${batchId}`, {
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-    /**
-     * Cancel a vector store file batch. This attempts to cancel the processing of
-     * files in this batch as soon as possible.
-     */
-    cancel(vectorStoreId, batchId, options) {
-        return this._client.post(`/vector_stores/${vectorStoreId}/file_batches/${batchId}/cancel`, {
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-    /**
-     * Create a vector store batch and poll until all files have been processed.
-     */
-    async createAndPoll(vectorStoreId, body, options) {
-        const batch = await this.create(vectorStoreId, body);
-        return await this.poll(vectorStoreId, batch.id, options);
-    }
-    listFiles(vectorStoreId, batchId, query = {}, options) {
-        if (isRequestOptions(query)) {
-            return this.listFiles(vectorStoreId, batchId, {}, query);
-        }
-        return this._client.getAPIList(`/vector_stores/${vectorStoreId}/file_batches/${batchId}/files`, VectorStoreFilesPage, { query, ...options, headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers } });
-    }
-    /**
-     * Wait for the given file batch to be processed.
-     *
-     * Note: this will return even if one of the files failed to process, you need to
-     * check batch.file_counts.failed_count to handle this case.
-     */
-    async poll(vectorStoreId, batchId, options) {
-        const headers = { ...options?.headers, 'X-Stainless-Poll-Helper': 'true' };
-        if (options?.pollIntervalMs) {
-            headers['X-Stainless-Custom-Poll-Interval'] = options.pollIntervalMs.toString();
-        }
-        while (true) {
-            const { data: batch, response } = await this.retrieve(vectorStoreId, batchId, {
-                ...options,
-                headers,
-            }).withResponse();
-            switch (batch.status) {
-                case 'in_progress':
-                    let sleepInterval = 5000;
-                    if (options?.pollIntervalMs) {
-                        sleepInterval = options.pollIntervalMs;
-                    }
-                    else {
-                        const headerInterval = response.headers.get('openai-poll-after-ms');
-                        if (headerInterval) {
-                            const headerIntervalMs = parseInt(headerInterval);
-                            if (!isNaN(headerIntervalMs)) {
-                                sleepInterval = headerIntervalMs;
-                            }
-                        }
-                    }
-                    await sleep(sleepInterval);
-                    break;
-                case 'failed':
-                case 'cancelled':
-                case 'completed':
-                    return batch;
-            }
-        }
-    }
-    /**
-     * Uploads the given files concurrently and then creates a vector store file batch.
-     *
-     * The concurrency limit is configurable using the `maxConcurrency` parameter.
-     */
-    async uploadAndPoll(vectorStoreId, { files, fileIds = [] }, options) {
-        if (files == null || files.length == 0) {
-            throw new Error(`No \`files\` provided to process. If you've already uploaded files you should use \`.createAndPoll()\` instead`);
-        }
-        const configuredConcurrency = options?.maxConcurrency ?? 5;
-        // We cap the number of workers at the number of files (so we don't start any unnecessary workers)
-        const concurrencyLimit = Math.min(configuredConcurrency, files.length);
-        const client = this._client;
-        const fileIterator = files.values();
-        const allFileIds = [...fileIds];
-        // This code is based on this design. The libraries don't accommodate our environment limits.
-        // https://stackoverflow.com/questions/40639432/what-is-the-best-way-to-limit-concurrency-when-using-es6s-promise-all
-        async function processFiles(iterator) {
-            for (let item of iterator) {
-                const fileObj = await client.files.create({ file: item, purpose: 'assistants' }, options);
-                allFileIds.push(fileObj.id);
-            }
-        }
-        // Start workers to process results
-        const workers = Array(concurrencyLimit).fill(fileIterator).map(processFiles);
-        // Wait for all processing to complete.
-        await allSettledWithThrow(workers);
-        return await this.createAndPoll(vectorStoreId, {
-            file_ids: allFileIds,
-        });
-    }
-}
-
-//# sourceMappingURL=file-batches.mjs.map
-;// CONCATENATED MODULE: ./node_modules/openai/resources/beta/vector-stores/vector-stores.mjs
-// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
-
-
-
-
-
-
-
-class VectorStores extends APIResource {
-    constructor() {
-        super(...arguments);
-        this.files = new files_Files(this._client);
-        this.fileBatches = new FileBatches(this._client);
-    }
-    /**
-     * Create a vector store.
-     */
-    create(body, options) {
-        return this._client.post('/vector_stores', {
-            body,
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-    /**
-     * Retrieves a vector store.
-     */
-    retrieve(vectorStoreId, options) {
-        return this._client.get(`/vector_stores/${vectorStoreId}`, {
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-    /**
-     * Modifies a vector store.
-     */
-    update(vectorStoreId, body, options) {
-        return this._client.post(`/vector_stores/${vectorStoreId}`, {
-            body,
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-    list(query = {}, options) {
-        if (isRequestOptions(query)) {
-            return this.list({}, query);
-        }
-        return this._client.getAPIList('/vector_stores', VectorStoresPage, {
-            query,
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-    /**
-     * Delete a vector store.
-     */
-    del(vectorStoreId, options) {
-        return this._client.delete(`/vector_stores/${vectorStoreId}`, {
-            ...options,
-            headers: { 'OpenAI-Beta': 'assistants=v2', ...options?.headers },
-        });
-    }
-}
-class VectorStoresPage extends CursorPage {
-}
-VectorStores.VectorStoresPage = VectorStoresPage;
-VectorStores.Files = files_Files;
-VectorStores.VectorStoreFilesPage = VectorStoreFilesPage;
-VectorStores.FileBatches = FileBatches;
-//# sourceMappingURL=vector-stores.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/beta/beta.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
-
-
 
 
 
@@ -45658,15 +46219,12 @@ class Beta extends APIResource {
     constructor() {
         super(...arguments);
         this.realtime = new Realtime(this._client);
-        this.vectorStores = new VectorStores(this._client);
         this.chat = new chat_Chat(this._client);
         this.assistants = new Assistants(this._client);
         this.threads = new Threads(this._client);
     }
 }
 Beta.Realtime = Realtime;
-Beta.VectorStores = VectorStores;
-Beta.VectorStoresPage = VectorStoresPage;
 Beta.Assistants = Assistants;
 Beta.AssistantsPage = AssistantsPage;
 Beta.Threads = Threads;
@@ -45754,10 +46312,9 @@ class Uploads extends APIResource {
      * contains all the parts you uploaded. This File is usable in the rest of our
      * platform as a regular File object.
      *
-     * For certain `purpose`s, the correct `mime_type` must be specified. Please refer
-     * to documentation for the supported MIME types for your use case:
-     *
-     * - [Assistants](https://platform.openai.com/docs/assistants/tools/file-search#supported-files)
+     * For certain `purpose` values, the correct `mime_type` must be specified. Please
+     * refer to documentation for the
+     * [supported MIME types for your use case](https://platform.openai.com/docs/assistants/tools/file-search#supported-files).
      *
      * For guidance on the proper filename extensions for each purpose, please follow
      * the documentation on
@@ -45793,9 +46350,605 @@ class Uploads extends APIResource {
 }
 Uploads.Parts = Parts;
 //# sourceMappingURL=uploads.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/lib/ResponsesParser.mjs
+
+
+function maybeParseResponse(response, params) {
+    if (!params || !ResponsesParser_hasAutoParseableInput(params)) {
+        return {
+            ...response,
+            output_parsed: null,
+            output: response.output.map((item) => {
+                if (item.type === 'function_call') {
+                    return {
+                        ...item,
+                        parsed_arguments: null,
+                    };
+                }
+                if (item.type === 'message') {
+                    return {
+                        ...item,
+                        content: item.content.map((content) => ({
+                            ...content,
+                            parsed: null,
+                        })),
+                    };
+                }
+                else {
+                    return item;
+                }
+            }),
+        };
+    }
+    return parseResponse(response, params);
+}
+function parseResponse(response, params) {
+    const output = response.output.map((item) => {
+        if (item.type === 'function_call') {
+            return {
+                ...item,
+                parsed_arguments: ResponsesParser_parseToolCall(params, item),
+            };
+        }
+        if (item.type === 'message') {
+            const content = item.content.map((content) => {
+                if (content.type === 'output_text') {
+                    return {
+                        ...content,
+                        parsed: parseTextFormat(params, content.text),
+                    };
+                }
+                return content;
+            });
+            return {
+                ...item,
+                content,
+            };
+        }
+        return item;
+    });
+    const parsed = Object.assign({}, response, { output });
+    if (!Object.getOwnPropertyDescriptor(response, 'output_text')) {
+        addOutputText(parsed);
+    }
+    Object.defineProperty(parsed, 'output_parsed', {
+        enumerable: true,
+        get() {
+            for (const output of parsed.output) {
+                if (output.type !== 'message') {
+                    continue;
+                }
+                for (const content of output.content) {
+                    if (content.type === 'output_text' && content.parsed !== null) {
+                        return content.parsed;
+                    }
+                }
+            }
+            return null;
+        },
+    });
+    return parsed;
+}
+function parseTextFormat(params, content) {
+    if (params.text?.format?.type !== 'json_schema') {
+        return null;
+    }
+    if ('$parseRaw' in params.text?.format) {
+        const text_format = params.text?.format;
+        return text_format.$parseRaw(content);
+    }
+    return JSON.parse(content);
+}
+function ResponsesParser_hasAutoParseableInput(params) {
+    if (isAutoParsableResponseFormat(params.text?.format)) {
+        return true;
+    }
+    return false;
+}
+function ResponsesParser_makeParseableResponseTool(tool, { parser, callback, }) {
+    const obj = { ...tool };
+    Object.defineProperties(obj, {
+        $brand: {
+            value: 'auto-parseable-tool',
+            enumerable: false,
+        },
+        $parseRaw: {
+            value: parser,
+            enumerable: false,
+        },
+        $callback: {
+            value: callback,
+            enumerable: false,
+        },
+    });
+    return obj;
+}
+function ResponsesParser_isAutoParsableTool(tool) {
+    return tool?.['$brand'] === 'auto-parseable-tool';
+}
+function getInputToolByName(input_tools, name) {
+    return input_tools.find((tool) => tool.type === 'function' && tool.name === name);
+}
+function ResponsesParser_parseToolCall(params, toolCall) {
+    const inputTool = getInputToolByName(params.tools ?? [], toolCall.name);
+    return {
+        ...toolCall,
+        ...toolCall,
+        parsed_arguments: ResponsesParser_isAutoParsableTool(inputTool) ? inputTool.$parseRaw(toolCall.arguments)
+            : inputTool?.strict ? JSON.parse(toolCall.arguments)
+                : null,
+    };
+}
+function ResponsesParser_shouldParseToolCall(params, toolCall) {
+    if (!params) {
+        return false;
+    }
+    const inputTool = getInputToolByName(params.tools ?? [], toolCall.name);
+    return ResponsesParser_isAutoParsableTool(inputTool) || inputTool?.strict || false;
+}
+function ResponsesParser_validateInputTools(tools) {
+    for (const tool of tools ?? []) {
+        if (tool.type !== 'function') {
+            throw new OpenAIError(`Currently only \`function\` tool types support auto-parsing; Received \`${tool.type}\``);
+        }
+        if (tool.function.strict !== true) {
+            throw new OpenAIError(`The \`${tool.function.name}\` tool is not marked with \`strict: true\`. Only strict function tools can be auto-parsed`);
+        }
+    }
+}
+function addOutputText(rsp) {
+    const texts = [];
+    for (const output of rsp.output) {
+        if (output.type !== 'message') {
+            continue;
+        }
+        for (const content of output.content) {
+            if (content.type === 'output_text') {
+                texts.push(content.text);
+            }
+        }
+    }
+    rsp.output_text = texts.join('');
+}
+//# sourceMappingURL=ResponsesParser.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/responses/input-items.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+class InputItems extends APIResource {
+    list(responseId, query = {}, options) {
+        if (isRequestOptions(query)) {
+            return this.list(responseId, {}, query);
+        }
+        return this._client.getAPIList(`/responses/${responseId}/input_items`, ResponseItemsPage, {
+            query,
+            ...options,
+        });
+    }
+}
+
+//# sourceMappingURL=input-items.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/lib/responses/ResponseStream.mjs
+var ResponseStream_classPrivateFieldSet = (undefined && undefined.__classPrivateFieldSet) || function (receiver, state, value, kind, f) {
+    if (kind === "m") throw new TypeError("Private method is not writable");
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
+    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
+};
+var ResponseStream_classPrivateFieldGet = (undefined && undefined.__classPrivateFieldGet) || function (receiver, state, kind, f) {
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
+    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
+};
+var _ResponseStream_instances, _ResponseStream_params, _ResponseStream_currentResponseSnapshot, _ResponseStream_finalResponse, _ResponseStream_beginRequest, _ResponseStream_addEvent, _ResponseStream_endRequest, _ResponseStream_accumulateResponse;
+
+
+
+class ResponseStream extends EventStream {
+    constructor(params) {
+        super();
+        _ResponseStream_instances.add(this);
+        _ResponseStream_params.set(this, void 0);
+        _ResponseStream_currentResponseSnapshot.set(this, void 0);
+        _ResponseStream_finalResponse.set(this, void 0);
+        ResponseStream_classPrivateFieldSet(this, _ResponseStream_params, params, "f");
+    }
+    static createResponse(client, params, options) {
+        const runner = new ResponseStream(params);
+        runner._run(() => runner._createResponse(client, params, {
+            ...options,
+            headers: { ...options?.headers, 'X-Stainless-Helper-Method': 'stream' },
+        }));
+        return runner;
+    }
+    async _createResponse(client, params, options) {
+        const signal = options?.signal;
+        if (signal) {
+            if (signal.aborted)
+                this.controller.abort();
+            signal.addEventListener('abort', () => this.controller.abort());
+        }
+        ResponseStream_classPrivateFieldGet(this, _ResponseStream_instances, "m", _ResponseStream_beginRequest).call(this);
+        const stream = await client.responses.create({ ...params, stream: true }, { ...options, signal: this.controller.signal });
+        this._connected();
+        for await (const event of stream) {
+            ResponseStream_classPrivateFieldGet(this, _ResponseStream_instances, "m", _ResponseStream_addEvent).call(this, event);
+        }
+        if (stream.controller.signal?.aborted) {
+            throw new APIUserAbortError();
+        }
+        return ResponseStream_classPrivateFieldGet(this, _ResponseStream_instances, "m", _ResponseStream_endRequest).call(this);
+    }
+    [(_ResponseStream_params = new WeakMap(), _ResponseStream_currentResponseSnapshot = new WeakMap(), _ResponseStream_finalResponse = new WeakMap(), _ResponseStream_instances = new WeakSet(), _ResponseStream_beginRequest = function _ResponseStream_beginRequest() {
+        if (this.ended)
+            return;
+        ResponseStream_classPrivateFieldSet(this, _ResponseStream_currentResponseSnapshot, undefined, "f");
+    }, _ResponseStream_addEvent = function _ResponseStream_addEvent(event) {
+        if (this.ended)
+            return;
+        const response = ResponseStream_classPrivateFieldGet(this, _ResponseStream_instances, "m", _ResponseStream_accumulateResponse).call(this, event);
+        this._emit('event', event);
+        switch (event.type) {
+            case 'response.output_text.delta': {
+                const output = response.output[event.output_index];
+                if (!output) {
+                    throw new error_OpenAIError(`missing output at index ${event.output_index}`);
+                }
+                if (output.type === 'message') {
+                    const content = output.content[event.content_index];
+                    if (!content) {
+                        throw new error_OpenAIError(`missing content at index ${event.content_index}`);
+                    }
+                    if (content.type !== 'output_text') {
+                        throw new error_OpenAIError(`expected content to be 'output_text', got ${content.type}`);
+                    }
+                    this._emit('response.output_text.delta', {
+                        ...event,
+                        snapshot: content.text,
+                    });
+                }
+                break;
+            }
+            case 'response.function_call_arguments.delta': {
+                const output = response.output[event.output_index];
+                if (!output) {
+                    throw new error_OpenAIError(`missing output at index ${event.output_index}`);
+                }
+                if (output.type === 'function_call') {
+                    this._emit('response.function_call_arguments.delta', {
+                        ...event,
+                        snapshot: output.arguments,
+                    });
+                }
+                break;
+            }
+            default:
+                // @ts-ignore
+                this._emit(event.type, event);
+                break;
+        }
+    }, _ResponseStream_endRequest = function _ResponseStream_endRequest() {
+        if (this.ended) {
+            throw new error_OpenAIError(`stream has ended, this shouldn't happen`);
+        }
+        const snapshot = ResponseStream_classPrivateFieldGet(this, _ResponseStream_currentResponseSnapshot, "f");
+        if (!snapshot) {
+            throw new error_OpenAIError(`request ended without sending any events`);
+        }
+        ResponseStream_classPrivateFieldSet(this, _ResponseStream_currentResponseSnapshot, undefined, "f");
+        const parsedResponse = finalizeResponse(snapshot, ResponseStream_classPrivateFieldGet(this, _ResponseStream_params, "f"));
+        ResponseStream_classPrivateFieldSet(this, _ResponseStream_finalResponse, parsedResponse, "f");
+        return parsedResponse;
+    }, _ResponseStream_accumulateResponse = function _ResponseStream_accumulateResponse(event) {
+        let snapshot = ResponseStream_classPrivateFieldGet(this, _ResponseStream_currentResponseSnapshot, "f");
+        if (!snapshot) {
+            if (event.type !== 'response.created') {
+                throw new error_OpenAIError(`When snapshot hasn't been set yet, expected 'response.created' event, got ${event.type}`);
+            }
+            snapshot = ResponseStream_classPrivateFieldSet(this, _ResponseStream_currentResponseSnapshot, event.response, "f");
+            return snapshot;
+        }
+        switch (event.type) {
+            case 'response.output_item.added': {
+                snapshot.output.push(event.item);
+                break;
+            }
+            case 'response.content_part.added': {
+                const output = snapshot.output[event.output_index];
+                if (!output) {
+                    throw new error_OpenAIError(`missing output at index ${event.output_index}`);
+                }
+                if (output.type === 'message') {
+                    output.content.push(event.part);
+                }
+                break;
+            }
+            case 'response.output_text.delta': {
+                const output = snapshot.output[event.output_index];
+                if (!output) {
+                    throw new error_OpenAIError(`missing output at index ${event.output_index}`);
+                }
+                if (output.type === 'message') {
+                    const content = output.content[event.content_index];
+                    if (!content) {
+                        throw new error_OpenAIError(`missing content at index ${event.content_index}`);
+                    }
+                    if (content.type !== 'output_text') {
+                        throw new error_OpenAIError(`expected content to be 'output_text', got ${content.type}`);
+                    }
+                    content.text += event.delta;
+                }
+                break;
+            }
+            case 'response.function_call_arguments.delta': {
+                const output = snapshot.output[event.output_index];
+                if (!output) {
+                    throw new error_OpenAIError(`missing output at index ${event.output_index}`);
+                }
+                if (output.type === 'function_call') {
+                    output.arguments += event.delta;
+                }
+                break;
+            }
+            case 'response.completed': {
+                ResponseStream_classPrivateFieldSet(this, _ResponseStream_currentResponseSnapshot, event.response, "f");
+                break;
+            }
+        }
+        return snapshot;
+    }, Symbol.asyncIterator)]() {
+        const pushQueue = [];
+        const readQueue = [];
+        let done = false;
+        this.on('event', (event) => {
+            const reader = readQueue.shift();
+            if (reader) {
+                reader.resolve(event);
+            }
+            else {
+                pushQueue.push(event);
+            }
+        });
+        this.on('end', () => {
+            done = true;
+            for (const reader of readQueue) {
+                reader.resolve(undefined);
+            }
+            readQueue.length = 0;
+        });
+        this.on('abort', (err) => {
+            done = true;
+            for (const reader of readQueue) {
+                reader.reject(err);
+            }
+            readQueue.length = 0;
+        });
+        this.on('error', (err) => {
+            done = true;
+            for (const reader of readQueue) {
+                reader.reject(err);
+            }
+            readQueue.length = 0;
+        });
+        return {
+            next: async () => {
+                if (!pushQueue.length) {
+                    if (done) {
+                        return { value: undefined, done: true };
+                    }
+                    return new Promise((resolve, reject) => readQueue.push({ resolve, reject })).then((event) => (event ? { value: event, done: false } : { value: undefined, done: true }));
+                }
+                const event = pushQueue.shift();
+                return { value: event, done: false };
+            },
+            return: async () => {
+                this.abort();
+                return { value: undefined, done: true };
+            },
+        };
+    }
+    /**
+     * @returns a promise that resolves with the final Response, or rejects
+     * if an error occurred or the stream ended prematurely without producing a REsponse.
+     */
+    async finalResponse() {
+        await this.done();
+        const response = ResponseStream_classPrivateFieldGet(this, _ResponseStream_finalResponse, "f");
+        if (!response)
+            throw new error_OpenAIError('stream ended without producing a ChatCompletion');
+        return response;
+    }
+}
+function finalizeResponse(snapshot, params) {
+    return maybeParseResponse(snapshot, params);
+}
+//# sourceMappingURL=ResponseStream.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/responses/responses.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+
+
+
+
+class Responses extends APIResource {
+    constructor() {
+        super(...arguments);
+        this.inputItems = new InputItems(this._client);
+    }
+    create(body, options) {
+        return this._client.post('/responses', { body, ...options, stream: body.stream ?? false })._thenUnwrap((rsp) => {
+            if ('object' in rsp && rsp.object === 'response') {
+                addOutputText(rsp);
+            }
+            return rsp;
+        });
+    }
+    retrieve(responseId, query = {}, options) {
+        if (isRequestOptions(query)) {
+            return this.retrieve(responseId, {}, query);
+        }
+        return this._client.get(`/responses/${responseId}`, { query, ...options });
+    }
+    /**
+     * Deletes a model response with the given ID.
+     */
+    del(responseId, options) {
+        return this._client.delete(`/responses/${responseId}`, {
+            ...options,
+            headers: { Accept: '*/*', ...options?.headers },
+        });
+    }
+    parse(body, options) {
+        return this._client.responses
+            .create(body, options)
+            ._thenUnwrap((response) => parseResponse(response, body));
+    }
+    /**
+     * Creates a model response stream
+     */
+    stream(body, options) {
+        return ResponseStream.createResponse(this._client, body, options);
+    }
+}
+class ResponseItemsPage extends CursorPage {
+}
+Responses.InputItems = InputItems;
+//# sourceMappingURL=responses.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/evals/runs/output-items.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+class OutputItems extends APIResource {
+    /**
+     * Get an evaluation run output item by ID.
+     */
+    retrieve(evalId, runId, outputItemId, options) {
+        return this._client.get(`/evals/${evalId}/runs/${runId}/output_items/${outputItemId}`, options);
+    }
+    list(evalId, runId, query = {}, options) {
+        if (isRequestOptions(query)) {
+            return this.list(evalId, runId, {}, query);
+        }
+        return this._client.getAPIList(`/evals/${evalId}/runs/${runId}/output_items`, OutputItemListResponsesPage, { query, ...options });
+    }
+}
+class OutputItemListResponsesPage extends CursorPage {
+}
+OutputItems.OutputItemListResponsesPage = OutputItemListResponsesPage;
+//# sourceMappingURL=output-items.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/evals/runs/runs.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+
+
+class runs_Runs extends APIResource {
+    constructor() {
+        super(...arguments);
+        this.outputItems = new OutputItems(this._client);
+    }
+    /**
+     * Create a new evaluation run. This is the endpoint that will kick off grading.
+     */
+    create(evalId, body, options) {
+        return this._client.post(`/evals/${evalId}/runs`, { body, ...options });
+    }
+    /**
+     * Get an evaluation run by ID.
+     */
+    retrieve(evalId, runId, options) {
+        return this._client.get(`/evals/${evalId}/runs/${runId}`, options);
+    }
+    list(evalId, query = {}, options) {
+        if (isRequestOptions(query)) {
+            return this.list(evalId, {}, query);
+        }
+        return this._client.getAPIList(`/evals/${evalId}/runs`, RunListResponsesPage, { query, ...options });
+    }
+    /**
+     * Delete an eval run.
+     */
+    del(evalId, runId, options) {
+        return this._client.delete(`/evals/${evalId}/runs/${runId}`, options);
+    }
+    /**
+     * Cancel an ongoing evaluation run.
+     */
+    cancel(evalId, runId, options) {
+        return this._client.post(`/evals/${evalId}/runs/${runId}`, options);
+    }
+}
+class RunListResponsesPage extends CursorPage {
+}
+runs_Runs.RunListResponsesPage = RunListResponsesPage;
+runs_Runs.OutputItems = OutputItems;
+runs_Runs.OutputItemListResponsesPage = OutputItemListResponsesPage;
+//# sourceMappingURL=runs.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/evals/evals.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+
+
+class Evals extends APIResource {
+    constructor() {
+        super(...arguments);
+        this.runs = new runs_Runs(this._client);
+    }
+    /**
+     * Create the structure of an evaluation that can be used to test a model's
+     * performance. An evaluation is a set of testing criteria and a datasource. After
+     * creating an evaluation, you can run it on different models and model parameters.
+     * We support several types of graders and datasources. For more information, see
+     * the [Evals guide](https://platform.openai.com/docs/guides/evals).
+     */
+    create(body, options) {
+        return this._client.post('/evals', { body, ...options });
+    }
+    /**
+     * Get an evaluation by ID.
+     */
+    retrieve(evalId, options) {
+        return this._client.get(`/evals/${evalId}`, options);
+    }
+    /**
+     * Update certain properties of an evaluation.
+     */
+    update(evalId, body, options) {
+        return this._client.post(`/evals/${evalId}`, { body, ...options });
+    }
+    list(query = {}, options) {
+        if (isRequestOptions(query)) {
+            return this.list({}, query);
+        }
+        return this._client.getAPIList('/evals', EvalListResponsesPage, { query, ...options });
+    }
+    /**
+     * Delete an evaluation.
+     */
+    del(evalId, options) {
+        return this._client.delete(`/evals/${evalId}`, options);
+    }
+}
+class EvalListResponsesPage extends CursorPage {
+}
+Evals.EvalListResponsesPage = EvalListResponsesPage;
+Evals.Runs = runs_Runs;
+Evals.RunListResponsesPage = RunListResponsesPage;
+//# sourceMappingURL=evals.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/index.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 var _a;
+
+
+
+
 
 
 
@@ -45863,9 +47016,12 @@ class OpenAI extends APIClient {
         this.moderations = new Moderations(this);
         this.models = new Models(this);
         this.fineTuning = new FineTuning(this);
+        this.vectorStores = new VectorStores(this);
         this.beta = new Beta(this);
         this.batches = new Batches(this);
         this.uploads = new Uploads(this);
+        this.responses = new Responses(this);
+        this.evals = new Evals(this);
         this._options = options;
         this.apiKey = apiKey;
         this.organization = organization;
@@ -45909,6 +47065,7 @@ OpenAI.toFile = toFile;
 OpenAI.fileFromPath = fileFromPath;
 OpenAI.Completions = Completions;
 OpenAI.Chat = Chat;
+OpenAI.ChatCompletionsPage = ChatCompletionsPage;
 OpenAI.Embeddings = Embeddings;
 OpenAI.Files = Files;
 OpenAI.FileObjectsPage = FileObjectsPage;
@@ -45918,10 +47075,16 @@ OpenAI.Moderations = Moderations;
 OpenAI.Models = Models;
 OpenAI.ModelsPage = ModelsPage;
 OpenAI.FineTuning = FineTuning;
+OpenAI.VectorStores = VectorStores;
+OpenAI.VectorStoresPage = VectorStoresPage;
+OpenAI.VectorStoreSearchResponsesPage = VectorStoreSearchResponsesPage;
 OpenAI.Beta = Beta;
 OpenAI.Batches = Batches;
 OpenAI.BatchesPage = BatchesPage;
 OpenAI.Uploads = Uploads;
+OpenAI.Responses = Responses;
+OpenAI.Evals = Evals;
+OpenAI.EvalListResponsesPage = EvalListResponsesPage;
 /** API Client for interfacing with the Azure OpenAI API. */
 class AzureOpenAI extends OpenAI {
     /**
@@ -45980,19 +47143,19 @@ class AzureOpenAI extends OpenAI {
         this.apiVersion = '';
         this._azureADTokenProvider = azureADTokenProvider;
         this.apiVersion = apiVersion;
-        this._deployment = deployment;
+        this.deploymentName = deployment;
     }
-    buildRequest(options) {
+    buildRequest(options, props = {}) {
         if (_deployments_endpoints.has(options.path) && options.method === 'post' && options.body !== undefined) {
             if (!isObj(options.body)) {
                 throw new Error('Expected request body to be an object');
             }
-            const model = this._deployment || options.body['model'];
+            const model = this.deploymentName || options.body['model'] || options.__metadata?.['model'];
             if (model !== undefined && !this.baseURL.includes('/deployments')) {
                 options.path = `/deployments/${model}${options.path}`;
             }
         }
-        return super.buildRequest(options);
+        return super.buildRequest(options, props);
     }
     async _getAzureADToken() {
         if (typeof this._azureADTokenProvider === 'function') {
@@ -47009,15 +48172,15 @@ const base64urlRegex = /^([0-9a-zA-Z-_]{4})*(([0-9a-zA-Z-_]{2}(==)?)|([0-9a-zA-Z
 const dateRegexSource = `((\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-((0[13578]|1[02])-(0[1-9]|[12]\\d|3[01])|(0[469]|11)-(0[1-9]|[12]\\d|30)|(02)-(0[1-9]|1\\d|2[0-8])))`;
 const dateRegex = new RegExp(`^${dateRegexSource}$`);
 function timeRegexSource(args) {
-    // let regex = `\\d{2}:\\d{2}:\\d{2}`;
-    let regex = `([01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d`;
+    let secondsRegexSource = `[0-5]\\d`;
     if (args.precision) {
-        regex = `${regex}\\.\\d{${args.precision}}`;
+        secondsRegexSource = `${secondsRegexSource}\\.\\d{${args.precision}}`;
     }
     else if (args.precision == null) {
-        regex = `${regex}(\\.\\d+)?`;
+        secondsRegexSource = `${secondsRegexSource}(\\.\\d+)?`;
     }
-    return regex;
+    const secondsQuantifier = args.precision ? "+" : "?"; // require seconds if precision is nonzero
+    return `([01]\\d|2[0-3]):[0-5]\\d(:${secondsRegexSource})${secondsQuantifier}`;
 }
 function timeRegex(args) {
     return new RegExp(`^${timeRegexSource(args)}$`);
@@ -50192,7 +51355,23 @@ ZodReadonly.create = (type, params) => {
         ...processCreateParams(params),
     });
 };
-function custom(check, params = {}, 
+////////////////////////////////////////
+////////////////////////////////////////
+//////////                    //////////
+//////////      z.custom      //////////
+//////////                    //////////
+////////////////////////////////////////
+////////////////////////////////////////
+function cleanParams(params, data) {
+    const p = typeof params === "function"
+        ? params(data)
+        : typeof params === "string"
+            ? { message: params }
+            : params;
+    const p2 = typeof p === "string" ? { message: p } : p;
+    return p2;
+}
+function custom(check, _params = {}, 
 /**
  * @deprecated
  *
@@ -50207,16 +51386,23 @@ fatal) {
     if (check)
         return ZodAny.create().superRefine((data, ctx) => {
             var _a, _b;
-            if (!check(data)) {
-                const p = typeof params === "function"
-                    ? params(data)
-                    : typeof params === "string"
-                        ? { message: params }
-                        : params;
-                const _fatal = (_b = (_a = p.fatal) !== null && _a !== void 0 ? _a : fatal) !== null && _b !== void 0 ? _b : true;
-                const p2 = typeof p === "string" ? { message: p } : p;
-                ctx.addIssue({ code: "custom", ...p2, fatal: _fatal });
+            const r = check(data);
+            if (r instanceof Promise) {
+                return r.then((r) => {
+                    var _a, _b;
+                    if (!r) {
+                        const params = cleanParams(_params, data);
+                        const _fatal = (_b = (_a = params.fatal) !== null && _a !== void 0 ? _a : fatal) !== null && _b !== void 0 ? _b : true;
+                        ctx.addIssue({ code: "custom", ...params, fatal: _fatal });
+                    }
+                });
             }
+            if (!r) {
+                const params = cleanParams(_params, data);
+                const _fatal = (_b = (_a = params.fatal) !== null && _a !== void 0 ? _a : fatal) !== null && _b !== void 0 ? _b : true;
+                ctx.addIssue({ code: "custom", ...params, fatal: _fatal });
+            }
+            return;
         });
     return ZodAny.create();
 }
@@ -51302,13 +52488,17 @@ function parseObjectDef(def, refs) {
         ...Object.entries(def.shape()).reduce((acc, [propName, propDef]) => {
             if (propDef === undefined || propDef._def === undefined)
                 return acc;
+            const propertyPath = [...refs.currentPath, 'properties', propName];
             const parsedDef = parseDef(propDef._def, {
                 ...refs,
-                currentPath: [...refs.currentPath, 'properties', propName],
-                propertyPath: [...refs.currentPath, 'properties', propName],
+                currentPath: propertyPath,
+                propertyPath,
             });
             if (parsedDef === undefined)
                 return acc;
+            if (refs.openaiStrictMode && propDef.isOptional() && !propDef.isNullable()) {
+                console.warn(`Zod field at \`${propertyPath.join('/')}\` uses \`.optional()\` without \`.nullable()\` which is not supported by the API. See: https://platform.openai.com/docs/guides/structured-outputs?api-mode=responses#all-fields-must-be-required\nThis will become an error in a future version of the SDK.`);
+            }
             return {
                 properties: {
                     ...acc.properties,
@@ -51791,6 +52981,7 @@ const zodToJsonSchema = (schema, options) => {
 ;// CONCATENATED MODULE: ./node_modules/openai/helpers/zod.mjs
 
 
+
 function zod_zodToJsonSchema(schema, options) {
     return zodToJsonSchema(schema, {
         openaiStrictMode: true,
@@ -51848,6 +53039,15 @@ function zodResponseFormat(zodObject, name, props) {
         },
     }, (content) => zodObject.parse(JSON.parse(content)));
 }
+function zodTextFormat(zodObject, name, props) {
+    return makeParseableTextFormat({
+        type: 'json_schema',
+        ...props,
+        name,
+        strict: true,
+        schema: zod_zodToJsonSchema(zodObject, { name }),
+    }, (content) => zodObject.parse(JSON.parse(content)));
+}
 /**
  * Creates a chat completion `function` tool that can be invoked
  * automatically by the chat completion `.runTools()` method or automatically
@@ -51863,6 +53063,18 @@ function zodFunction(options) {
             strict: true,
             ...(options.description ? { description: options.description } : undefined),
         },
+    }, {
+        callback: options.function,
+        parser: (args) => options.parameters.parse(JSON.parse(args)),
+    });
+}
+function zodResponsesFunction(options) {
+    return makeParseableResponseTool({
+        type: 'function',
+        name: options.name,
+        parameters: zod_zodToJsonSchema(options.parameters, { name: options.name }),
+        strict: true,
+        ...(options.description ? { description: options.description } : undefined),
     }, {
         callback: options.function,
         parser: (args) => options.parameters.parse(JSON.parse(args)),
@@ -51994,7 +53206,7 @@ async function run() {
             return;
         }
         core.setSecret(azureOpenAIKey); // Treat the API key as a secret
-        const azureOpenAIVersion = core.getInput("azureOpenAIVersion") || "2024-12-01-preview";
+        const azureOpenAIVersion = core.getInput("azureOpenAIVersion") || "2025-03-01-preview";
         if (!isValidAzureApiVersion(azureOpenAIVersion)) {
             core.setFailed(`Invalid Azure OpenAI API version: ${azureOpenAIVersion}`);
             return;
@@ -54368,7 +55580,7 @@ module.exports = /*#__PURE__*/JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45
 /******/ // module cache are used so entry inlining is disabled
 /******/ // startup
 /******/ // Load entry module and return exports
-/******/ var __webpack_exports__ = __nccwpck_require__(__nccwpck_require__.s = 3156);
+/******/ var __webpack_exports__ = __nccwpck_require__(__nccwpck_require__.s = 3217);
 /******/ var __webpack_exports__run = __webpack_exports__.e;
 /******/ export { __webpack_exports__run as run };
 /******/ 
