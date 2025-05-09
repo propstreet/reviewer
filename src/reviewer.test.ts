@@ -156,6 +156,8 @@ describe("reviewer", () => {
           file: "test.ts",
           line: 1,
           side: "RIGHT" as const,
+          start_line: null,
+          start_side: null,
           comment: "Test comment",
           severity: "info" as const,
         },

@@ -3,7 +3,10 @@ import * as github from "@actions/github";
 import { CodeReviewComment } from "./schemas.js";
 import { z } from "zod";
 import { SeverityLevel } from "./validators.js";
-import { findPositionInDiff } from "./diffparser.js";
+import {
+  findPositionInDiff,
+  verifyMultiLineCommentRange,
+} from "./diffparser.js";
 import { type PackedCommit } from "./reviewer.js";
 
 export interface GitHubConfig {
@@ -59,16 +62,44 @@ export class GitHubService {
     filename: string,
     line: number,
     side: "LEFT" | "RIGHT",
-    patches: PatchInfo[]
+    patches: PatchInfo[],
+    start_line?: number | null,
+    start_side?: "LEFT" | "RIGHT" | null
   ): boolean {
     const target = patches.find((p) => p.filename === filename);
     if (!target) {
       core.warning(`No patch found for file: ${filename}`);
       return false;
     }
-    const position = findPositionInDiff(target.patch, line, side);
-    core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
-    return position !== null;
+
+    // For single-line comments
+    if (
+      start_line === undefined ||
+      start_side === undefined ||
+      start_line === null ||
+      start_side === null
+    ) {
+      const position = findPositionInDiff(target.patch, line, side);
+      core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
+      return position !== null;
+    }
+
+    // For multi-line comments
+    const range = verifyMultiLineCommentRange(
+      target.patch,
+      start_line,
+      line,
+      start_side,
+      side
+    );
+
+    core.debug(
+      `Multi-line range for ${filename}:${start_line}:${start_side} to ${line}:${side} = ${
+        range ? `${range.startPosition}-${range.endPosition}` : "null"
+      }`
+    );
+
+    return range !== null;
   }
 
   private async createReview(
@@ -85,12 +116,36 @@ export class GitHubService {
       pull_number: this.config.pullNumber,
       commit_id: sha,
       event: event,
-      comments: review.map((c) => ({
-        path: c.file,
-        line: c.line,
-        side: c.side,
-        body: c.comment,
-      })),
+      comments: review.map((c) => {
+        const comment: {
+          path: string;
+          line?: number;
+          side?: string;
+          body: string;
+          start_line?: number;
+          start_side?: string;
+        } = {
+          path: c.file,
+          body: c.comment,
+        };
+
+        // Add line and side for all comments
+        if (c.line) {
+          comment.line = c.line;
+        }
+        if (c.side) {
+          comment.side = c.side;
+        }
+
+        if (c.start_line !== undefined && c.start_line !== null) {
+          comment.start_line = c.start_line;
+        }
+        if (c.start_side !== undefined && c.start_side !== null) {
+          comment.start_side = c.start_side;
+        }
+
+        return comment;
+      }),
     });
   }
 
@@ -117,7 +172,14 @@ export class GitHubService {
         }
 
         if (
-          !this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches)
+          !this.verifyCommentLineInPatch(
+            c.file,
+            c.line,
+            c.side,
+            commit.patches,
+            c.start_line,
+            c.start_side
+          )
         ) {
           core.warning(
             `Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`

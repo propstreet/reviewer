@@ -121,12 +121,35 @@ describe("AzureOpenAIService", () => {
                     enum: ["LEFT", "RIGHT"],
                     type: "string",
                   },
+                  start_line: {
+                    description:
+                      "The starting line of the blob in the pull request diff that the multi-line comment applies to.",
+                    type: "number",
+                    nullable: true,
+                  },
+                  start_side: {
+                    anyOf: [
+                      {
+                        description:
+                          "The side of the diff for the starting line of a multi-line comment.",
+                        enum: ["LEFT", "RIGHT"],
+                        type: "string",
+                      },
+                      {
+                        type: "null",
+                      },
+                    ],
+                    description:
+                      "The side of the diff for the starting line of a multi-line comment.",
+                  },
                 },
                 required: [
                   "sha",
                   "file",
                   "line",
                   "side",
+                  "start_line",
+                  "start_side",
                   "comment",
                   "severity",
                 ],

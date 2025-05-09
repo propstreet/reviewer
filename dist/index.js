@@ -39705,6 +39705,27 @@ function findPositionInDiff(patch, targetLine, side) {
     // If we exhaust the patch lines without matching targetLine, return null
     return null;
 }
+/**
+ * Verifies if a multi-line comment range is valid within a diff patch.
+ *
+ * @param patch       Unified diff string
+ * @param startLine   Starting line number in the file
+ * @param endLine     Ending line number in the file
+ * @param startSide   Side of the diff for the starting line
+ * @param endSide     Side of the diff for the ending line
+ * @returns           Object with start and end positions, or null if invalid
+ */
+function verifyMultiLineCommentRange(patch, startLine, endLine, startSide, endSide) {
+    const startPosition = findPositionInDiff(patch, startLine, startSide);
+    const endPosition = findPositionInDiff(patch, endLine, endSide);
+    if (startPosition === null || endPosition === null) {
+        return null;
+    }
+    if (startPosition > endPosition) {
+        return null;
+    }
+    return { startPosition, endPosition };
+}
 
 ;// CONCATENATED MODULE: ./src/githubService.ts
 
@@ -39717,15 +39738,25 @@ class GitHubService {
         this.octokit = github.getOctokit(config.token);
         this.config = config;
     }
-    verifyCommentLineInPatch(filename, line, side, patches) {
+    verifyCommentLineInPatch(filename, line, side, patches, start_line, start_side) {
         const target = patches.find((p) => p.filename === filename);
         if (!target) {
             core.warning(`No patch found for file: ${filename}`);
             return false;
         }
-        const position = findPositionInDiff(target.patch, line, side);
-        core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
-        return position !== null;
+        // For single-line comments
+        if (start_line === undefined ||
+            start_side === undefined ||
+            start_line === null ||
+            start_side === null) {
+            const position = findPositionInDiff(target.patch, line, side);
+            core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
+            return position !== null;
+        }
+        // For multi-line comments
+        const range = verifyMultiLineCommentRange(target.patch, start_line, line, start_side, side);
+        core.debug(`Multi-line range for ${filename}:${start_line}:${start_side} to ${line}:${side} = ${range ? `${range.startPosition}-${range.endPosition}` : "null"}`);
+        return range !== null;
     }
     async createReview(event, review, sha) {
         core.debug(`Creating ${event} review for ${sha} with ${review.length} comments`);
@@ -39735,12 +39766,26 @@ class GitHubService {
             pull_number: this.config.pullNumber,
             commit_id: sha,
             event: event,
-            comments: review.map((c) => ({
-                path: c.file,
-                line: c.line,
-                side: c.side,
-                body: c.comment,
-            })),
+            comments: review.map((c) => {
+                const comment = {
+                    path: c.file,
+                    body: c.comment,
+                };
+                // Add line and side for all comments
+                if (c.line) {
+                    comment.line = c.line;
+                }
+                if (c.side) {
+                    comment.side = c.side;
+                }
+                if (c.start_line !== undefined && c.start_line !== null) {
+                    comment.start_line = c.start_line;
+                }
+                if (c.start_side !== undefined && c.start_side !== null) {
+                    comment.start_side = c.start_side;
+                }
+                return comment;
+            }),
         });
     }
     async postReviewComments(comments, changesThreshold, commits) {
@@ -39757,7 +39802,7 @@ class GitHubService {
                 issueComments.push(c);
                 return acc;
             }
-            if (!this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches)) {
+            if (!this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches, c.start_line, c.start_side)) {
                 core.warning(`Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`);
                 issueComments.push(c);
                 return acc;
@@ -53096,6 +53141,16 @@ const CodeReviewComment = z.object({
     side: z.enum(["LEFT", "RIGHT"], {
         description: "In a split diff view, the side of the diff that the pull request's changes appear on. Can be LEFT or RIGHT. Use LEFT for deletions that appear in red. Use RIGHT for additions that appear in green or unchanged lines that appear in white and are shown for context.",
     }),
+    start_line: z
+        .number({
+        description: "The starting line of the blob in the pull request diff that the multi-line comment applies to.",
+    })
+        .nullable(),
+    start_side: z
+        .enum(["LEFT", "RIGHT"], {
+        description: "The side of the diff for the starting line of a multi-line comment.",
+    })
+        .nullable(),
     comment: z.string({ description: "The text of the review comment." }),
     severity: z.enum(["info", "warning", "error"]),
 });

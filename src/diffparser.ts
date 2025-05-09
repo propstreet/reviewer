@@ -95,3 +95,34 @@ export function findPositionInDiff(
   // If we exhaust the patch lines without matching targetLine, return null
   return null;
 }
+
+/**
+ * Verifies if a multi-line comment range is valid within a diff patch.
+ *
+ * @param patch       Unified diff string
+ * @param startLine   Starting line number in the file
+ * @param endLine     Ending line number in the file
+ * @param startSide   Side of the diff for the starting line
+ * @param endSide     Side of the diff for the ending line
+ * @returns           Object with start and end positions, or null if invalid
+ */
+export function verifyMultiLineCommentRange(
+  patch: string,
+  startLine: number,
+  endLine: number,
+  startSide: "LEFT" | "RIGHT",
+  endSide: "LEFT" | "RIGHT"
+): { startPosition: number; endPosition: number } | null {
+  const startPosition = findPositionInDiff(patch, startLine, startSide);
+  const endPosition = findPositionInDiff(patch, endLine, endSide);
+
+  if (startPosition === null || endPosition === null) {
+    return null;
+  }
+
+  if (startPosition > endPosition) {
+    return null;
+  }
+
+  return { startPosition, endPosition };
+}
