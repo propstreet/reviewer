@@ -44,6 +44,16 @@ describe("GitHubService", () => {
       comment: "Out of range comment",
       severity: "info" as const,
     },
+    {
+      sha: "sha1",
+      file: "first.ts",
+      line: 3,
+      side: "RIGHT" as const,
+      start_line: 1,
+      start_side: "RIGHT" as const,
+      comment: "Multi-line comment",
+      severity: "error" as const,
+    },
   ];
 
   beforeEach(() => {
@@ -97,7 +107,7 @@ describe("GitHubService", () => {
       );
 
       expect(reviewResult).toEqual({
-        reviewChanges: 1,
+        reviewChanges: 2,
         reviewComments: 1,
         issueComments: 1,
       });
@@ -116,6 +126,14 @@ describe("GitHubService", () => {
             line: 1,
             side: "RIGHT",
             body: "First comment",
+          },
+          {
+            path: "first.ts",
+            line: 3,
+            side: "RIGHT",
+            start_line: 1,
+            start_side: "RIGHT",
+            body: "Multi-line comment",
           },
         ],
       });
@@ -260,6 +278,74 @@ describe("GitHubService", () => {
       );
       expect(core.warning).toHaveBeenCalledWith(
         "Comment is out of range for test.ts:10:LEFT: Comment"
+      );
+    });
+
+    it("should handle multi-line comments with missing patches", async () => {
+      const mockCreateReview = vi.fn().mockResolvedValue({});
+      const mockCreateComment = vi.fn().mockResolvedValue({});
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            createReview: mockCreateReview,
+          },
+          issues: {
+            createComment: mockCreateComment,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const comments = [
+        {
+          sha: "test-sha",
+          file: "test.ts",
+          line: 10,
+          side: "LEFT" as const,
+          start_line: 5,
+          start_side: "LEFT" as const,
+          comment: "Multi-line comment",
+          severity: "info" as const,
+        },
+      ];
+
+      const reviewResult = await service.postReviewComments(comments, "error", [
+        {
+          commit: {
+            sha: "test-sha",
+            message: "Commit message",
+            patches: [],
+          },
+          patches: [],
+        },
+      ]);
+
+      expect(reviewResult).toEqual({
+        reviewChanges: 0,
+        reviewComments: 0,
+        issueComments: 1,
+      });
+
+      // Verify that createReview was not called
+      expect(mockCreateReview).not.toHaveBeenCalled();
+
+      // Verify that the comment was posted as an issue comment with multi-line info
+      expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        issue_number: mockConfig.pullNumber,
+        body: "Comment on lines 5-10 (LEFT-LEFT) of file test.ts: Multi-line comment",
+      });
+
+      expect(core.warning).toBeCalledTimes(2);
+      expect(core.warning).toHaveBeenCalledWith(
+        "No patch found for file: test.ts"
+      );
+      expect(core.warning).toHaveBeenCalledWith(
+        "Comment is out of range for test.ts:10:LEFT (multi-line from 5:LEFT): Multi-line comment"
       );
     });
   });

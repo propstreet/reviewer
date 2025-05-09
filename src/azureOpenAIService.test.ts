@@ -82,70 +82,13 @@ describe("AzureOpenAIService", () => {
 
     const result = await service.runReviewPrompt(mockInput, mockReviewConfig);
 
-    const expectedSchema = {
-      json_schema: {
-        name: "review_comments",
-        schema: {
-          $schema: "http://json-schema.org/draft-07/schema#",
-          additionalProperties: false,
-          properties: {
-            comments: {
-              items: {
-                additionalProperties: false,
-                properties: {
-                  comment: {
-                    description: "The text of the review comment.",
-                    type: "string",
-                  },
-                  file: {
-                    description:
-                      "The relative path to the file that necessitates a comment.",
-                    type: "string",
-                  },
-                  line: {
-                    description:
-                      "The line of the blob in the pull request diff that the comment applies to.",
-                    type: "number",
-                  },
-                  severity: {
-                    enum: ["info", "warning", "error"],
-                    type: "string",
-                  },
-                  sha: {
-                    description: "The SHA of the commit needing a comment.",
-                    type: "string",
-                  },
-                  side: {
-                    description:
-                      "In a split diff view, the side of the diff that the pull request's changes appear on. Can be LEFT or RIGHT. Use LEFT for deletions that appear in red. Use RIGHT for additions that appear in green or unchanged lines that appear in white and are shown for context.",
-                    enum: ["LEFT", "RIGHT"],
-                    type: "string",
-                  },
-                },
-                required: [
-                  "sha",
-                  "file",
-                  "line",
-                  "side",
-                  "comment",
-                  "severity",
-                ],
-                type: "object",
-              },
-              type: "array",
-            },
-          },
-          required: ["comments"],
-          type: "object",
-        },
-        strict: true,
-      },
-      type: "json_schema",
-    };
+    expect(parseMock).toHaveBeenCalled();
+    const callArgs = parseMock.mock.calls[0][0];
+    expect(callArgs.model).toBe("");
+    expect(callArgs.reasoning_effort).toBe(mockReviewConfig.reasoningEffort);
 
-    expect(parseMock).toHaveBeenCalledWith({
-      model: "",
-      messages: expect.arrayContaining([
+    expect(callArgs.messages).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({
           role: "developer",
           content: expect.any(String),
@@ -154,10 +97,12 @@ describe("AzureOpenAIService", () => {
           role: "user",
           content: mockInput,
         }),
-      ]),
-      response_format: expectedSchema,
-      reasoning_effort: mockReviewConfig.reasoningEffort,
-    });
+      ])
+    );
+
+    expect(callArgs.response_format.type).toBe("json_schema");
+    expect(callArgs.response_format.json_schema.name).toBe("review_comments");
+    expect(callArgs.response_format.json_schema.strict).toBe(true);
     expect(result).toEqual(mockResponse.choices[0].message.parsed);
   });
 

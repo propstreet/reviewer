@@ -59,16 +59,33 @@ export class GitHubService {
     filename: string,
     line: number,
     side: "LEFT" | "RIGHT",
-    patches: PatchInfo[]
+    patches: PatchInfo[],
+    start_line?: number | null,
+    start_side?: "LEFT" | "RIGHT" | null
   ): boolean {
     const target = patches.find((p) => p.filename === filename);
     if (!target) {
       core.warning(`No patch found for file: ${filename}`);
       return false;
     }
-    const position = findPositionInDiff(target.patch, line, side);
-    core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
-    return position !== null;
+
+    const endPosition = findPositionInDiff(target.patch, line, side);
+    core.debug(`End position for ${filename}:${line}:${side} = ${endPosition}`);
+
+    if (start_line !== undefined && start_side !== undefined && start_line !== null && start_side !== null) {
+      const startPosition = findPositionInDiff(
+        target.patch,
+        start_line,
+        start_side
+      );
+      core.debug(
+        `Start position for ${filename}:${start_line}:${start_side} = ${startPosition}`
+      );
+
+      return startPosition !== null && endPosition !== null;
+    }
+
+    return endPosition !== null;
   }
 
   private async createReview(
@@ -85,12 +102,24 @@ export class GitHubService {
       pull_number: this.config.pullNumber,
       commit_id: sha,
       event: event,
-      comments: review.map((c) => ({
-        path: c.file,
-        line: c.line,
-        side: c.side,
-        body: c.comment,
-      })),
+      comments: review.map((c) => {
+        const comment = {
+          path: c.file,
+          line: c.line,
+          side: c.side,
+          body: c.comment,
+        };
+
+        if (c.start_line !== undefined) {
+          Object.assign(comment, { start_line: c.start_line });
+        }
+
+        if (c.start_side !== undefined) {
+          Object.assign(comment, { start_side: c.start_side });
+        }
+
+        return comment;
+      }),
     });
   }
 
@@ -117,10 +146,21 @@ export class GitHubService {
         }
 
         if (
-          !this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches)
+          !this.verifyCommentLineInPatch(
+            c.file,
+            c.line,
+            c.side,
+            commit.patches,
+            c.start_line,
+            c.start_side
+          )
         ) {
           core.warning(
-            `Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`
+            `Comment is out of range for ${c.file}:${c.line}:${c.side}${
+              c.start_line !== undefined
+                ? ` (multi-line from ${c.start_line}:${c.start_side})`
+                : ""
+            }: ${c.comment}`
           );
           issueComments.push(c);
           return acc;
@@ -176,11 +216,16 @@ export class GitHubService {
 
     // Post fallback comments as issue comments
     for (const comment of issueComments) {
+      const lineInfo =
+        comment.start_line !== undefined
+          ? `lines ${comment.start_line}-${comment.line} (${comment.start_side}-${comment.side})`
+          : `line ${comment.line} (${comment.side})`;
+
       await this.octokit.rest.issues.createComment({
         owner: this.config.owner,
         repo: this.config.repo,
         issue_number: this.config.pullNumber,
-        body: `Comment on line ${comment.line} (${comment.side}) of file ${comment.file}: ${comment.comment}`,
+        body: `Comment on ${lineInfo} of file ${comment.file}: ${comment.comment}`,
       });
     }
 
