@@ -72,7 +72,12 @@ export class GitHubService {
     const endPosition = findPositionInDiff(target.patch, line, side);
     core.debug(`End position for ${filename}:${line}:${side} = ${endPosition}`);
 
-    if (start_line !== undefined && start_side !== undefined && start_line !== null && start_side !== null) {
+    if (
+      start_line !== undefined &&
+      start_side !== undefined &&
+      start_line !== null &&
+      start_side !== null
+    ) {
       const startPosition = findPositionInDiff(
         target.patch,
         start_line,
