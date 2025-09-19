@@ -119,7 +119,10 @@ export class ReviewService {
     );
 
     // If the head commit is missing from the compare results, fetch and push it silently.
-    if (!results.commits.find((c) => c.sha === prDetails.head)) {
+    if (
+      prDetails.head &&
+      !results.commits.find((c) => c.sha === prDetails.head)
+    ) {
       const headCommit = await this.githubService.getCommitDetails(
         prDetails.head
       );

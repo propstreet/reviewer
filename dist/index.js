@@ -35037,7 +35037,8 @@ class ReviewService {
         core.debug(`Loaded PR #${prDetails.number} with ${prDetails.commitCount} commits.`);
         const results = await this.githubService.compareCommits(options.base, options.head);
         // If the head commit is missing from the compare results, fetch and push it silently.
-        if (!results.commits.find((c) => c.sha === prDetails.head)) {
+        if (prDetails.head &&
+            !results.commits.find((c) => c.sha === prDetails.head)) {
             const headCommit = await this.githubService.getCommitDetails(prDetails.head);
             results.commits.push(headCommit);
             core.debug(`Added missing head commit ${headCommit.sha} to results.`);
