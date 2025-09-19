@@ -131,6 +131,7 @@ describe("AzureOpenAIService", () => {
 
     expect(parseMock).toHaveBeenCalledWith({
       model: mockConfig.deployment,
+      instructions: expect.stringContaining("helpful code reviewer"),
       input: expect.stringContaining(mockInput),
       reasoning: { effort: mockReviewConfig.reasoningEffort },
       response_format: expectedSchema,

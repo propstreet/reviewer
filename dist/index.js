@@ -48909,10 +48909,10 @@ class AzureOpenAIService {
 Each comment must include the associated commit sha, file, line, side and severity: 'info', 'warning', or 'error'.
 Only comment on lines that need improvement. Comments may be formatted as markdown.
 If you have no comments, return an empty comments array. Respond in JSON format.`;
-        const input = `${system}\n\n${prompt}`;
         const response = await this.client.responses.parse({
             model: this.deployment,
-            input,
+            instructions: system,
+            input: prompt,
             reasoning: { effort: config.reasoningEffort },
             response_format: zodResponseFormat(CodeReviewCommentArray, "review_comments"),
         });
