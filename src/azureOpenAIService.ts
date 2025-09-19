@@ -1,7 +1,7 @@
 import { AzureOpenAI } from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { CodeReviewCommentArray } from "./schemas.js";
-import { ReasoningEffort } from "openai/resources.mjs";
+import type { ReasoningEffort } from "./validators.js";
 
 export interface AzureOpenAIConfig {
   endpoint: string;
@@ -14,8 +14,20 @@ export interface ReviewPromptConfig {
   reasoningEffort: ReasoningEffort;
 }
 
+export type ReviewResult = {
+  comments: Array<{
+    sha: string;
+    file: string;
+    line: number;
+    side: "LEFT" | "RIGHT";
+    comment: string;
+    severity: "info" | "warning" | "error";
+  }>;
+};
+
 export class AzureOpenAIService {
   private client: AzureOpenAI;
+  private deployment: string;
 
   constructor(config: AzureOpenAIConfig) {
     this.client = new AzureOpenAI({
@@ -24,37 +36,36 @@ export class AzureOpenAIService {
       apiKey: config.apiKey,
       apiVersion: config.apiVersion,
     });
+    this.deployment = config.deployment;
   }
 
-  async runReviewPrompt(prompt: string, config: ReviewPromptConfig) {
-    const completion = await this.client.beta.chat.completions.parse({
-      model: "",
-      messages: [
-        {
-          role: "developer",
-          content: `You are a helpful code reviewer. Review this pull request and provide any suggestions.
+  async runReviewPrompt(
+    prompt: string,
+    config: ReviewPromptConfig
+  ): Promise<ReviewResult> {
+    const system = `You are a helpful code reviewer. Review this pull request and provide any suggestions.
 Each comment must include the associated commit sha, file, line, side and severity: 'info', 'warning', or 'error'.
 Only comment on lines that need improvement. Comments may be formatted as markdown.
-If you have no comments, return an empty comments array. Respond in JSON format.`,
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+If you have no comments, return an empty comments array. Respond in JSON format.`;
+
+    const input = `${system}\n\n${prompt}`;
+
+    const response = await this.client.responses.parse({
+      model: this.deployment,
+      input,
+      reasoning: { effort: config.reasoningEffort },
       response_format: zodResponseFormat(
         CodeReviewCommentArray,
         "review_comments"
       ),
-      reasoning_effort: config.reasoningEffort,
     });
 
-    if (completion.choices[0].finish_reason !== "stop") {
-      throw new Error(
-        `Review request did not finish, got ${completion.choices[0].finish_reason}`
-      );
+    if (!response.output_parsed) {
+      const reason =
+        (response as unknown as { status?: string })?.status ?? "unknown";
+      throw new Error(`Review request did not finish, got ${reason}`);
     }
 
-    return completion.choices[0].message.parsed;
+    return response.output_parsed;
   }
 }

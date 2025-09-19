@@ -20,7 +20,7 @@
         "@types/minimatch": "^5.1.2",
         "gpt-tokenizer": "^2.9.0",
         "minimatch": "^10.0.1",
-        "openai": "^4.97.0"
+        "openai": "^5.21.0"
     },
     "devDependencies": {
         "@eslint/js": "^9.26.0",

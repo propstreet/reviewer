@@ -8,12 +8,8 @@ import { AzureOpenAI } from "openai";
 // Mock the OpenAI client
 vi.mock("openai", () => ({
   AzureOpenAI: vi.fn().mockImplementation(() => ({
-    beta: {
-      chat: {
-        completions: {
-          parse: vi.fn(),
-        },
-      },
+    responses: {
+      parse: vi.fn(),
     },
   })),
 }));
@@ -45,40 +41,30 @@ describe("AzureOpenAIService", () => {
 
   it("should handle successful review prompt", async () => {
     const mockResponse = {
-      choices: [
-        {
-          finish_reason: "stop",
-          message: {
-            parsed: {
-              comments: [
-                {
-                  file: "test.ts",
-                  line: 1,
-                  comment: "Test comment",
-                  severity: "info",
-                },
-              ],
-            },
+      output_parsed: {
+        comments: [
+          {
+            file: "test.ts",
+            line: 1,
+            comment: "Test comment",
+            severity: "info",
+            sha: "abc",
+            side: "RIGHT",
           },
-        },
-      ],
+        ],
+      },
     };
 
     const service = new AzureOpenAIService(mockConfig);
     const parseMock = vi.fn().mockResolvedValue(mockResponse);
     type MockClient = {
       client: {
-        beta: {
-          chat: {
-            completions: {
-              parse: typeof parseMock;
-            };
-          };
+        responses: {
+          parse: typeof parseMock;
         };
       };
     };
-    (service as unknown as MockClient).client.beta.chat.completions.parse =
-      parseMock;
+    (service as unknown as MockClient).client.responses.parse = parseMock;
 
     const result = await service.runReviewPrompt(mockInput, mockReviewConfig);
 
@@ -144,50 +130,30 @@ describe("AzureOpenAIService", () => {
     };
 
     expect(parseMock).toHaveBeenCalledWith({
-      model: "",
-      messages: expect.arrayContaining([
-        expect.objectContaining({
-          role: "developer",
-          content: expect.any(String),
-        }),
-        expect.objectContaining({
-          role: "user",
-          content: mockInput,
-        }),
-      ]),
+      model: mockConfig.deployment,
+      input: expect.stringContaining(mockInput),
+      reasoning: { effort: mockReviewConfig.reasoningEffort },
       response_format: expectedSchema,
-      reasoning_effort: mockReviewConfig.reasoningEffort,
     });
-    expect(result).toEqual(mockResponse.choices[0].message.parsed);
+    expect(result).toEqual(mockResponse.output_parsed);
   });
 
   it("should throw error when review does not finish successfully", async () => {
     const mockResponse = {
-      choices: [
-        {
-          finish_reason: "length",
-          message: {
-            parsed: null,
-          },
-        },
-      ],
+      output_parsed: null,
+      status: "length",
     };
 
     const service = new AzureOpenAIService(mockConfig);
     const parseMock = vi.fn().mockResolvedValue(mockResponse);
     type MockClient = {
       client: {
-        beta: {
-          chat: {
-            completions: {
-              parse: typeof parseMock;
-            };
-          };
+        responses: {
+          parse: typeof parseMock;
         };
       };
     };
-    (service as unknown as MockClient).client.beta.chat.completions.parse =
-      parseMock;
+    (service as unknown as MockClient).client.responses.parse = parseMock;
 
     await expect(
       service.runReviewPrompt(mockInput, mockReviewConfig)

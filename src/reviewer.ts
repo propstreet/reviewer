@@ -1,10 +1,9 @@
 import * as core from "@actions/core";
-import { SeverityLevel } from "./validators.js";
+import { SeverityLevel, ReasoningEffort } from "./validators.js";
 import { minimatch } from "minimatch";
 import { isWithinTokenLimit } from "gpt-tokenizer/encoding/o200k_base";
 import { AzureOpenAIService } from "./azureOpenAIService.js";
 import { CommitDetails, GitHubService, PatchInfo } from "./githubService.js";
-import { ReasoningEffort } from "openai/resources.mjs";
 
 export type ReviewOptions = {
   base: string;
@@ -214,14 +213,13 @@ export class ReviewService {
       reasoningEffort: options.reasoningEffort,
     });
 
-    if (!response?.comments || response.comments.length === 0) {
+    if (!response || !response.comments || response.comments.length === 0) {
       core.info("No suggestions from AI.");
       return false;
     }
 
     core.info(`Got ${response.comments.length} suggestions from AI.`);
 
-    // 4. Post Comments to PR
     const result = await this.githubService.postReviewComments(
       response.comments,
       options.changesThreshold,
