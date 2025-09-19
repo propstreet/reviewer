@@ -543,4 +543,31 @@ commit diff
     );
     expect(core.info).toHaveBeenCalledWith("No commits found to review.");
   });
+  it("should skip patch due to excludePatterns and warn when none used", async () => {
+    const { isWithinTokenLimit } = await import(
+      "gpt-tokenizer/encoding/o200k_base"
+    );
+    vi.mocked(isWithinTokenLimit).mockReturnValue(1000 as unknown as number);
+
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "head-sha",
+      message: "test commit",
+      patches: [{ filename: "commit.ts", patch: "commit diff" }],
+    });
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    const result = await reviewService.review({
+      ...reviewOptions,
+      excludePatterns: ["*.ts"],
+    });
+
+    expect(result).toBe(false);
+    expect(core.warning).toHaveBeenCalledWith(
+      "No patches used in commit block."
+    );
+    expect(AzureOpenAIService.prototype.runReviewPrompt).not.toHaveBeenCalled();
+  });
 });

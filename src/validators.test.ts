@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { isValidExcludePatterns } from "./validators.js";
+import {
+  isValidExcludePatterns,
+  isValidReasoningEffort,
+} from "./validators.js";
 
 describe("isValidExcludePatterns", () => {
   it("should accept empty string", () => {
@@ -21,4 +24,14 @@ describe("isValidExcludePatterns", () => {
   it("should handle whitespace", () => {
     expect(isValidExcludePatterns(" *.test.ts , dist/**/* ")).toBe(true);
   });
+});
+it("should accept minimal reasoning effort where applicable", () => {
+  expect(isValidReasoningEffort("minimal")).toBe(true);
+});
+
+it("should reject patterns starting with ~", () => {
+  expect(isValidExcludePatterns("~/.ssh/*")).toBe(false);
+});
+it("isValidExcludePatterns returns false for empty segments", () => {
+  expect(isValidExcludePatterns(" , , ")).toBe(false);
 });

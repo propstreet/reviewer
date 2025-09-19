@@ -157,6 +157,27 @@ describe("AzureOpenAIService", () => {
 
     await expect(
       service.runReviewPrompt(mockInput, mockReviewConfig)
-    ).rejects.toThrow("Review request did not finish, got length");
+    ).rejects.toThrow("Review request did not finish");
+  });
+
+  it("should default to unknown reason when status is missing", async () => {
+    const mockResponse = {
+      output_parsed: null,
+    };
+
+    const service = new AzureOpenAIService(mockConfig);
+    const parseMock = vi.fn().mockResolvedValue(mockResponse);
+    type MockClient = {
+      client: {
+        responses: {
+          parse: typeof parseMock;
+        };
+      };
+    };
+    (service as unknown as MockClient).client.responses.parse = parseMock;
+
+    await expect(
+      service.runReviewPrompt(mockInput, mockReviewConfig)
+    ).rejects.toThrow("Review request did not finish");
   });
 });

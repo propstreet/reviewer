@@ -61,9 +61,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
     });
 
     if (!response.output_parsed) {
-      const reason =
-        (response as unknown as { status?: string })?.status ?? "unknown";
-      throw new Error(`Review request did not finish, got ${reason}`);
+      throw new Error("Review request did not finish");
     }
 
     return response.output_parsed;

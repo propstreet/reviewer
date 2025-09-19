@@ -1,4 +1,4 @@
-export type ReasoningEffort = "low" | "medium" | "high";
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
 export type SeverityLevel = "info" | "warning" | "error";
 
 export function isValidReasoningEffort(
@@ -6,6 +6,7 @@ export function isValidReasoningEffort(
 ): reasoningEffort is ReasoningEffort {
   return (
     reasoningEffort === null ||
+    reasoningEffort === "minimal" ||
     reasoningEffort === "low" ||
     reasoningEffort === "medium" ||
     reasoningEffort === "high"

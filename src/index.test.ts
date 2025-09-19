@@ -309,6 +309,93 @@ describe("index", () => {
       "Missing GITHUB_TOKEN in environment."
     );
   });
+  it("should split valid exclude patterns and pass them to reviewer", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "exclude") return "dist/**, node_modules/**";
+      if (name === "base") return "base-sha";
+      if (name === "head") return "head-sha";
+      return getInputDefaults(name);
+    });
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
+    const { run } = await import("./index.js");
+    await run();
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(ReviewService.prototype.review).toHaveBeenCalledWith(
+      expect.objectContaining({
+        excludePatterns: ["dist/**", "node_modules/**"],
+      })
+    );
+  });
+
+  it("should set failed when Azure API version is invalid (mocked validator)", async () => {
+    const validators = await import("./validators.js");
+    const spy = vi
+      .spyOn(validators, "isValidAzureApiVersion")
+      .mockReturnValue(false);
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "azureOpenAIVersion") return "invalid-version";
+      if (name === "base") return "base-sha";
+      if (name === "head") return "head-sha";
+      return getInputDefaults(name);
+    });
+    const { run } = await import("./index.js");
+    await run();
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid Azure OpenAI API version: invalid-version"
+    );
+    spy.mockRestore();
+  });
+
+  it("should handle invalid Azure endpoint", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "azureOpenAIEndpoint") return "";
+      return name === "severity"
+        ? "error"
+        : name === "reasoningEffort"
+          ? "medium"
+          : "";
+    });
+    const { run } = await import("./index.js");
+    await run();
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid Azure OpenAI endpoint: "
+    );
+  });
+
+  it("should handle invalid Azure deployment", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "azureOpenAIEndpoint") return "https://endpoint";
+      if (name === "azureOpenAIDeployment") return "";
+      return name === "severity"
+        ? "error"
+        : name === "reasoningEffort"
+          ? "medium"
+          : "";
+    });
+    const { run } = await import("./index.js");
+    await run();
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid Azure OpenAI deployment: "
+    );
+  });
+
+  it("should handle invalid Azure API key", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "azureOpenAIEndpoint") return "https://endpoint";
+      if (name === "azureOpenAIDeployment") return "deployment";
+      if (name === "azureOpenAIKey") return "";
+      return name === "severity"
+        ? "error"
+        : name === "reasoningEffort"
+          ? "medium"
+          : "";
+    });
+    const { run } = await import("./index.js");
+    await run();
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid Azure OpenAI API key"
+    );
+  });
 
   it("should handle non-Error objects in catch", async () => {
     (core.getInput as MockType).mockImplementation((name: string) => {
@@ -322,7 +409,7 @@ describe("index", () => {
       }
     });
 
-    vi.mocked(ReviewService.prototype.review).mockRejectedValue(42); // Throw a number instead of an Error
+    vi.mocked(ReviewService.prototype.review).mockRejectedValue(42);
 
     const { run } = await import("./index.js");
     await run();
@@ -346,13 +433,31 @@ describe("index", () => {
 
     vi.mocked(ReviewService.prototype.review).mockRejectedValue(
       new Error("Test error message")
-    ); // Throw an Error with message
+    );
 
     const { run } = await import("./index.js");
     await run();
 
     expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
       "Test error message"
+    );
+  });
+
+  it("should handle invalid exclude patterns", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "exclude") return "/bad, ..,";
+      if (name === "azureOpenAIEndpoint") return "https://endpoint";
+      if (name === "azureOpenAIDeployment") return "deployment";
+      if (name === "azureOpenAIKey") return "key";
+      if (name === "azureOpenAIVersion") return "2025-03-01-preview";
+      if (name === "base") return "base-sha";
+      if (name === "head") return "head-sha";
+      return getInputDefaults(name);
+    });
+    const { run } = await import("./index.js");
+    await run();
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid exclude patterns: /bad, ..,"
     );
   });
 });
