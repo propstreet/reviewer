@@ -499,6 +499,7 @@ describe("index", () => {
     expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
       "Invalid backgroundMode: invalid. Must be 'enabled' or 'disabled'."
     );
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
   });
 
   it("should fail on invalid backgroundMaxWait when enabled", async () => {
@@ -519,6 +520,7 @@ describe("index", () => {
     expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
       "Invalid backgroundMaxWait: 999. Must be 1-60 minutes."
     );
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
   });
 
   it("should fail on invalid backgroundPollInterval when enabled", async () => {
@@ -541,5 +543,6 @@ describe("index", () => {
     expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
       "Invalid backgroundPollInterval: 1. Must be 5-60 seconds."
     );
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
   });
 });
