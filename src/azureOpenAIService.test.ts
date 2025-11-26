@@ -235,29 +235,24 @@ describe("AzureOpenAIService", () => {
         status: "queued",
       });
 
-      // Retrieve returns completed with output
+      // Retrieve returns completed with output_text
       mockRetrieve.mockResolvedValue({
         id: "resp_123",
         status: "completed",
-        output: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              comments: [
-                {
-                  sha: "abc123",
-                  file: "test.ts",
-                  line: 1,
-                  side: "RIGHT",
-                  start_line: 1,
-                  start_side: "RIGHT",
-                  comment: "Test comment",
-                  severity: "info",
-                },
-              ],
-            }),
-          },
-        ],
+        output_text: JSON.stringify({
+          comments: [
+            {
+              sha: "abc123",
+              file: "test.ts",
+              line: 1,
+              side: "RIGHT",
+              start_line: 1,
+              start_side: "RIGHT",
+              comment: "Test comment",
+              severity: "info",
+            },
+          ],
+        }),
       });
 
       const service = new AzureOpenAIService(mockConfig);
@@ -292,12 +287,7 @@ describe("AzureOpenAIService", () => {
         .mockResolvedValueOnce({
           id: "resp_456",
           status: "completed",
-          output: [
-            {
-              type: "text",
-              text: JSON.stringify({ comments: [] }),
-            },
-          ],
+          output_text: JSON.stringify({ comments: [] }),
         });
 
       const service = new AzureOpenAIService(mockConfig);
@@ -409,7 +399,7 @@ describe("AzureOpenAIService", () => {
       mockRetrieve.mockResolvedValue({
         id: "resp_notext",
         status: "completed",
-        output: [], // Empty output
+        output_text: "", // Empty output_text
       });
 
       const service = new AzureOpenAIService(mockConfig);
@@ -428,12 +418,7 @@ describe("AzureOpenAIService", () => {
       mockRetrieve.mockResolvedValue({
         id: "resp_badjson",
         status: "completed",
-        output: [
-          {
-            type: "text",
-            text: "{ invalid json",
-          },
-        ],
+        output_text: "{ invalid json",
       });
 
       const service = new AzureOpenAIService(mockConfig);
@@ -455,12 +440,7 @@ describe("AzureOpenAIService", () => {
         .mockResolvedValueOnce({
           id: "resp_retry",
           status: "completed",
-          output: [
-            {
-              type: "text",
-              text: JSON.stringify({ comments: [] }),
-            },
-          ],
+          output_text: JSON.stringify({ comments: [] }),
         });
 
       const service = new AzureOpenAIService(mockConfig);

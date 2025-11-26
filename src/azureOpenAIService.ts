@@ -135,6 +135,12 @@ If you have no comments, return an empty comments array. Respond in JSON format.
     core.info(`Background request initiated: ${initialResponse.id}`);
     core.info(`Initial status: ${initialResponse.status}`);
 
+    // Check if already in terminal state (fast completion or immediate failure)
+    if (isTerminalStatus(initialResponse.status)) {
+      core.info("Request completed immediately, skipping polling");
+      return this.handleCompletedResponse(initialResponse);
+    }
+
     // Poll until completion
     const completedResponse = await this.pollForCompletion(
       initialResponse.id,
@@ -173,9 +179,6 @@ If you have no comments, return an empty comments array. Respond in JSON format.
           );
         }
 
-        // Wait before polling
-        await this.sleep(currentInterval);
-
         // Retrieve response status
         let response: OpenAIResponse;
         try {
@@ -184,6 +187,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
           // Retry on transient errors
           if (this.isRetryableError(error)) {
             core.warning(`Polling error (will retry): ${formatError(error)}`);
+            await this.sleep(currentInterval);
             continue;
           }
           throw error;
@@ -196,12 +200,13 @@ If you have no comments, return an empty comments array. Respond in JSON format.
 
         if (isTerminalStatus(response.status)) {
           core.info(
-            `Review completed after ${elapsedSec} seconds (${attempts} status checks)`
+            `Review reached terminal status '${response.status}' after ${elapsedSec} seconds (${attempts} status checks)`
           );
           return response;
         }
 
-        // Exponential backoff
+        // Wait before next poll with exponential backoff
+        await this.sleep(currentInterval);
         currentInterval = Math.min(
           currentInterval * config.backoffMultiplier,
           config.maxIntervalMs
@@ -227,34 +232,8 @@ If you have no comments, return an empty comments array. Respond in JSON format.
       throw new Error(`Review request incomplete: ${reason}`);
     }
 
-    // Extract text output from completed response
-    // The output array contains various item types; we need to find the text content
-    let textContent = "";
-    if (response.output) {
-      for (const item of response.output) {
-        // Check for output_text type which contains the actual response text
-        if ("text" in item && typeof item.text === "string") {
-          textContent = item.text;
-          break;
-        }
-        // Also check for content array pattern
-        if ("content" in item && Array.isArray(item.content)) {
-          for (const content of item.content) {
-            if (
-              content &&
-              typeof content === "object" &&
-              "text" in content &&
-              typeof content.text === "string"
-            ) {
-              textContent = content.text;
-              break;
-            }
-          }
-          if (textContent) break;
-        }
-      }
-    }
-
+    // Use SDK convenience property for text output
+    const textContent = response.output_text;
     if (!textContent) {
       throw new Error("Review request did not return text output");
     }

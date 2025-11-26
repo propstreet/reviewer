@@ -48,34 +48,34 @@ export async function run(): Promise<void> {
       return;
     }
 
-    const backgroundMaxWaitInput = core.getInput("backgroundMaxWait") || "30";
-    if (!isValidBackgroundMaxWait(backgroundMaxWaitInput)) {
-      core.setFailed(
-        `Invalid backgroundMaxWait: ${backgroundMaxWaitInput}. Must be 1-60 minutes.`
-      );
-      return;
-    }
+    // Build background polling config (only validate params when enabled)
+    let backgroundPolling: BackgroundPollingConfig | undefined;
+    if (backgroundModeInput === "enabled") {
+      const backgroundMaxWaitInput = core.getInput("backgroundMaxWait") || "30";
+      if (!isValidBackgroundMaxWait(backgroundMaxWaitInput)) {
+        core.setFailed(
+          `Invalid backgroundMaxWait: ${backgroundMaxWaitInput}. Must be 1-60 minutes.`
+        );
+        return;
+      }
 
-    const backgroundPollIntervalInput =
-      core.getInput("backgroundPollInterval") || "10";
-    if (!isValidBackgroundPollInterval(backgroundPollIntervalInput)) {
-      core.setFailed(
-        `Invalid backgroundPollInterval: ${backgroundPollIntervalInput}. Must be 5-60 seconds.`
-      );
-      return;
-    }
+      const backgroundPollIntervalInput =
+        core.getInput("backgroundPollInterval") || "10";
+      if (!isValidBackgroundPollInterval(backgroundPollIntervalInput)) {
+        core.setFailed(
+          `Invalid backgroundPollInterval: ${backgroundPollIntervalInput}. Must be 5-60 seconds.`
+        );
+        return;
+      }
 
-    // Build background polling config
-    const backgroundPolling: BackgroundPollingConfig | undefined =
-      backgroundModeInput === "enabled"
-        ? {
-            enabled: true,
-            maxWaitTimeMs: parseInt(backgroundMaxWaitInput, 10) * 60 * 1000,
-            initialIntervalMs: parseInt(backgroundPollIntervalInput, 10) * 1000,
-            maxIntervalMs: BACKGROUND_MAX_INTERVAL_MS,
-            backoffMultiplier: BACKGROUND_BACKOFF_MULTIPLIER,
-          }
-        : undefined;
+      backgroundPolling = {
+        enabled: true,
+        maxWaitTimeMs: parseInt(backgroundMaxWaitInput, 10) * 60 * 1000,
+        initialIntervalMs: parseInt(backgroundPollIntervalInput, 10) * 1000,
+        maxIntervalMs: BACKGROUND_MAX_INTERVAL_MS,
+        backoffMultiplier: BACKGROUND_BACKOFF_MULTIPLIER,
+      };
+    }
 
     const changesThreshold = core.getInput("severity") || "error";
     if (!isValidSeverityLevel(changesThreshold)) {
