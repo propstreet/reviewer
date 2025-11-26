@@ -64,6 +64,7 @@ export async function run(): Promise<void> {
       core.setFailed("Missing GITHUB_TOKEN in environment.");
       return;
     }
+    core.setSecret(githubToken); // Mask token in logs
 
     // Validate Azure-related inputs
     const azureOpenAIEndpoint = core.getInput("azureOpenAIEndpoint");
