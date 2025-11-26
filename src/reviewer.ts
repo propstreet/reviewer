@@ -1,10 +1,9 @@
 import * as core from "@actions/core";
-import { SeverityLevel } from "./validators.js";
+import { SeverityLevel, ReasoningEffort } from "./validators.js";
 import { minimatch } from "minimatch";
 import { isWithinTokenLimit } from "gpt-tokenizer/encoding/o200k_base";
 import { AzureOpenAIService } from "./azureOpenAIService.js";
 import { CommitDetails, GitHubService, PatchInfo } from "./githubService.js";
-import { ReasoningEffort } from "openai/resources.mjs";
 
 export type ReviewOptions = {
   base: string;
@@ -14,6 +13,7 @@ export type ReviewOptions = {
   reasoningEffort: ReasoningEffort;
   commitLimit: number;
   excludePatterns?: string[];
+  customPrompt?: string;
 };
 
 export type PackedCommit = {
@@ -188,11 +188,11 @@ export class ReviewService {
       });
     }
 
-    // final token count check
+    // Check token count - returns token count if within limit, false if exceeded
     const tokenCount = isWithinTokenLimit(prompt, options.tokenLimit);
 
     core.info(
-      `Total Prompt Length: ${prompt.length}, Token Count: ${tokenCount}`
+      `Total Prompt Length: ${prompt.length} chars, Token Count: ${tokenCount === false ? "exceeded limit" : tokenCount}`
     );
 
     return {
@@ -212,6 +212,7 @@ export class ReviewService {
 
     const response = await this.azureService.runReviewPrompt(pr.prompt, {
       reasoningEffort: options.reasoningEffort,
+      customPrompt: options.customPrompt,
     });
 
     if (!response?.comments || response.comments.length === 0) {

@@ -89,7 +89,6 @@ describe("reviewer", () => {
 
   const mockedAzureService = new AzureOpenAIService({
     apiKey: "test-key",
-    apiVersion: "test-version",
     deployment: "test-deployment",
     endpoint: "test-endpoint",
   });
@@ -156,6 +155,8 @@ describe("reviewer", () => {
           file: "test.ts",
           line: 1,
           side: "RIGHT" as const,
+          start_line: 1,
+          start_side: "RIGHT" as const,
           comment: "Test comment",
           severity: "info" as const,
         },
@@ -542,5 +543,123 @@ commit diff
       "Skipping commit head-sha as it does not belong to the current PR."
     );
     expect(core.info).toHaveBeenCalledWith("No commits found to review.");
+  });
+
+  it("should skip files matching exclude patterns", async () => {
+    // Mock isWithinTokenLimit to allow diff processing
+    const { isWithinTokenLimit } = await import(
+      "gpt-tokenizer/encoding/o200k_base"
+    );
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1234
+    );
+
+    // Mock getCommitDetails with multiple files including excluded ones
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "head-sha",
+      message: "test commit",
+      patches: [
+        { filename: "src/app.ts", patch: "app diff" },
+        { filename: "src/app.test.ts", patch: "test diff" },
+        { filename: "dist/bundle.js", patch: "dist diff" },
+      ],
+    });
+
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [
+        {
+          sha: "head-sha",
+          message: "test commit",
+          patches: [
+            { filename: "src/app.ts", patch: "app diff" },
+            { filename: "src/app.test.ts", patch: "test diff" },
+            { filename: "dist/bundle.js", patch: "dist diff" },
+          ],
+        },
+      ],
+      patches: [
+        { filename: "src/app.ts", patch: "app diff" },
+        { filename: "src/app.test.ts", patch: "test diff" },
+        { filename: "dist/bundle.js", patch: "dist diff" },
+      ],
+    });
+
+    // Mock Azure and GitHub responses
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue({
+      comments: [],
+    });
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    const result = await reviewService.review({
+      ...reviewOptions,
+      excludePatterns: ["**/*.test.ts", "dist/**/*"],
+    });
+
+    expect(result).toBe(false); // No comments from AI
+
+    // Verify excluded files were logged
+    expect(core.debug).toHaveBeenCalledWith(
+      "Skipping excluded file: src/app.test.ts (matched pattern: **/*.test.ts)"
+    );
+    expect(core.debug).toHaveBeenCalledWith(
+      "Skipping excluded file: dist/bundle.js (matched pattern: dist/**/*)"
+    );
+
+    // Verify warning about skipped patches
+    expect(core.warning).toHaveBeenCalledWith(
+      "2 patches were skipped due to exclusion patterns or token limit."
+    );
+  });
+
+  it("should pass customPrompt to Azure service", async () => {
+    // Mock isWithinTokenLimit to allow diff processing
+    const { isWithinTokenLimit } = await import(
+      "gpt-tokenizer/encoding/o200k_base"
+    );
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1234
+    );
+
+    // Mock Azure response with comments
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue({
+      comments: [
+        {
+          sha: "head-sha",
+          file: "commit.ts",
+          line: 1,
+          side: "RIGHT" as const,
+          start_line: 1,
+          start_side: "RIGHT" as const,
+          comment: "Test comment",
+          severity: "info" as const,
+        },
+      ],
+    });
+
+    vi.mocked(GitHubService.prototype.postReviewComments).mockResolvedValue({
+      reviewChanges: 0,
+      reviewComments: 1,
+      issueComments: 0,
+    });
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review({
+      ...reviewOptions,
+      customPrompt: "Focus on security issues",
+    });
+
+    // Verify Azure service was called with customPrompt
+    expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalledWith(
+      expect.any(String),
+      { reasoningEffort: "low", customPrompt: "Focus on security issues" }
+    );
   });
 });

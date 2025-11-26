@@ -1,3 +1,0 @@
-id: azure:chat:{{env.AZURE_OPENAI_GPT4O_DEPLOYMENT}}
-config:
-  apiVersion: 2025-03-01-preview

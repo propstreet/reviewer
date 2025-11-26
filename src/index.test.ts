@@ -20,8 +20,6 @@ describe("index", () => {
         return "AZURE_DEPLOYMENT";
       case "azureOpenAIKey":
         return "AZURE_API_KEY";
-      case "azureOpenAIVersion":
-        return "2025-03-01-preview";
       case "severity":
         return "error";
       case "reasoningEffort":
@@ -196,8 +194,6 @@ describe("index", () => {
           return "deployment";
         case "azureOpenAIKey":
           return "key";
-        case "azureOpenAIVersion":
-          return "version";
         case "severity":
           return "warning";
         case "reasoningEffort":
@@ -307,6 +303,65 @@ describe("index", () => {
     // Verify appropriate message was logged
     expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
       "Missing GITHUB_TOKEN in environment."
+    );
+  });
+
+  it("should handle invalid Azure endpoint", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "severity") return "error";
+      if (name === "reasoningEffort") return "medium";
+      if (name === "tokenLimit") return "50000";
+      if (name === "commitLimit") return "100";
+      if (name === "azureOpenAIEndpoint") return ""; // Empty endpoint
+      return "";
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid Azure OpenAI endpoint: "
+    );
+  });
+
+  it("should handle invalid Azure deployment", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "severity") return "error";
+      if (name === "reasoningEffort") return "medium";
+      if (name === "tokenLimit") return "50000";
+      if (name === "commitLimit") return "100";
+      if (name === "azureOpenAIEndpoint")
+        return "https://test.openai.azure.com";
+      if (name === "azureOpenAIDeployment") return ""; // Empty deployment
+      return "";
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid Azure OpenAI deployment: "
+    );
+  });
+
+  it("should handle invalid Azure API key", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "severity") return "error";
+      if (name === "reasoningEffort") return "medium";
+      if (name === "tokenLimit") return "50000";
+      if (name === "commitLimit") return "100";
+      if (name === "azureOpenAIEndpoint")
+        return "https://test.openai.azure.com";
+      if (name === "azureOpenAIDeployment") return "gpt-5";
+      if (name === "azureOpenAIKey") return ""; // Empty key
+      return "";
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid Azure OpenAI API key"
     );
   });
 

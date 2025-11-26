@@ -5,5 +5,9 @@ export default defineConfig({
     globals: true, // Enable globals like describe, it, expect
     environment: "node", // Use Node.js test environment
     include: ["./**/*.test.ts"],
+    coverage: {
+      include: ["src/**/*.ts"],
+      exclude: ["src/**/*.test.ts"],
+    },
   },
 });

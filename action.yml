@@ -15,10 +15,6 @@ inputs:
   azureOpenAIKey:
     description: "API key for Azure OpenAI"
     required: true
-  azureOpenAIVersion:
-    description: "Azure OpenAI version (e.g., 2025-03-01-preview)"
-    required: false
-    default: "2025-03-01-preview"
   base:
     description: "Base commit SHA to compare against."
     required: false
@@ -30,7 +26,7 @@ inputs:
     required: false
     default: "error"
   reasoningEffort:
-    description: "Reasoning effort level (low, medium, or high)."
+    description: "Reasoning effort level (minimal, low, medium, or high). GPT-5 supports 'minimal' for faster responses, but for review purposes 'high' is recommended."
     required: false
     default: "medium"
   tokenLimit:
@@ -43,5 +39,9 @@ inputs:
     default: "100"
   exclude:
     description: "Glob patterns to exclude files from review (e.g. '*.test.ts' or 'dist/**/*')"
+    required: false
+    default: ""
+  customPrompt:
+    description: "Custom instructions appended to the system prompt for the LLM reviewer (max 1000 chars). Example: 'Focus on security issues and best practices'"
     required: false
     default: ""

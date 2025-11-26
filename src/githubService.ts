@@ -3,7 +3,10 @@ import * as github from "@actions/github";
 import { CodeReviewComment } from "./schemas.js";
 import { z } from "zod";
 import { SeverityLevel } from "./validators.js";
-import { findPositionInDiff } from "./diffparser.js";
+import {
+  findPositionInDiff,
+  verifyMultiLineCommentRange,
+} from "./diffparser.js";
 import { type PackedCommit } from "./reviewer.js";
 
 export interface GitHubConfig {
@@ -46,6 +49,20 @@ export interface PrDetails {
   commitCount: number;
 }
 
+/**
+ * Extracts patches from a list of files, filtering out files without patches.
+ */
+function extractPatches(
+  files: Array<{ filename: string; patch?: string }> | undefined
+): PatchInfo[] {
+  return (files || [])
+    .filter((file) => !!file.patch && file.patch.length > 0)
+    .map((file) => ({
+      filename: file.filename,
+      patch: file.patch!,
+    }));
+}
+
 export class GitHubService {
   private octokit: ReturnType<typeof github.getOctokit>;
   private config: GitHubConfig;
@@ -59,16 +76,37 @@ export class GitHubService {
     filename: string,
     line: number,
     side: "LEFT" | "RIGHT",
-    patches: PatchInfo[]
+    patches: PatchInfo[],
+    start_line: number,
+    start_side: "LEFT" | "RIGHT"
   ): boolean {
     const target = patches.find((p) => p.filename === filename);
     if (!target) {
       core.warning(`No patch found for file: ${filename}`);
       return false;
     }
-    const position = findPositionInDiff(target.patch, line, side);
-    core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
-    return position !== null;
+
+    // For single-line comments (start_line === line)
+    if (start_line === line && start_side === side) {
+      const position = findPositionInDiff(target.patch, line, side);
+      core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
+      return position !== null;
+    }
+
+    // For multi-line comments
+    const range = verifyMultiLineCommentRange(
+      target.patch,
+      start_line,
+      line,
+      start_side,
+      side
+    );
+    core.debug(
+      `Multi-line range for ${filename}:${start_line}:${start_side} to ${line}:${side} = ${
+        range ? `${range.startPosition}-${range.endPosition}` : "null"
+      }`
+    );
+    return range !== null;
   }
 
   private async createReview(
@@ -85,12 +123,30 @@ export class GitHubService {
       pull_number: this.config.pullNumber,
       commit_id: sha,
       event: event,
-      comments: review.map((c) => ({
-        path: c.file,
-        line: c.line,
-        side: c.side,
-        body: c.comment,
-      })),
+      comments: review.map((c) => {
+        const comment: {
+          path: string;
+          line: number;
+          side: "LEFT" | "RIGHT";
+          body: string;
+          start_line?: number;
+          start_side?: "LEFT" | "RIGHT";
+        } = {
+          path: c.file,
+          line: c.line,
+          side: c.side,
+          body: c.comment,
+        };
+
+        // Only add multi-line fields if it's actually a multi-line comment
+        // (start_line !== line means it spans multiple lines)
+        if (c.start_line !== c.line || c.start_side !== c.side) {
+          comment.start_line = c.start_line;
+          comment.start_side = c.start_side;
+        }
+
+        return comment;
+      }),
     });
   }
 
@@ -117,7 +173,14 @@ export class GitHubService {
         }
 
         if (
-          !this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches)
+          !this.verifyCommentLineInPatch(
+            c.file,
+            c.line,
+            c.side,
+            commit.patches,
+            c.start_line,
+            c.start_side
+          )
         ) {
           core.warning(
             `Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`
@@ -230,13 +293,6 @@ export class GitHubService {
         );
       }
 
-      const patches = (response.data.files || [])
-        .filter((file) => !!file.patch && file.patch.length > 0)
-        .map((file) => ({
-          filename: file.filename,
-          patch: file.patch!,
-        }));
-
       return {
         base,
         head,
@@ -245,7 +301,7 @@ export class GitHubService {
           message: commit.commit.message,
           patches: [], // get patches for each commit to base
         })),
-        patches,
+        patches: extractPatches(response.data.files),
       };
     } catch (error) {
       throw new Error(
@@ -268,17 +324,10 @@ export class GitHubService {
         );
       }
 
-      const patches = (response.data.files || [])
-        .filter((file) => !!file.patch && file.patch.length > 0)
-        .map((file) => ({
-          filename: file.filename,
-          patch: file.patch!,
-        }));
-
       return {
         sha,
         message: response.data.commit.message,
-        patches,
+        patches: extractPatches(response.data.files),
       };
     } catch (error) {
       throw new Error(

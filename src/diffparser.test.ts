@@ -1,4 +1,7 @@
-import { findPositionInDiff } from "./diffparser.js";
+import {
+  findPositionInDiff,
+  verifyMultiLineCommentRange,
+} from "./diffparser.js";
 
 describe("findPositionInDiff", () => {
   describe("Single-hunk patches", () => {
@@ -162,5 +165,99 @@ index abc123..def456 100644
     it("returns null for an empty patch (RIGHT side)", () => {
       expect(findPositionInDiff("", 1, "RIGHT")).toBeNull();
     });
+  });
+});
+
+describe("verifyMultiLineCommentRange", () => {
+  const samplePatch = `
+@@ -1,5 +1,6 @@
+ line one
+ line two
++new line three
+ line four
+ line five
++new line six
+`;
+
+  it("returns positions for valid multi-line range (RIGHT side)", () => {
+    // Lines 1-4 should be valid on RIGHT side
+    const result = verifyMultiLineCommentRange(
+      samplePatch,
+      1,
+      4,
+      "RIGHT",
+      "RIGHT"
+    );
+    expect(result).not.toBeNull();
+    expect(result?.startPosition).toBe(1);
+    expect(result?.endPosition).toBe(4);
+  });
+
+  it("returns null if start line is not found", () => {
+    // Line 100 doesn't exist
+    const result = verifyMultiLineCommentRange(
+      samplePatch,
+      100,
+      4,
+      "RIGHT",
+      "RIGHT"
+    );
+    expect(result).toBeNull();
+  });
+
+  it("returns null if end line is not found", () => {
+    // End line 100 doesn't exist
+    const result = verifyMultiLineCommentRange(
+      samplePatch,
+      1,
+      100,
+      "RIGHT",
+      "RIGHT"
+    );
+    expect(result).toBeNull();
+  });
+
+  it("returns null if start position is greater than end position", () => {
+    // Reversed range (line 4 before line 1)
+    const result = verifyMultiLineCommentRange(
+      samplePatch,
+      4,
+      1,
+      "RIGHT",
+      "RIGHT"
+    );
+    expect(result).toBeNull();
+  });
+
+  it("handles single-line case (start equals end)", () => {
+    // Single line (start = end)
+    const result = verifyMultiLineCommentRange(
+      samplePatch,
+      2,
+      2,
+      "RIGHT",
+      "RIGHT"
+    );
+    expect(result).not.toBeNull();
+    expect(result?.startPosition).toBe(result?.endPosition);
+  });
+
+  it("handles LEFT side multi-line range", () => {
+    const patchWithDeletions = `
+@@ -1,4 +1,3 @@
+ line one
+-deleted line
+ line three
+ line four
+`;
+    // Lines 1-3 on LEFT side (old file)
+    const result = verifyMultiLineCommentRange(
+      patchWithDeletions,
+      1,
+      3,
+      "LEFT",
+      "LEFT"
+    );
+    expect(result).not.toBeNull();
   });
 });

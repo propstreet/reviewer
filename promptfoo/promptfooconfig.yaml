@@ -1,53 +1,52 @@
 # yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
 
-description: "Generate GitHub PR review comments using Azure Open AI"
+description: "Generate GitHub PR review comments using Azure OpenAI"
 
 defaultTest:
   options:
     # Used for grading
-    provider: file://providers/provider-gpt4o.yaml
+    provider:
+      id: azure:responses:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
+      config:
+        apiHost: "{{env.AZURE_OPENAI_HOST}}"
+        reasoning:
+          effort: "low"
+        apiVersion: "preview"
 
 prompts:
-  - raw: file://./prompts/review-reasoning.json
-    label: review-reasoning
-    config:
-      response_format: file://./prompts/review-format.json
-  - raw: file://./prompts/review-gpt4o.json
-    label: review-gpt4o
-    config:
-      response_format: file://./prompts/review-format.json
+  - file://./prompts/review-reasoning.js
 
 providers:
-  - id: azure:chat:{{env.AZURE_OPENAI_GPT4O_DEPLOYMENT}}
-    label: gpt4o
+  - id: azure:responses:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
+    label: gpt-5-low
     config:
-      apiVersion: 2025-03-01-preview
-    prompts:
-      - review-gpt4o
-  - id: azure:chat:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
-    label: reasoning-low
+      apiHost: "{{env.AZURE_OPENAI_HOST}}"
+      reasoning:
+        effort: "low"
+      verbosity: "low"
+      temperature: 1
+      max_output_tokens: 10000
+      apiVersion: "preview"
+  - id: azure:responses:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
+    label: gpt-5-medium
     config:
-      apiVersion: 2025-03-01-preview
-      reasoning_effort: "low"
-      isReasoningModel: true
-    prompts:
-      - review-reasoning
-  - id: azure:chat:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
-    label: reasoning-medium
+      apiHost: "{{env.AZURE_OPENAI_HOST}}"
+      reasoning:
+        effort: "medium"
+      verbosity: "low"
+      temperature: 1
+      max_output_tokens: 10000
+      apiVersion: "preview"
+  - id: azure:responses:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
+    label: gpt-5-high
     config:
-      apiVersion: 2025-03-01-preview
-      reasoning_effort: "medium"
-      isReasoningModel: true
-    prompts:
-      - review-reasoning
-  - id: azure:chat:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
-    label: reasoning-high
-    config:
-      apiVersion: 2025-03-01-preview
-      reasoning_effort: "high"
-      isReasoningModel: true
-    prompts:
-      - review-reasoning
+      apiHost: "{{env.AZURE_OPENAI_HOST}}"
+      reasoning:
+        effort: "high"
+      verbosity: "low"
+      temperature: 1
+      max_output_tokens: 10000
+      apiVersion: "preview"
 
 tests:
   - vars:
@@ -67,4 +66,122 @@ tests:
           }
       - type: javascript
         value: |
-          output.comments[0].comment.includes("any") && output.comments[0].line === 7 && output.comments[0].file === "src/example.ts" && output.comments[0].severity === "warning"
+          const c = output.comments[0];
+          if (!c) {
+            return { pass: false, score: 0, reason: "No comments returned" };
+          }
+          const checks = {
+            hasAny: c.comment.toLowerCase().includes("any"),
+            correctLine: c.line === 7,
+            correctFile: c.file === "src/example.ts",
+            hasStartLine: typeof c.start_line === "number",
+            hasStartSide: typeof c.start_side === "string"
+          };
+          const passed = Object.values(checks).filter(Boolean).length;
+          const total = Object.keys(checks).length;
+          if (passed === total) {
+            return { pass: true, score: 1, reason: "All checks passed" };
+          }
+          const failed = Object.entries(checks).filter(([k,v]) => !v).map(([k]) => k);
+          return { pass: false, score: passed/total, reason: `Failed: ${failed.join(", ")}` };
+
+  - vars:
+      commitMessage: "Add createUser method with logging"
+      diff: file://./prompts/review-2-multiline.md
+    description: "Detect security issues (password logging, plaintext storage)"
+    options:
+      transform: JSON.parse(output)
+    assert:
+      - type: is-json
+        value:
+          {
+            "required": ["comments"],
+            "type": "object",
+            "properties": { "comments": { "type": "array", "minItems": 1 } },
+          }
+      - type: javascript
+        value: |
+          // Must have at least one error-level security comment
+          const errorComments = output.comments.filter(c => c.severity === "error");
+          if (errorComments.length === 0) {
+            return { pass: false, score: 0, reason: "No error-level comments found for security issues" };
+          }
+          // Check for password-related security issues
+          const passwordIssue = errorComments.find(c =>
+            c.comment.toLowerCase().includes("password")
+          );
+          if (!passwordIssue) {
+            return { pass: false, score: 0.5, reason: "Error found but not password-related" };
+          }
+          return { pass: true, score: 1, reason: `Found ${errorComments.length} security errors including password issues` };
+      - type: javascript
+        value: |
+          // Check for multi-line comment (start_line !== line)
+          const multiLine = output.comments.find(c => c.start_line !== c.line);
+          if (multiLine) {
+            return { pass: true, score: 1, reason: `Multi-line: lines ${multiLine.start_line}-${multiLine.line}` };
+          }
+          return { pass: true, score: 0.7, reason: "All single-line (acceptable)" };
+
+  - vars:
+      commitMessage: "Add multiply and divide methods with proper error handling"
+      diff: file://./prompts/review-3-clean.md
+    description: "Clean code should have no errors (warnings/info OK)"
+    options:
+      transform: JSON.parse(output)
+    assert:
+      - type: is-json
+        value:
+          {
+            "required": ["comments"],
+            "type": "object",
+            "properties": { "comments": { "type": "array" } },
+          }
+      - type: javascript
+        value: |
+          // Clean code should not have error-level comments
+          // Info and warnings are acceptable (style suggestions, improvements)
+          const errors = output.comments.filter(c => c.severity === "error");
+          if (errors.length > 0) {
+            return {
+              pass: false,
+              score: 0,
+              reason: `Found ${errors.length} errors on clean code: ${errors.map(c => c.comment.substring(0, 40)).join("; ")}`
+            };
+          }
+          const warnings = output.comments.filter(c => c.severity === "warning").length;
+          const infos = output.comments.filter(c => c.severity === "info").length;
+          const score = warnings === 0 ? 1 : 0.8;
+          return { pass: true, score, reason: `No errors. ${warnings} warnings, ${infos} info suggestions` };
+
+  - vars:
+      commitMessage: "Add subtract method to calculator"
+      diff: file://./prompts/review-1.md
+      customPrompt: "Focus ONLY on performance issues. Ignore type safety, code style, and best practices. If there are no performance issues, return an empty comments array."
+    description: "Custom instructions should filter out type issues"
+    options:
+      transform: JSON.parse(output)
+    assert:
+      - type: is-json
+        value:
+          {
+            "required": ["comments"],
+            "type": "object",
+            "properties": { "comments": { "type": "array" } },
+          }
+      - type: javascript
+        value: |
+          // With custom instructions to focus only on performance,
+          // the 'any' type issue should be ignored
+          const typeComments = output.comments.filter(c =>
+            c.comment.toLowerCase().includes("any") ||
+            c.comment.toLowerCase().includes("type")
+          );
+          if (typeComments.length === 0) {
+            return { pass: true, score: 1, reason: "Custom instructions respected - type issues ignored" };
+          }
+          return {
+            pass: false,
+            score: 0.5,
+            reason: `Custom instructions not fully respected - found ${typeComments.length} type-related comments`
+          };

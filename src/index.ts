@@ -9,7 +9,7 @@ import {
   isValidAzureEndpoint,
   isValidAzureDeployment,
   isValidAzureApiKey,
-  isValidAzureApiVersion,
+  isValidCustomPrompt,
 } from "./validators.js";
 import { ReviewService } from "./reviewer.js";
 import { GitHubService } from "./githubService.js";
@@ -26,6 +26,12 @@ export async function run(): Promise<void> {
     const excludePatterns = excludePatternsInput
       ? excludePatternsInput.split(",").map((p) => p.trim())
       : [];
+
+    const customPrompt = core.getInput("customPrompt") || "";
+    if (!isValidCustomPrompt(customPrompt)) {
+      core.setFailed("Invalid custom prompt: must be 1000 characters or less");
+      return;
+    }
 
     const changesThreshold = core.getInput("severity") || "error";
     if (!isValidSeverityLevel(changesThreshold)) {
@@ -81,13 +87,6 @@ export async function run(): Promise<void> {
     }
     core.setSecret(azureOpenAIKey); // Treat the API key as a secret
 
-    const azureOpenAIVersion =
-      core.getInput("azureOpenAIVersion") || "2025-03-01-preview";
-    if (!isValidAzureApiVersion(azureOpenAIVersion)) {
-      core.setFailed(`Invalid Azure OpenAI API version: ${azureOpenAIVersion}`);
-      return;
-    }
-
     // Check the pull_request event in the payload
     const action = github.context.payload.action;
     let base = core.getInput("base"); // possibly empty
@@ -121,7 +120,6 @@ export async function run(): Promise<void> {
       endpoint: azureOpenAIEndpoint,
       deployment: azureOpenAIDeployment,
       apiKey: azureOpenAIKey,
-      apiVersion: azureOpenAIVersion,
     });
 
     // 2. Run Reviewer
@@ -134,6 +132,7 @@ export async function run(): Promise<void> {
       reasoningEffort,
       commitLimit,
       excludePatterns,
+      customPrompt: customPrompt || undefined,
     });
 
     // 3. Done
