@@ -137,7 +137,7 @@ with automatic polling:
     azureOpenAIDeployment: gpt-5-pro
     reasoningEffort: high
     backgroundMode: enabled
-    backgroundMaxWait: "30"
+    backgroundMaxWait: "30" # minutes (1-60)
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -164,14 +164,17 @@ The action uses the Azure OpenAI v1 API:
 
 ### Recommended Models
 
-| Model | Reasoning | Use Case |
-|-------|-----------|----------|
+The `reasoningEffort` input controls how much reasoning the model applies:
+
+| Model | `reasoningEffort` | Use Case |
+|-------|-------------------|----------|
 | **gpt-5.1** | `high` | **Recommended default** - Best quality reviews |
 | gpt-5 | `high` | Excellent reviews, slightly older model |
 | gpt-5.1 | `medium` | Faster reviews, good quality |
 | gpt-5 | `minimal` | Quick reviews, lower latency |
+| gpt-5-pro | `high` | Most thorough reviews (15-20 min, requires `backgroundMode: enabled`) |
 
-We recommend **gpt-5.1 with `reasoningEffort: high`** for the best code review quality.
+We recommend **gpt-5.1 with `reasoningEffort: high`** for the best balance of quality and speed.
 
 ## Severity Levels
 
