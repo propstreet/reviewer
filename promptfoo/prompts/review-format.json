@@ -18,7 +18,7 @@
                                 "type": "string"
                             },
                             "line": {
-                                "description": "The line of the blob in the pull request diff that the comment applies to.",
+                                "description": "The ending line of the comment in the pull request diff. For single-line comments, this equals start_line.",
                                 "type": "number"
                             },
                             "severity": {
@@ -34,7 +34,19 @@
                                 "type": "string"
                             },
                             "side": {
-                                "description": "In a split diff view, the side of the diff that the pull request's changes appear on. Can be LEFT or RIGHT. Use LEFT for deletions that appear in red. Use RIGHT for additions that appear in green or unchanged lines that appear in white and are shown for context.",
+                                "description": "The side of the diff for the ending line. Can be LEFT (deletions/red) or RIGHT (additions/green or context). For single-line comments, this equals start_side.",
+                                "enum": [
+                                    "LEFT",
+                                    "RIGHT"
+                                ],
+                                "type": "string"
+                            },
+                            "start_line": {
+                                "description": "The starting line of the comment range. For single-line comments, set this equal to line.",
+                                "type": "number"
+                            },
+                            "start_side": {
+                                "description": "The side of the diff for the starting line. For single-line comments, set this equal to side.",
                                 "enum": [
                                     "LEFT",
                                     "RIGHT"
@@ -47,6 +59,8 @@
                             "file",
                             "line",
                             "side",
+                            "start_line",
+                            "start_side",
                             "comment",
                             "severity"
                         ],

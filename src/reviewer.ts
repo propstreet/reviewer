@@ -1,10 +1,9 @@
 import * as core from "@actions/core";
-import { SeverityLevel } from "./validators.js";
+import { SeverityLevel, ReasoningEffort } from "./validators.js";
 import { minimatch } from "minimatch";
 import { isWithinTokenLimit } from "gpt-tokenizer/encoding/o200k_base";
 import { AzureOpenAIService } from "./azureOpenAIService.js";
 import { CommitDetails, GitHubService, PatchInfo } from "./githubService.js";
-import { ReasoningEffort } from "openai/resources.mjs";
 
 export type ReviewOptions = {
   base: string;
@@ -14,11 +13,23 @@ export type ReviewOptions = {
   reasoningEffort: ReasoningEffort;
   commitLimit: number;
   excludePatterns?: string[];
+  customPrompt?: string;
 };
 
 export type PackedCommit = {
   commit: CommitDetails;
   patches: PatchInfo[];
+};
+
+export type SkippedCommit = {
+  sha: string;
+  reason: "token_limit" | "all_excluded" | "not_in_pr";
+};
+
+export type BuildPromptResult = {
+  prompt: string;
+  commits: PackedCommit[];
+  skippedCommits: SkippedCommit[];
 };
 
 export const shouldExcludeFile = (
@@ -133,6 +144,16 @@ export class ReviewService {
       return null;
     }
 
+    // P3: Apply commitLimit - keep most recent commits
+    let commitsToProcess = results.commits;
+    if (results.commits.length > options.commitLimit) {
+      const skippedCount = results.commits.length - options.commitLimit;
+      core.info(
+        `Limiting to ${options.commitLimit} most recent commits (${skippedCount} older commits skipped)`
+      );
+      commitsToProcess = results.commits.slice(-options.commitLimit);
+    }
+
     core.info(
       `Building prompt for PR #${prDetails.number}: ${prDetails.title}`
     );
@@ -143,8 +164,9 @@ export class ReviewService {
     }
 
     const packedCommits: PackedCommit[] = [];
+    const skippedCommits: SkippedCommit[] = [];
 
-    for (const c of results.commits) {
+    for (const c of commitsToProcess) {
       core.debug(`Processing commit: ${c.sha}`);
 
       // Verify that the commit belongs to the current PR
@@ -153,6 +175,7 @@ export class ReviewService {
         core.info(
           `Skipping commit ${c.sha} as it does not belong to the current PR.`
         );
+        skippedCommits.push({ sha: c.sha, reason: "not_in_pr" });
         continue;
       }
 
@@ -170,7 +193,8 @@ export class ReviewService {
 
       if (!packed) {
         core.warning(`Commit ${c.sha} was not packed into prompt.`);
-        break;
+        skippedCommits.push({ sha: c.sha, reason: "token_limit" });
+        continue; // P1: was 'break' - now continues to process remaining commits
       }
 
       core.debug(
@@ -188,17 +212,25 @@ export class ReviewService {
       });
     }
 
-    // final token count check
+    // Check token count - returns token count if within limit, false if exceeded
     const tokenCount = isWithinTokenLimit(prompt, options.tokenLimit);
 
     core.info(
-      `Total Prompt Length: ${prompt.length}, Token Count: ${tokenCount}`
+      `Total Prompt Length: ${prompt.length} chars, Token Count: ${tokenCount === false ? "exceeded limit" : tokenCount}`
     );
+
+    // Log skipped commits summary
+    if (skippedCommits.length > 0) {
+      core.warning(
+        `${skippedCommits.length} commit(s) were skipped: ${skippedCommits.map((s) => `${s.sha.substring(0, 7)} (${s.reason})`).join(", ")}`
+      );
+    }
 
     return {
       prompt,
       commits: packedCommits,
-    };
+      skippedCommits,
+    } satisfies BuildPromptResult;
   }
 
   async review(options: ReviewOptions) {
@@ -212,6 +244,7 @@ export class ReviewService {
 
     const response = await this.azureService.runReviewPrompt(pr.prompt, {
       reasoningEffort: options.reasoningEffort,
+      customPrompt: options.customPrompt,
     });
 
     if (!response?.comments || response.comments.length === 0) {

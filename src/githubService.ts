@@ -3,7 +3,10 @@ import * as github from "@actions/github";
 import { CodeReviewComment } from "./schemas.js";
 import { z } from "zod";
 import { SeverityLevel } from "./validators.js";
-import { findPositionInDiff } from "./diffparser.js";
+import {
+  findPositionInDiff,
+  verifyMultiLineCommentRange,
+} from "./diffparser.js";
 import { type PackedCommit } from "./reviewer.js";
 
 export interface GitHubConfig {
@@ -46,6 +49,20 @@ export interface PrDetails {
   commitCount: number;
 }
 
+/**
+ * Extracts patches from a list of files, filtering out files without patches.
+ */
+function extractPatches(
+  files: Array<{ filename: string; patch?: string }> | undefined
+): PatchInfo[] {
+  return (files || [])
+    .filter((file) => !!file.patch && file.patch.length > 0)
+    .map((file) => ({
+      filename: file.filename,
+      patch: file.patch!,
+    }));
+}
+
 export class GitHubService {
   private octokit: ReturnType<typeof github.getOctokit>;
   private config: GitHubConfig;
@@ -59,16 +76,37 @@ export class GitHubService {
     filename: string,
     line: number,
     side: "LEFT" | "RIGHT",
-    patches: PatchInfo[]
+    patches: PatchInfo[],
+    start_line: number,
+    start_side: "LEFT" | "RIGHT"
   ): boolean {
     const target = patches.find((p) => p.filename === filename);
     if (!target) {
       core.warning(`No patch found for file: ${filename}`);
       return false;
     }
-    const position = findPositionInDiff(target.patch, line, side);
-    core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
-    return position !== null;
+
+    // For single-line comments (start_line === line)
+    if (start_line === line && start_side === side) {
+      const position = findPositionInDiff(target.patch, line, side);
+      core.debug(`Position for ${filename}:${line}:${side} = ${position}`);
+      return position !== null;
+    }
+
+    // For multi-line comments
+    const range = verifyMultiLineCommentRange(
+      target.patch,
+      start_line,
+      line,
+      start_side,
+      side
+    );
+    core.debug(
+      `Multi-line range for ${filename}:${start_line}:${start_side} to ${line}:${side} = ${
+        range ? `${range.startPosition}-${range.endPosition}` : "null"
+      }`
+    );
+    return range !== null;
   }
 
   private async createReview(
@@ -85,108 +123,111 @@ export class GitHubService {
       pull_number: this.config.pullNumber,
       commit_id: sha,
       event: event,
-      comments: review.map((c) => ({
-        path: c.file,
-        line: c.line,
-        side: c.side,
-        body: c.comment,
-      })),
+      comments: review.map((c) => {
+        const comment: {
+          path: string;
+          line: number;
+          side: "LEFT" | "RIGHT";
+          body: string;
+          start_line?: number;
+          start_side?: "LEFT" | "RIGHT";
+        } = {
+          path: c.file,
+          line: c.line,
+          side: c.side,
+          body: c.comment,
+        };
+
+        // Only add multi-line fields if it's actually a multi-line comment
+        // (start_line !== line means it spans multiple lines)
+        if (c.start_line !== c.line || c.start_side !== c.side) {
+          comment.start_line = c.start_line;
+          comment.start_side = c.start_side;
+        }
+
+        return comment;
+      }),
     });
   }
 
+  /**
+   * P0 Fix: Single PR review model
+   * - Collects all valid comments and submits ONE review for the entire PR
+   * - Uses HEAD sha to avoid "line must be part of diff" errors
+   * - Determines review event based on ANY comment meeting severity threshold
+   */
   async postReviewComments(
     comments: z.infer<typeof CodeReviewComment>[],
     changesThreshold: SeverityLevel,
     commits: PackedCommit[]
   ) {
+    // Get PR details to use HEAD sha for the single review
+    const prDetails = await this.getPrDetails();
+    const headSha = prDetails.head;
+
     // Order of severity levels
     const severityOrder = ["info", "warning", "error"];
     const thresholdIndex = severityOrder.indexOf(changesThreshold);
 
-    // Separate comments that are outside the diff patch
+    // Collect all patches from all commits for validation
+    const allPatches = commits.flatMap((c) => c.patches);
+
+    // Validate and categorize comments
+    const validComments: z.infer<typeof CodeReviewComment>[] = [];
     const issueComments: z.infer<typeof CodeReviewComment>[] = [];
 
-    // group comments by commit
-    const commentsByCommit = comments.reduce(
-      (acc, c) => {
-        const commit = commits.find((d) => d.commit.sha === c.sha);
-        if (!commit) {
-          core.warning(`No commit found for sha: ${c.sha}`);
-          issueComments.push(c);
-          return acc;
-        }
-
-        if (
-          !this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches)
-        ) {
-          core.warning(
-            `Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`
-          );
-          issueComments.push(c);
-          return acc;
-        }
-
-        const group = acc.find((g) => g.sha === c.sha);
-        if (group) {
-          group.comments.push(c);
-        } else {
-          acc.push({
-            sha: c.sha,
-            commit,
-            comments: [c],
-          });
-        }
-
-        return acc;
-      },
-      [] as {
-        sha: string;
-        commit: PackedCommit;
-        comments: z.infer<typeof CodeReviewComment>[];
-      }[]
-    );
-
-    const allChanges: z.infer<typeof CodeReviewComment>[] = [];
-    const allComments: z.infer<typeof CodeReviewComment>[] = [];
-
-    // process each sha separately
-    for (const group of commentsByCommit) {
-      // Build up the array of comments that meet or exceed the threshold to require changes
-      const groupChanges = group.comments.filter(
-        (c) => severityOrder.indexOf(c.severity) >= thresholdIndex
+    for (const c of comments) {
+      // Verify the comment can be placed in the diff
+      const isValid = this.verifyCommentLineInPatch(
+        c.file,
+        c.line,
+        c.side,
+        allPatches,
+        c.start_line,
+        c.start_side
       );
 
-      if (groupChanges.length) {
-        await this.createReview("REQUEST_CHANGES", groupChanges, group.sha);
-
-        allChanges.push(...groupChanges);
-      }
-
-      // The remaining comments will be posted as informational comments
-      const groupComments = group.comments.filter(
-        (c) => !groupChanges.includes(c)
-      );
-
-      if (groupComments.length) {
-        await this.createReview("COMMENT", groupComments, group.sha);
-
-        allComments.push(...groupComments);
+      if (isValid) {
+        validComments.push(c);
+      } else {
+        core.warning(
+          `Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`
+        );
+        issueComments.push(c);
       }
     }
 
-    // Post fallback comments as issue comments
+    // Separate by severity threshold
+    const blockingComments = validComments.filter(
+      (c) => severityOrder.indexOf(c.severity) >= thresholdIndex
+    );
+    const infoComments = validComments.filter(
+      (c) => severityOrder.indexOf(c.severity) < thresholdIndex
+    );
+
+    // Submit single review if there are valid comments
+    if (validComments.length > 0) {
+      // Use REQUEST_CHANGES if ANY comment meets threshold, otherwise COMMENT
+      const event = blockingComments.length > 0 ? "REQUEST_CHANGES" : "COMMENT";
+      core.info(
+        `Submitting ${event} review with ${validComments.length} comments (${blockingComments.length} blocking, ${infoComments.length} info)`
+      );
+      await this.createReview(event, validComments, headSha);
+    }
+
+    // Post fallback comments as issue comments (for out-of-range comments)
     for (const comment of issueComments) {
       await this.octokit.rest.issues.createComment({
         owner: this.config.owner,
         repo: this.config.repo,
         issue_number: this.config.pullNumber,
-        body: `Comment on line ${comment.line} (${comment.side}) of file ${comment.file}: ${comment.comment}`,
+        body: `**${comment.severity.toUpperCase()}** - ${comment.file}:${comment.line}\n\n${comment.comment}`,
       });
     }
 
     return {
-      reviewChanges: allChanges.length,
-      reviewComments: allComments.length,
+      reviewChanges: blockingComments.length,
+      reviewComments: infoComments.length,
       issueComments: issueComments.length,
     };
   }
@@ -230,13 +271,6 @@ export class GitHubService {
         );
       }
 
-      const patches = (response.data.files || [])
-        .filter((file) => !!file.patch && file.patch.length > 0)
-        .map((file) => ({
-          filename: file.filename,
-          patch: file.patch!,
-        }));
-
       return {
         base,
         head,
@@ -245,7 +279,7 @@ export class GitHubService {
           message: commit.commit.message,
           patches: [], // get patches for each commit to base
         })),
-        patches,
+        patches: extractPatches(response.data.files),
       };
     } catch (error) {
       throw new Error(
@@ -268,17 +302,10 @@ export class GitHubService {
         );
       }
 
-      const patches = (response.data.files || [])
-        .filter((file) => !!file.patch && file.patch.length > 0)
-        .map((file) => ({
-          filename: file.filename,
-          patch: file.patch!,
-        }));
-
       return {
         sha,
         message: response.data.commit.message,
-        patches,
+        patches: extractPatches(response.data.files),
       };
     } catch (error) {
       throw new Error(

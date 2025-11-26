@@ -1,14 +1,12 @@
-import { ReasoningEffort } from "openai/resources.mjs";
+// Define ReasoningEffort locally - includes "minimal" for GPT-5 support
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
 
 export type SeverityLevel = "info" | "warning" | "error";
 
 export function isValidReasoningEffort(
-  reasoningEffort: string | null
+  reasoningEffort: string
 ): reasoningEffort is ReasoningEffort {
-  return (
-    reasoningEffort === null ||
-    ["low", "medium", "high"].includes(reasoningEffort)
-  );
+  return ["minimal", "low", "medium", "high"].includes(reasoningEffort);
 }
 
 export function isValidSeverityLevel(
@@ -39,10 +37,6 @@ export function isValidAzureApiKey(apiKey: string): boolean {
   return apiKey.length > 0; // Add further validation if necessary
 }
 
-export function isValidAzureApiVersion(apiVersion: string): boolean {
-  return apiVersion.length > 0; // Add further validation if necessary
-}
-
 export function isValidExcludePatterns(patterns: string): boolean {
   if (!patterns) return true; // Empty string is valid
   const patternList = patterns.split(",").map((p) => p.trim());
@@ -53,4 +47,9 @@ export function isValidExcludePatterns(patterns: string): boolean {
     if (pattern.startsWith("~")) return false;
     return true;
   });
+}
+
+export function isValidCustomPrompt(prompt: string): boolean {
+  if (!prompt) return true; // Empty string is valid (optional parameter)
+  return prompt.length > 0 && prompt.length <= 1000; // Reasonable length limit
 }

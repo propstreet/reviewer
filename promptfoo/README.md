@@ -1,20 +1,39 @@
 # promptfoo
 
-Use `promptfoo` for running tests on our LLM prompts.
+Use `promptfoo` for testing AI review prompts with different reasoning effort levels.
 
-## Usage
+## Setup
 
-To run `promptfoo`, use the following command:
+1. Copy the example environment file:
+   ```bash
+   cp promptfoo/.env.example promptfoo/.env
+   ```
+
+2. Fill in your Azure OpenAI credentials in `promptfoo/.env`
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `AZURE_OPENAI_HOST` | Azure OpenAI endpoint (e.g., `my-resource.openai.azure.com`) |
+| `AZURE_API_KEY` | Azure OpenAI API key |
+| `AZURE_OPENAI_REASONING_DEPLOYMENT` | Deployment name for reasoning model (e.g., `gpt-5`) |
+
+## Running Tests
 
 ```bash
+# Run prompt evaluation
 npm run test-prompts
+
+# View results in browser
+npm run view-prompts
 ```
 
 ## Configuration
 
-Set the following environment variables before running the tests:
+The `promptfooconfig.yaml` tests three reasoning effort levels:
+- **low** - Fast reviews, good for simple PRs
+- **medium** - Balanced quality and speed
+- **high** - Thorough reviews for complex PRs
 
-- `AZURE_API_HOST` : The host URL for the Azure OpenAI.
-- `AZURE_API_KEY` : The API key for the Azure OpenAI.
-- `AZURE_OPENAI_REASONING_DEPLOYMENT` : The deployment name for the Azure OpenAI reasoning model.
-- `AZURE_OPENAI_GPT4O_DEPLOYMENT` : The deployment name for the Azure OpenAI gpt-4o model.
+All providers use the Azure OpenAI Responses API with `api-version=preview`.

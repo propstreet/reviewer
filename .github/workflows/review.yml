@@ -8,12 +8,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run AI Reviewer
-        uses: propstreet/reviewer@v2
+        uses: propstreet/reviewer@v3
         with:
           azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_REASONING_ENDPOINT }}
           azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_REASONING_DEPLOYMENT }}
           azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
-          azureOpenAIVersion: ${{ secrets.AZURE_OPENAI_REASONING_VERSION }}
           severity: "error"
           reasoningEffort: "high"
           tokenLimit: 150000
