@@ -45,3 +45,15 @@ inputs:
     description: "Custom instructions appended to the system prompt for the LLM reviewer (max 1000 chars). Example: 'Focus on security issues and best practices'"
     required: false
     default: ""
+  backgroundMode:
+    description: "Enable background mode for long-running requests (recommended for GPT-5-Pro). Options: 'enabled', 'disabled'."
+    required: false
+    default: "disabled"
+  backgroundMaxWait:
+    description: "Maximum wait time in minutes for background requests (1-60)."
+    required: false
+    default: "30"
+  backgroundPollInterval:
+    description: "Initial polling interval in seconds for background requests (5-60)."
+    required: false
+    default: "10"

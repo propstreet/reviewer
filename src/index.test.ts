@@ -12,14 +12,17 @@ vi.mock("@actions/github");
 vi.mock("./reviewer.js");
 
 describe("index", () => {
+  // Valid API key (16+ chars, no whitespace/control chars)
+  const VALID_API_KEY = "test-azure-api-key-12345";
+
   const getInputDefaults = (name: string) => {
     switch (name) {
       case "azureOpenAIEndpoint":
-        return "https://AZURE_ENDPOINT";
+        return "https://test.openai.azure.com";
       case "azureOpenAIDeployment":
-        return "AZURE_DEPLOYMENT";
+        return "gpt-5";
       case "azureOpenAIKey":
-        return "AZURE_API_KEY";
+        return VALID_API_KEY;
       case "severity":
         return "error";
       case "reasoningEffort":
@@ -120,6 +123,7 @@ describe("index", () => {
       reasoningEffort: "medium",
       commitLimit: 100,
       excludePatterns: [],
+      backgroundPolling: undefined,
     });
   });
 
@@ -149,6 +153,7 @@ describe("index", () => {
       reasoningEffort: "medium",
       commitLimit: 100,
       excludePatterns: [],
+      backgroundPolling: undefined,
     });
   });
 
@@ -181,19 +186,20 @@ describe("index", () => {
       reasoningEffort: "medium",
       commitLimit: 100,
       excludePatterns: [],
+      backgroundPolling: undefined,
     });
   });
 
   it("should call reviewer with provided values", async () => {
-    // Mock inputs with specific values
+    // Mock inputs with specific values (using valid Azure config)
     (core.getInput as MockType).mockImplementation((name: string) => {
       switch (name) {
         case "azureOpenAIEndpoint":
-          return "endpoint";
+          return "https://custom.openai.azure.com";
         case "azureOpenAIDeployment":
-          return "deployment";
+          return "gpt-5-custom";
         case "azureOpenAIKey":
-          return "key";
+          return VALID_API_KEY;
         case "severity":
           return "warning";
         case "reasoningEffort":
@@ -229,6 +235,7 @@ describe("index", () => {
       reasoningEffort: "high",
       commitLimit: 99,
       excludePatterns: [],
+      backgroundPolling: undefined,
     });
   });
 

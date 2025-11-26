@@ -6,6 +6,7 @@ A GitHub Action that uses Azure OpenAI to automatically review pull request diff
 
 - **Azure OpenAI Responses API** - Uses the latest v1 API with structured output
 - **Reasoning models support** - Works with GPT-5-Codex, GPT-5, o4-mini, o3, and other reasoning models
+- **Background mode** - Handles long-running requests (15+ minutes) with automatic polling
 - **Multi-line comments** - Can highlight ranges of code, not just single lines
 - **Custom instructions** - Append your own guidelines to the review prompt
 - **Severity filtering** - Control when to request changes vs post comments
@@ -65,6 +66,9 @@ jobs:
 | `customPrompt` | | Custom instructions appended to system prompt (max 1000 chars) |
 | `base` | | Base commit SHA (auto-detected from PR event) |
 | `head` | | Head commit SHA (auto-detected from PR event) |
+| `backgroundMode` | `disabled` | Enable background mode for long-running requests (`enabled`, `disabled`) |
+| `backgroundMaxWait` | `30` | Maximum wait time in minutes for background requests (1-60) |
+| `backgroundPollInterval` | `10` | Initial polling interval in seconds for background requests (5-60) |
 
 ## Examples
 
@@ -120,6 +124,31 @@ jobs:
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+### Background Mode (for long-running reviews)
+
+When using high reasoning effort models like GPT-5-Pro, reviews can take 15+ minutes.
+Background mode uses the OpenAI Responses API's async capabilities with automatic polling:
+
+```yaml
+- uses: propstreet/reviewer@v3
+  with:
+    azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
+    azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+    azureOpenAIDeployment: gpt-5-pro
+    reasoningEffort: high
+    backgroundMode: enabled
+    backgroundMaxWait: "45"        # Wait up to 45 minutes
+    backgroundPollInterval: "15"   # Start polling every 15 seconds
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+Background mode features:
+- Uses `background: true` parameter in the Responses API
+- Automatic exponential backoff polling (1.5x multiplier, max 30s intervals)
+- Automatic request cancellation on timeout
+- Detailed progress logging in GitHub Actions
 
 ## Azure OpenAI Setup
 
