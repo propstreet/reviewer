@@ -109,12 +109,7 @@ describe("GitHubService", () => {
       const reviewResult = await service.postReviewComments(
         mockComments,
         "warning",
-        [
-          {
-            commit: { sha: "sha1", message: "Commit message", patches },
-            patches,
-          },
-        ]
+        patches // Cumulative PR diff
       );
 
       expect(reviewResult).toEqual({
@@ -246,16 +241,11 @@ describe("GitHubService", () => {
         },
       ];
 
-      const reviewResult = await service.postReviewComments(comments, "error", [
-        {
-          commit: {
-            sha: "test-sha",
-            message: "Commit message",
-            patches: [],
-          },
-          patches: [],
-        },
-      ]);
+      const reviewResult = await service.postReviewComments(
+        comments,
+        "error",
+        [] // Empty cumulative diff - no patches to validate against
+      );
 
       expect(reviewResult).toEqual({
         reviewChanges: 0,
@@ -325,12 +315,7 @@ describe("GitHubService", () => {
       const reviewResult = await service.postReviewComments(
         infoOnlyComments,
         "error", // High threshold - only errors trigger REQUEST_CHANGES
-        [
-          {
-            commit: { sha: "sha1", message: "Commit message", patches },
-            patches,
-          },
-        ]
+        patches // Cumulative PR diff
       );
 
       expect(reviewResult).toEqual({
@@ -346,6 +331,98 @@ describe("GitHubService", () => {
           event: "COMMENT",
         })
       );
+    });
+
+    /**
+     * Regression test for multi-commit file validation bug.
+     *
+     * Previously, the code used `commits.flatMap(c => c.patches)` and then
+     * `patches.find(p => p.filename === filename)` which would return the
+     * FIRST patch for a file. This meant comments on lines changed in later
+     * commits would fail validation.
+     *
+     * The fix uses the cumulative PR diff (base...HEAD) which contains all
+     * changes merged into a single patch per file.
+     */
+    it("should validate comments against cumulative diff for files modified in multiple commits", async () => {
+      const mockCreateReview = vi.fn().mockResolvedValue({});
+      const mockCreateComment = vi.fn().mockResolvedValue({});
+      const mockGet = vi.fn().mockResolvedValue(mockPrResponse);
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            createReview: mockCreateReview,
+            get: mockGet,
+          },
+          issues: {
+            createComment: mockCreateComment,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+
+      // Cumulative PR diff: foo.ts was modified in two commits
+      // - Commit A added lines 1-3
+      // - Commit B added lines 50-52
+      // The cumulative diff contains BOTH hunks merged
+      const cumulativePatch = [
+        {
+          filename: "foo.ts",
+          patch:
+            "@@ -0,0 +1,3 @@\n+Line 1 from commit A\n+Line 2 from commit A\n+Line 3 from commit A\n" +
+            "@@ -47,0 +50,3 @@\n+Line 50 from commit B\n+Line 51 from commit B\n+Line 52 from commit B",
+        },
+      ];
+
+      // Comment targets line 51 - which was added in commit B
+      // With the old bug, this would fail because .find() returned commit A's patch
+      const commentOnLaterCommitChange = [
+        {
+          sha: "commit-b-sha",
+          file: "foo.ts",
+          line: 51,
+          side: "RIGHT" as const,
+          start_line: 51,
+          start_side: "RIGHT" as const,
+          comment: "Issue found on line added in commit B",
+          severity: "warning" as const,
+        },
+      ];
+
+      const reviewResult = await service.postReviewComments(
+        commentOnLaterCommitChange,
+        "warning",
+        cumulativePatch
+      );
+
+      // The comment should be valid (not demoted to issue comment)
+      expect(reviewResult).toEqual({
+        reviewChanges: 1,
+        reviewComments: 0,
+        issueComments: 0,
+      });
+
+      // Should create an inline review, not an issue comment
+      expect(mockCreateReview).toHaveBeenCalledTimes(1);
+      expect(mockCreateReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "REQUEST_CHANGES",
+          comments: [
+            expect.objectContaining({
+              path: "foo.ts",
+              line: 51,
+              side: "RIGHT",
+            }),
+          ],
+        })
+      );
+
+      // No fallback to issue comments
+      expect(mockCreateComment).not.toHaveBeenCalled();
     });
   });
 

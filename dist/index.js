@@ -33567,6 +33567,7 @@ class ReviewService {
             prompt,
             commits: packedCommits,
             skippedCommits,
+            patches: results.patches, // Cumulative PR diff for validation
         };
     }
     async review(options) {
@@ -33586,7 +33587,8 @@ class ReviewService {
         }
         core.info(`Got ${response.comments.length} suggestions from AI.`);
         // 4. Post Comments to PR
-        const result = await this.githubService.postReviewComments(response.comments, options.changesThreshold, pr.commits);
+        const result = await this.githubService.postReviewComments(response.comments, options.changesThreshold, pr.patches // Use cumulative PR diff for validation (matches GitHub's HEAD validation)
+        );
         core.info(`Posted ${result.reviewComments} comments and requested ${result.reviewChanges} changes.`);
         return true;
     }
@@ -33766,22 +33768,22 @@ class GitHubService {
      * - Collects all valid comments and submits ONE review for the entire PR
      * - Uses HEAD sha to avoid "line must be part of diff" errors
      * - Determines review event based on ANY comment meeting severity threshold
+     * - Validates comments against cumulative PR diff (base...HEAD) to match GitHub's validation
      */
-    async postReviewComments(comments, changesThreshold, commits) {
+    async postReviewComments(comments, changesThreshold, patches // Cumulative PR diff (base...HEAD) for validation
+    ) {
         // Get PR details to use HEAD sha for the single review
         const prDetails = await this.getPrDetails();
         const headSha = prDetails.head;
         // Order of severity levels
         const severityOrder = ["info", "warning", "error"];
         const thresholdIndex = severityOrder.indexOf(changesThreshold);
-        // Collect all patches from all commits for validation
-        const allPatches = commits.flatMap((c) => c.patches);
         // Validate and categorize comments
         const validComments = [];
         const issueComments = [];
         for (const c of comments) {
-            // Verify the comment can be placed in the diff
-            const isValid = this.verifyCommentLineInPatch(c.file, c.line, c.side, allPatches, c.start_line, c.start_side);
+            // Verify the comment can be placed in the cumulative PR diff
+            const isValid = this.verifyCommentLineInPatch(c.file, c.line, c.side, patches, c.start_line, c.start_side);
             if (isValid) {
                 validComments.push(c);
             }
