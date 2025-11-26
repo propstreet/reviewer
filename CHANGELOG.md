@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Custom instructions** - New `customPrompt` input to append custom LLM instructions (max 1000 chars)
 - `lint:fix` and `format` npm scripts for code formatting
 
+### Fixed
+- **[P0] Single PR review model** - Now submits ONE review per PR instead of multiple per-commit reviews. This fixes:
+  - `REQUEST_CHANGES` status being cleared by subsequent `COMMENT` review
+  - GitHub error: "Pull request review thread line must be part of the diff and Pull request review thread diff hunk can't be blank"
+  - State-flip issue where errors on commit 1 were overridden by clean commit 5
+- **[P1] Continue processing after skip** - When a commit cannot be packed (all files excluded or over token limit), the action now continues reviewing subsequent commits instead of aborting
+- **[P3] commitLimit now enforced** - The `commitLimit` input was validated but never applied; now correctly limits to the N most recent commits
+
 ### Changed
 - **OpenAI SDK v4 → v6** - Major upgrade to latest OpenAI SDK
 - **Removed `@azure/openai` dependency** - Now uses standard `openai` SDK with Azure v1 endpoint

@@ -63,14 +63,29 @@ describe("GitHubService", () => {
   });
 
   describe("postReviewComments", () => {
-    it("should handle successful review comments posting", async () => {
+    // Mock PR details response for all postReviewComments tests
+    const mockPrResponse = {
+      status: 200,
+      data: {
+        number: 1,
+        title: "Test PR",
+        body: "PR body",
+        commits: 1,
+        head: { sha: "head-sha" },
+        base: { sha: "base-sha" },
+      },
+    };
+
+    it("should handle successful review comments posting with single review", async () => {
       const mockCreateReview = vi.fn().mockResolvedValue({});
       const mockCreateComment = vi.fn().mockResolvedValue({});
+      const mockGet = vi.fn().mockResolvedValue(mockPrResponse);
 
       const mockOctokit = {
         rest: {
           pulls: {
             createReview: mockCreateReview,
+            get: mockGet,
           },
           issues: {
             createComment: mockCreateComment,
@@ -108,14 +123,14 @@ describe("GitHubService", () => {
         issueComments: 1,
       });
 
-      // Verify that createReview was called with the correct parameters
-      expect(mockCreateReview).toHaveBeenCalledTimes(2);
+      // P0 Fix: Single review call with all valid comments using HEAD sha
+      expect(mockCreateReview).toHaveBeenCalledTimes(1);
       expect(mockCreateReview).toHaveBeenCalledWith({
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         pull_number: mockConfig.pullNumber,
-        commit_id: "sha1",
-        event: "REQUEST_CHANGES",
+        commit_id: "head-sha", // Uses HEAD sha from getPrDetails
+        event: "REQUEST_CHANGES", // Because warning comment meets threshold
         comments: [
           {
             path: "first.ts",
@@ -123,15 +138,6 @@ describe("GitHubService", () => {
             side: "RIGHT",
             body: "First comment",
           },
-        ],
-      });
-      expect(mockCreateReview).toHaveBeenCalledWith({
-        owner: mockConfig.owner,
-        repo: mockConfig.repo,
-        pull_number: mockConfig.pullNumber,
-        commit_id: "sha1",
-        event: "COMMENT",
-        comments: [
           {
             path: "second.ts",
             line: 2,
@@ -146,18 +152,20 @@ describe("GitHubService", () => {
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         issue_number: mockConfig.pullNumber,
-        body: "Comment on line 10 (RIGHT) of file first.ts: Out of range comment",
+        body: "**INFO** - first.ts:10\n\nOut of range comment",
       });
     });
 
-    it("should handle comments for missing commits", async () => {
+    it("should handle comments with no matching patches (fallback to issue comments)", async () => {
       const mockCreateReview = vi.fn().mockResolvedValue({});
       const mockCreateComment = vi.fn().mockResolvedValue({});
+      const mockGet = vi.fn().mockResolvedValue(mockPrResponse);
 
       const mockOctokit = {
         rest: {
           pulls: {
             createReview: mockCreateReview,
+            get: mockGet,
           },
           issues: {
             createComment: mockCreateComment,
@@ -168,7 +176,7 @@ describe("GitHubService", () => {
       (github.getOctokit as MockType).mockReturnValue(mockOctokit);
 
       const service = new GitHubService(mockConfig);
-      const commentsWithMissingCommit = [
+      const commentsWithNoPatches = [
         {
           sha: "nonexistent-sha",
           file: "missing.ts",
@@ -176,15 +184,15 @@ describe("GitHubService", () => {
           side: "RIGHT" as const,
           start_line: 1,
           start_side: "RIGHT" as const,
-          comment: "Comment for missing commit",
+          comment: "Comment for file with no patch",
           severity: "warning" as const,
         },
       ];
 
       const reviewResult = await service.postReviewComments(
-        commentsWithMissingCommit,
+        commentsWithNoPatches,
         "warning",
-        [] // Empty commits array, so no commits will be found
+        [] // Empty commits array means no patches to validate against
       );
 
       expect(reviewResult).toEqual({
@@ -193,7 +201,7 @@ describe("GitHubService", () => {
         issueComments: 1,
       });
 
-      // Verify that createReview was not called
+      // Verify that createReview was not called (no valid comments)
       expect(mockCreateReview).not.toHaveBeenCalled();
 
       // Verify that the comment was posted as an issue comment
@@ -201,18 +209,20 @@ describe("GitHubService", () => {
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         issue_number: mockConfig.pullNumber,
-        body: "Comment on line 1 (RIGHT) of file missing.ts: Comment for missing commit",
+        body: "**WARNING** - missing.ts:1\n\nComment for file with no patch",
       });
     });
 
-    it("should handle comments with missing patches", async () => {
+    it("should handle comments with empty patches (out of range)", async () => {
       const mockCreateReview = vi.fn().mockResolvedValue({});
       const mockCreateComment = vi.fn().mockResolvedValue({});
+      const mockGet = vi.fn().mockResolvedValue(mockPrResponse);
 
       const mockOctokit = {
         rest: {
           pulls: {
             createReview: mockCreateReview,
+            get: mockGet,
           },
           issues: {
             createComment: mockCreateComment,
@@ -261,7 +271,7 @@ describe("GitHubService", () => {
         owner: mockConfig.owner,
         repo: mockConfig.repo,
         issue_number: mockConfig.pullNumber,
-        body: "Comment on line 10 (LEFT) of file test.ts: Comment",
+        body: "**INFO** - test.ts:10\n\nComment",
       });
 
       expect(core.warning).toBeCalledTimes(2);
@@ -270,6 +280,71 @@ describe("GitHubService", () => {
       );
       expect(core.warning).toHaveBeenCalledWith(
         "Comment is out of range for test.ts:10:LEFT: Comment"
+      );
+    });
+
+    it("should use COMMENT event when no comments meet severity threshold", async () => {
+      const mockCreateReview = vi.fn().mockResolvedValue({});
+      const mockCreateComment = vi.fn().mockResolvedValue({});
+      const mockGet = vi.fn().mockResolvedValue(mockPrResponse);
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            createReview: mockCreateReview,
+            get: mockGet,
+          },
+          issues: {
+            createComment: mockCreateComment,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const patches = [
+        {
+          filename: "info.ts",
+          patch: "@@ -0,0 +1,3 @@\n+First line\n+Second line\n+Third line",
+        },
+      ];
+      const infoOnlyComments = [
+        {
+          sha: "sha1",
+          file: "info.ts",
+          line: 1,
+          side: "RIGHT" as const,
+          start_line: 1,
+          start_side: "RIGHT" as const,
+          comment: "Info comment",
+          severity: "info" as const,
+        },
+      ];
+
+      const reviewResult = await service.postReviewComments(
+        infoOnlyComments,
+        "error", // High threshold - only errors trigger REQUEST_CHANGES
+        [
+          {
+            commit: { sha: "sha1", message: "Commit message", patches },
+            patches,
+          },
+        ]
+      );
+
+      expect(reviewResult).toEqual({
+        reviewChanges: 0,
+        reviewComments: 1,
+        issueComments: 0,
+      });
+
+      // Should use COMMENT event since no comments meet error threshold
+      expect(mockCreateReview).toHaveBeenCalledTimes(1);
+      expect(mockCreateReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "COMMENT",
+        })
       );
     });
   });

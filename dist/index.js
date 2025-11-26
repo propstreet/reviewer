@@ -33516,18 +33516,27 @@ class ReviewService {
             core.info("No commits found to review.");
             return null;
         }
+        // P3: Apply commitLimit - keep most recent commits
+        let commitsToProcess = results.commits;
+        if (results.commits.length > options.commitLimit) {
+            const skippedCount = results.commits.length - options.commitLimit;
+            core.info(`Limiting to ${options.commitLimit} most recent commits (${skippedCount} older commits skipped)`);
+            commitsToProcess = results.commits.slice(-options.commitLimit);
+        }
         core.info(`Building prompt for PR #${prDetails.number}: ${prDetails.title}`);
         let prompt = `# ${prDetails.title}\n`;
         if (prDetails.body) {
             prompt += `\n${prDetails.body}\n`;
         }
         const packedCommits = [];
-        for (const c of results.commits) {
+        const skippedCommits = [];
+        for (const c of commitsToProcess) {
             core.debug(`Processing commit: ${c.sha}`);
             // Verify that the commit belongs to the current PR
             const belongs = await this.githubService.commitBelongsToPR(c.sha);
             if (!belongs) {
                 core.info(`Skipping commit ${c.sha} as it does not belong to the current PR.`);
+                skippedCommits.push({ sha: c.sha, reason: "not_in_pr" });
                 continue;
             }
             const commitDetails = await this.githubService.getCommitDetails(c.sha);
@@ -33535,7 +33544,8 @@ class ReviewService {
             const packed = this.packCommit(prompt, commitDetails, options.tokenLimit, options.excludePatterns);
             if (!packed) {
                 core.warning(`Commit ${c.sha} was not packed into prompt.`);
-                break;
+                skippedCommits.push({ sha: c.sha, reason: "token_limit" });
+                continue; // P1: was 'break' - now continues to process remaining commits
             }
             core.debug(`Patches Used: ${packed.usedPatches.length}, Patches Skipped: ${packed.skippedPatches.length}`);
             core.info(`Packed commit ${c.sha} with ${packed.usedPatches.length} patches into prompt.`);
@@ -33549,9 +33559,14 @@ class ReviewService {
         // Check token count - returns token count if within limit, false if exceeded
         const tokenCount = isWithinTokenLimit(prompt, options.tokenLimit);
         core.info(`Total Prompt Length: ${prompt.length} chars, Token Count: ${tokenCount === false ? "exceeded limit" : tokenCount}`);
+        // Log skipped commits summary
+        if (skippedCommits.length > 0) {
+            core.warning(`${skippedCommits.length} commit(s) were skipped: ${skippedCommits.map((s) => `${s.sha.substring(0, 7)} (${s.reason})`).join(", ")}`);
+        }
         return {
             prompt,
             commits: packedCommits,
+            skippedCommits,
         };
     }
     async review(options) {
@@ -33746,67 +33761,57 @@ class GitHubService {
             }),
         });
     }
+    /**
+     * P0 Fix: Single PR review model
+     * - Collects all valid comments and submits ONE review for the entire PR
+     * - Uses HEAD sha to avoid "line must be part of diff" errors
+     * - Determines review event based on ANY comment meeting severity threshold
+     */
     async postReviewComments(comments, changesThreshold, commits) {
+        // Get PR details to use HEAD sha for the single review
+        const prDetails = await this.getPrDetails();
+        const headSha = prDetails.head;
         // Order of severity levels
         const severityOrder = ["info", "warning", "error"];
         const thresholdIndex = severityOrder.indexOf(changesThreshold);
-        // Separate comments that are outside the diff patch
+        // Collect all patches from all commits for validation
+        const allPatches = commits.flatMap((c) => c.patches);
+        // Validate and categorize comments
+        const validComments = [];
         const issueComments = [];
-        // group comments by commit
-        const commentsByCommit = comments.reduce((acc, c) => {
-            const commit = commits.find((d) => d.commit.sha === c.sha);
-            if (!commit) {
-                core.warning(`No commit found for sha: ${c.sha}`);
-                issueComments.push(c);
-                return acc;
-            }
-            if (!this.verifyCommentLineInPatch(c.file, c.line, c.side, commit.patches, c.start_line, c.start_side)) {
-                core.warning(`Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`);
-                issueComments.push(c);
-                return acc;
-            }
-            const group = acc.find((g) => g.sha === c.sha);
-            if (group) {
-                group.comments.push(c);
+        for (const c of comments) {
+            // Verify the comment can be placed in the diff
+            const isValid = this.verifyCommentLineInPatch(c.file, c.line, c.side, allPatches, c.start_line, c.start_side);
+            if (isValid) {
+                validComments.push(c);
             }
             else {
-                acc.push({
-                    sha: c.sha,
-                    commit,
-                    comments: [c],
-                });
-            }
-            return acc;
-        }, []);
-        const allChanges = [];
-        const allComments = [];
-        // process each sha separately
-        for (const group of commentsByCommit) {
-            // Build up the array of comments that meet or exceed the threshold to require changes
-            const groupChanges = group.comments.filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex);
-            if (groupChanges.length) {
-                await this.createReview("REQUEST_CHANGES", groupChanges, group.sha);
-                allChanges.push(...groupChanges);
-            }
-            // The remaining comments will be posted as informational comments
-            const groupComments = group.comments.filter((c) => !groupChanges.includes(c));
-            if (groupComments.length) {
-                await this.createReview("COMMENT", groupComments, group.sha);
-                allComments.push(...groupComments);
+                core.warning(`Comment is out of range for ${c.file}:${c.line}:${c.side}: ${c.comment}`);
+                issueComments.push(c);
             }
         }
-        // Post fallback comments as issue comments
+        // Separate by severity threshold
+        const blockingComments = validComments.filter((c) => severityOrder.indexOf(c.severity) >= thresholdIndex);
+        const infoComments = validComments.filter((c) => severityOrder.indexOf(c.severity) < thresholdIndex);
+        // Submit single review if there are valid comments
+        if (validComments.length > 0) {
+            // Use REQUEST_CHANGES if ANY comment meets threshold, otherwise COMMENT
+            const event = blockingComments.length > 0 ? "REQUEST_CHANGES" : "COMMENT";
+            core.info(`Submitting ${event} review with ${validComments.length} comments (${blockingComments.length} blocking, ${infoComments.length} info)`);
+            await this.createReview(event, validComments, headSha);
+        }
+        // Post fallback comments as issue comments (for out-of-range comments)
         for (const comment of issueComments) {
             await this.octokit.rest.issues.createComment({
                 owner: this.config.owner,
                 repo: this.config.repo,
                 issue_number: this.config.pullNumber,
-                body: `Comment on line ${comment.line} (${comment.side}) of file ${comment.file}: ${comment.comment}`,
+                body: `**${comment.severity.toUpperCase()}** - ${comment.file}:${comment.line}\n\n${comment.comment}`,
             });
         }
         return {
-            reviewChanges: allChanges.length,
-            reviewComments: allComments.length,
+            reviewChanges: blockingComments.length,
+            reviewComments: infoComments.length,
             issueComments: issueComments.length,
         };
     }
