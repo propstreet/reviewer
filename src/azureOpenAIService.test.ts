@@ -5,13 +5,14 @@ import {
 } from "./azureOpenAIService.js";
 import OpenAI from "openai";
 
-// Mock the OpenAI client
+// Mock the OpenAI client using vitest 4.x vi.fn(class) pattern
+const mockParse = vi.fn();
 vi.mock("openai", () => ({
-  default: vi.fn().mockImplementation(() => ({
-    responses: {
-      parse: vi.fn(),
-    },
-  })),
+  default: vi.fn(
+    class MockOpenAI {
+      responses = { parse: mockParse };
+    }
+  ),
 }));
 
 describe("AzureOpenAIService", () => {
@@ -73,16 +74,8 @@ describe("AzureOpenAIService", () => {
       },
     };
 
+    mockParse.mockResolvedValue(mockResponse);
     const service = new AzureOpenAIService(mockConfig);
-    const parseMock = vi.fn().mockResolvedValue(mockResponse);
-    type MockClient = {
-      client: {
-        responses: {
-          parse: typeof parseMock;
-        };
-      };
-    };
-    (service as unknown as MockClient).client.responses.parse = parseMock;
 
     const result = await service.runReviewPrompt(mockInput, mockReviewConfig);
 
@@ -159,7 +152,7 @@ describe("AzureOpenAIService", () => {
       type: "json_schema",
     };
 
-    expect(parseMock).toHaveBeenCalledWith({
+    expect(mockParse).toHaveBeenCalledWith({
       model: mockConfig.deployment,
       instructions: expect.stringContaining("helpful code reviewer"),
       input: mockInput,
@@ -174,16 +167,8 @@ describe("AzureOpenAIService", () => {
       output_parsed: null,
     };
 
+    mockParse.mockResolvedValue(mockResponse);
     const service = new AzureOpenAIService(mockConfig);
-    const parseMock = vi.fn().mockResolvedValue(mockResponse);
-    type MockClient = {
-      client: {
-        responses: {
-          parse: typeof parseMock;
-        };
-      };
-    };
-    (service as unknown as MockClient).client.responses.parse = parseMock;
 
     await expect(
       service.runReviewPrompt(mockInput, mockReviewConfig)
@@ -195,16 +180,8 @@ describe("AzureOpenAIService", () => {
       output_parsed: { comments: [] },
     };
 
+    mockParse.mockResolvedValue(mockResponse);
     const service = new AzureOpenAIService(mockConfig);
-    const parseMock = vi.fn().mockResolvedValue(mockResponse);
-    type MockClient = {
-      client: {
-        responses: {
-          parse: typeof parseMock;
-        };
-      };
-    };
-    (service as unknown as MockClient).client.responses.parse = parseMock;
 
     const minimalConfig: ReviewPromptConfig = {
       reasoningEffort: "minimal",
@@ -212,7 +189,7 @@ describe("AzureOpenAIService", () => {
 
     await service.runReviewPrompt(mockInput, minimalConfig);
 
-    expect(parseMock).toHaveBeenCalledWith(
+    expect(mockParse).toHaveBeenCalledWith(
       expect.objectContaining({
         reasoning: { effort: "minimal" },
       })
