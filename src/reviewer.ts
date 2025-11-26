@@ -2,7 +2,10 @@ import * as core from "@actions/core";
 import { SeverityLevel, ReasoningEffort } from "./validators.js";
 import { minimatch } from "minimatch";
 import { isWithinTokenLimit } from "gpt-tokenizer/encoding/o200k_base";
-import { AzureOpenAIService } from "./azureOpenAIService.js";
+import {
+  AzureOpenAIService,
+  BackgroundPollingConfig,
+} from "./azureOpenAIService.js";
 import { CommitDetails, GitHubService, PatchInfo } from "./githubService.js";
 
 export type ReviewOptions = {
@@ -14,6 +17,7 @@ export type ReviewOptions = {
   commitLimit: number;
   excludePatterns?: string[];
   customPrompt?: string;
+  backgroundPolling?: BackgroundPollingConfig;
 };
 
 export type PackedCommit = {
@@ -242,11 +246,15 @@ export class ReviewService {
       return false;
     }
 
-    core.info("Calling Azure OpenAI...");
+    const mode = options.backgroundPolling?.enabled
+      ? "Background (async)"
+      : "Synchronous";
+    core.info(`Calling Azure OpenAI... (Mode: ${mode})`);
 
     const response = await this.azureService.runReviewPrompt(pr.prompt, {
       reasoningEffort: options.reasoningEffort,
       customPrompt: options.customPrompt,
+      backgroundPolling: options.backgroundPolling,
     });
 
     if (!response?.comments || response.comments.length === 0) {

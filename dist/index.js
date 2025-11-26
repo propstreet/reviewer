@@ -29846,29 +29846,138 @@ var core = __nccwpck_require__(7484);
 // EXTERNAL MODULE: ./node_modules/@actions/github/lib/github.js
 var github = __nccwpck_require__(3228);
 ;// CONCATENATED MODULE: ./src/validators.ts
+// ============================================================================
+// Validation Constants
+// ============================================================================
+/** Maximum length for custom prompt in characters */
+const MAX_CUSTOM_PROMPT_LENGTH = 1000;
+/** Maximum number of commits to review */
+const MAX_COMMIT_LIMIT = 100;
+/** Background mode wait time limits in minutes */
+const BACKGROUND_MAX_WAIT_MIN = 1;
+const BACKGROUND_MAX_WAIT_MAX = 60;
+/** Background mode poll interval limits in seconds */
+const BACKGROUND_POLL_INTERVAL_MIN = 5;
+const BACKGROUND_POLL_INTERVAL_MAX = 60;
+/** Background mode polling defaults */
+const BACKGROUND_MAX_INTERVAL_MS = 30 * 1000; // 30 seconds cap
+const BACKGROUND_BACKOFF_MULTIPLIER = 1.5;
+// ============================================================================
+// Helper Functions
+// ============================================================================
+/**
+ * Parse a string as a positive integer within an optional range.
+ * @returns The parsed number or null if invalid
+ */
+function parseIntInRange(value, min, max) {
+    const num = parseInt(value, 10);
+    if (isNaN(num))
+        return null;
+    if (min !== undefined && num < min)
+        return null;
+    if (max !== undefined && num > max)
+        return null;
+    return num;
+}
+/**
+ * Format an error for logging, safely extracting message from Error objects.
+ */
+function formatError(error) {
+    if (error instanceof Error) {
+        return error.message;
+    }
+    return String(error);
+}
+// ============================================================================
+// Enum Validators
+// ============================================================================
 function isValidReasoningEffort(reasoningEffort) {
     return ["minimal", "low", "medium", "high"].includes(reasoningEffort);
 }
 function isValidSeverityLevel(severity) {
     return ["info", "warning", "error"].includes(severity);
 }
+function isValidBackgroundMode(mode) {
+    return ["enabled", "disabled"].includes(mode);
+}
+// ============================================================================
+// Numeric Validators
+// ============================================================================
 function isValidTokenLimit(limit) {
-    const num = parseInt(limit, 10);
-    return !isNaN(num) && num > 0;
+    return parseIntInRange(limit, 1) !== null;
 }
 function isValidCommitLimit(limit) {
-    const num = parseInt(limit, 10);
-    return !isNaN(num) && num > 0 && num <= 100;
+    return parseIntInRange(limit, 1, MAX_COMMIT_LIMIT) !== null;
 }
+function isValidBackgroundMaxWait(maxWait) {
+    return (parseIntInRange(maxWait, BACKGROUND_MAX_WAIT_MIN, BACKGROUND_MAX_WAIT_MAX) !== null);
+}
+function isValidBackgroundPollInterval(interval) {
+    return (parseIntInRange(interval, BACKGROUND_POLL_INTERVAL_MIN, BACKGROUND_POLL_INTERVAL_MAX) !== null);
+}
+// ============================================================================
+// Azure Configuration Validators (Security Hardened)
+// ============================================================================
+/**
+ * Validates Azure OpenAI endpoint URL.
+ * Must be a valid HTTP/HTTPS URL with a hostname.
+ */
 function isValidAzureEndpoint(endpoint) {
-    return endpoint.length > 0; // Add further validation if necessary
+    if (!endpoint || endpoint.length === 0)
+        return false;
+    try {
+        const url = new URL(endpoint);
+        // Must be HTTP or HTTPS
+        if (url.protocol !== "https:" && url.protocol !== "http:")
+            return false;
+        // Must have a valid hostname
+        if (!url.hostname || url.hostname.length === 0)
+            return false;
+        return true;
+    }
+    catch {
+        return false;
+    }
 }
+/**
+ * Validates Azure OpenAI deployment name.
+ * Azure allows: alphanumerics, underscores, parentheses, hyphens, periods.
+ * Length: 1-64 characters.
+ */
 function isValidAzureDeployment(deployment) {
-    return deployment.length > 0; // Add further validation if necessary
+    if (!deployment || deployment.length === 0)
+        return false;
+    if (deployment.length > 64)
+        return false;
+    // Azure deployment names: alphanumeric, hyphens, underscores, dots, parentheses
+    return /^[a-zA-Z0-9][a-zA-Z0-9._()-]*$/.test(deployment);
 }
+/**
+ * Validates Azure OpenAI API key.
+ * Ensures the key is non-empty and has reasonable length.
+ * Note: We don't enforce specific format as Azure key formats may vary.
+ */
 function isValidAzureApiKey(apiKey) {
-    return apiKey.length > 0; // Add further validation if necessary
+    if (!apiKey || apiKey.length === 0)
+        return false;
+    // Minimum length to catch obvious mistakes, but don't over-constrain format
+    if (apiKey.length < 16)
+        return false;
+    // Reject keys with whitespace or control characters (ASCII 0-31)
+    for (const char of apiKey) {
+        const code = char.charCodeAt(0);
+        if (code <= 0x1f || /\s/.test(char))
+            return false;
+    }
+    return true;
 }
+// ============================================================================
+// Pattern Validators (Security Hardened)
+// ============================================================================
+/**
+ * Validates file exclusion patterns.
+ * Prevents path traversal and absolute path attacks.
+ */
 function isValidExcludePatterns(patterns) {
     if (!patterns)
         return true; // Empty string is valid
@@ -29876,19 +29985,30 @@ function isValidExcludePatterns(patterns) {
     return patternList.every((pattern) => {
         if (pattern.length === 0)
             return false;
+        // Path traversal prevention
         if (pattern.includes(".."))
             return false;
+        // Absolute path prevention
         if (pattern.startsWith("/"))
             return false;
+        // Home directory expansion prevention
         if (pattern.startsWith("~"))
+            return false;
+        // Null byte injection prevention
+        if (pattern.includes("\0"))
             return false;
         return true;
     });
 }
+/**
+ * Validates custom prompt input.
+ * Enforces length limit to prevent prompt injection at scale.
+ */
 function isValidCustomPrompt(prompt) {
     if (!prompt)
         return true; // Empty string is valid (optional parameter)
-    return prompt.length > 0 && prompt.length <= 1000; // Reasonable length limit
+    // Enforce reasonable length limit
+    return prompt.length > 0 && prompt.length <= MAX_CUSTOM_PROMPT_LENGTH;
 }
 
 ;// CONCATENATED MODULE: ./node_modules/@isaacs/balanced-match/dist/esm/index.js
@@ -33576,10 +33696,14 @@ class ReviewService {
             core.info("No commits found to review.");
             return false;
         }
-        core.info("Calling Azure OpenAI...");
+        const mode = options.backgroundPolling?.enabled
+            ? "Background (async)"
+            : "Synchronous";
+        core.info(`Calling Azure OpenAI... (Mode: ${mode})`);
         const response = await this.azureService.runReviewPrompt(pr.prompt, {
             reasoningEffort: options.reasoningEffort,
             customPrompt: options.customPrompt,
+            backgroundPolling: options.backgroundPolling,
         });
         if (!response?.comments || response.comments.length === 0) {
             core.info("No suggestions from AI.");
@@ -33700,6 +33824,7 @@ function verifyMultiLineCommentRange(patch, startLine, endLine, startSide, endSi
 }
 
 ;// CONCATENATED MODULE: ./src/githubService.ts
+
 
 
 
@@ -33857,7 +33982,7 @@ class GitHubService {
             };
         }
         catch (error) {
-            throw new Error(`Failed to compare commits: ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(`Failed to compare commits: ${formatError(error)}`);
         }
     }
     async getCommitDetails(sha) {
@@ -33877,7 +34002,7 @@ class GitHubService {
             };
         }
         catch (error) {
-            throw new Error(`Failed to get commit details: ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(`Failed to get commit details: ${formatError(error)}`);
         }
     }
     async commitBelongsToPR(sha) {
@@ -33890,7 +34015,7 @@ class GitHubService {
             return response.data.some((pr) => pr.number === this.config.pullNumber);
         }
         catch (error) {
-            throw new Error(`Failed to list PRs associated with commit ${sha}: ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(`Failed to list PRs associated with commit ${sha}: ${formatError(error)}`);
         }
     }
 }
@@ -49296,6 +49421,19 @@ const CodeReviewCommentArray = objectType({
 
 
 
+
+
+const TERMINAL_STATUSES = [
+    "completed",
+    "failed",
+    "cancelled",
+    "incomplete",
+];
+function isTerminalStatus(status) {
+    if (!status)
+        return false;
+    return TERMINAL_STATUSES.includes(status);
+}
 class AzureOpenAIService {
     client;
     deployment;
@@ -49323,6 +49461,14 @@ If you have no comments, return an empty comments array. Respond in JSON format.
         const instructions = config.customPrompt
             ? `${baseInstructions}\n\nAdditional instructions: ${config.customPrompt}`
             : baseInstructions;
+        // Check if background mode is enabled
+        if (config.backgroundPolling?.enabled) {
+            return this.runBackgroundRequest(prompt, instructions, config);
+        }
+        // Synchronous mode (default)
+        return this.runSynchronousRequest(prompt, instructions, config);
+    }
+    async runSynchronousRequest(prompt, instructions, config) {
         const response = await this.client.responses.parse({
             model: this.deployment,
             instructions: instructions,
@@ -49336,6 +49482,134 @@ If you have no comments, return an empty comments array. Respond in JSON format.
             throw new Error("Review request did not return parsed output");
         }
         return response.output_parsed;
+    }
+    async runBackgroundRequest(prompt, instructions, config) {
+        const pollingConfig = config.backgroundPolling;
+        core.info("Starting background review request...");
+        core.info(`Maximum wait time: ${Math.round(pollingConfig.maxWaitTimeMs / 60000)} minutes`);
+        // Create background request with store: true (required for background mode)
+        const initialResponse = await this.client.responses.create({
+            model: this.deployment,
+            instructions: instructions,
+            input: prompt,
+            reasoning: { effort: config.reasoningEffort },
+            text: {
+                format: zodTextFormat(CodeReviewCommentArray, "review_comments"),
+            },
+            background: true,
+            store: true,
+        });
+        core.info(`Background request initiated: ${initialResponse.id}`);
+        core.info(`Initial status: ${initialResponse.status}`);
+        // Check if already in terminal state (fast completion or immediate failure)
+        if (isTerminalStatus(initialResponse.status)) {
+            core.info(`Request reached terminal status '${initialResponse.status}' immediately, skipping polling`);
+            return this.handleCompletedResponse(initialResponse);
+        }
+        // Poll until completion
+        const completedResponse = await this.pollForCompletion(initialResponse.id, pollingConfig);
+        // Handle terminal statuses
+        return this.handleCompletedResponse(completedResponse);
+    }
+    async pollForCompletion(responseId, config) {
+        const startTime = Date.now();
+        let currentInterval = config.initialIntervalMs;
+        let attempts = 0;
+        core.startGroup("Background Request Polling");
+        try {
+            while (true) {
+                attempts++;
+                // Check timeout
+                const elapsed = Date.now() - startTime;
+                if (elapsed > config.maxWaitTimeMs) {
+                    core.warning(`Polling timeout reached after ${Math.round(elapsed / 60000)} minutes`);
+                    await this.cancelBackgroundRequest(responseId);
+                    throw new Error(`Background review timed out after ${Math.round(elapsed / 60000)} minutes ` +
+                        `(${attempts} polling attempts). Consider increasing 'backgroundMaxWait' ` +
+                        `or reducing PR complexity with 'tokenLimit' or 'exclude' patterns.`);
+                }
+                // Retrieve response status
+                let response;
+                try {
+                    response = await this.client.responses.retrieve(responseId);
+                }
+                catch (error) {
+                    // Retry on transient errors
+                    if (this.isRetryableError(error)) {
+                        core.warning(`Polling error (will retry): ${formatError(error)}`);
+                        await this.sleep(currentInterval);
+                        continue;
+                    }
+                    throw error;
+                }
+                const elapsedSec = Math.round((Date.now() - startTime) / 1000);
+                core.info(`[${new Date().toISOString()}] Status check #${attempts}: ${response.status} (${elapsedSec}s elapsed)`);
+                if (isTerminalStatus(response.status)) {
+                    core.info(`Review reached terminal status '${response.status}' after ${elapsedSec} seconds (${attempts} status checks)`);
+                    return response;
+                }
+                // Wait before next poll with exponential backoff
+                await this.sleep(currentInterval);
+                currentInterval = Math.min(currentInterval * config.backoffMultiplier, config.maxIntervalMs);
+            }
+        }
+        finally {
+            core.endGroup();
+        }
+    }
+    handleCompletedResponse(response) {
+        if (response.status === "failed") {
+            const errorMsg = response.error?.message || "Unknown error during review";
+            throw new Error(`Review request failed: ${errorMsg}`);
+        }
+        if (response.status === "cancelled") {
+            throw new Error("Review request was cancelled");
+        }
+        if (response.status === "incomplete") {
+            const reason = response.incomplete_details?.reason || "Unknown reason";
+            throw new Error(`Review request incomplete: ${reason}`);
+        }
+        // Use SDK convenience property for text output
+        const textContent = response.output_text;
+        if (!textContent) {
+            throw new Error("Review request did not return text output");
+        }
+        // Parse the JSON text with Zod
+        try {
+            const parsed = JSON.parse(textContent);
+            const validated = CodeReviewCommentArray.parse(parsed);
+            return validated;
+        }
+        catch (parseError) {
+            // Log preview for debugging (truncated)
+            const preview = textContent.substring(0, 500);
+            core.debug(`Failed to parse response. Preview: ${preview}...`);
+            if (parseError instanceof SyntaxError) {
+                throw new Error(`Invalid JSON in AI response: ${parseError.message}`);
+            }
+            throw new Error(`Failed to validate AI response: ${formatError(parseError)}`);
+        }
+    }
+    async cancelBackgroundRequest(responseId) {
+        try {
+            await this.client.responses.cancel(responseId);
+            core.info(`Cancelled background request ${responseId}`);
+        }
+        catch (error) {
+            core.warning(`Failed to cancel background request: ${formatError(error)}`);
+        }
+    }
+    isRetryableError(error) {
+        if (error && typeof error === "object" && "status" in error) {
+            const status = error.status;
+            // Retry on rate limits, server errors, and timeouts
+            const retryableCodes = [408, 429, 500, 502, 503, 504];
+            return retryableCodes.includes(status);
+        }
+        return false;
+    }
+    sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 }
 
@@ -49361,6 +49635,33 @@ async function run() {
         if (!isValidCustomPrompt(customPrompt)) {
             core.setFailed("Invalid custom prompt: must be 1000 characters or less");
             return;
+        }
+        // Background mode configuration
+        const backgroundModeInput = core.getInput("backgroundMode") || "disabled";
+        if (!isValidBackgroundMode(backgroundModeInput)) {
+            core.setFailed(`Invalid backgroundMode: ${backgroundModeInput}. Must be 'enabled' or 'disabled'.`);
+            return;
+        }
+        // Build background polling config (only validate params when enabled)
+        let backgroundPolling;
+        if (backgroundModeInput === "enabled") {
+            const backgroundMaxWaitInput = core.getInput("backgroundMaxWait") || "30";
+            if (!isValidBackgroundMaxWait(backgroundMaxWaitInput)) {
+                core.setFailed(`Invalid backgroundMaxWait: ${backgroundMaxWaitInput}. Must be 1-60 minutes.`);
+                return;
+            }
+            const backgroundPollIntervalInput = core.getInput("backgroundPollInterval") || "10";
+            if (!isValidBackgroundPollInterval(backgroundPollIntervalInput)) {
+                core.setFailed(`Invalid backgroundPollInterval: ${backgroundPollIntervalInput}. Must be 5-60 seconds.`);
+                return;
+            }
+            backgroundPolling = {
+                enabled: true,
+                maxWaitTimeMs: parseInt(backgroundMaxWaitInput, 10) * 60 * 1000,
+                initialIntervalMs: parseInt(backgroundPollIntervalInput, 10) * 1000,
+                maxIntervalMs: BACKGROUND_MAX_INTERVAL_MS,
+                backoffMultiplier: BACKGROUND_BACKOFF_MULTIPLIER,
+            };
         }
         const changesThreshold = core.getInput("severity") || "error";
         if (!isValidSeverityLevel(changesThreshold)) {
@@ -49449,6 +49750,7 @@ async function run() {
             commitLimit,
             excludePatterns,
             customPrompt: customPrompt || undefined,
+            backgroundPolling,
         });
         // 3. Done
         core.info("Review completed.");

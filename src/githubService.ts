@@ -2,7 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { CodeReviewComment } from "./schemas.js";
 import { z } from "zod";
-import { SeverityLevel } from "./validators.js";
+import { formatError, SeverityLevel } from "./validators.js";
 import {
   findPositionInDiff,
   verifyMultiLineCommentRange,
@@ -279,9 +279,7 @@ export class GitHubService {
         patches: extractPatches(response.data.files),
       };
     } catch (error) {
-      throw new Error(
-        `Failed to compare commits: ${error instanceof Error ? error.message : String(error)}`
-      );
+      throw new Error(`Failed to compare commits: ${formatError(error)}`);
     }
   }
 
@@ -305,9 +303,7 @@ export class GitHubService {
         patches: extractPatches(response.data.files),
       };
     } catch (error) {
-      throw new Error(
-        `Failed to get commit details: ${error instanceof Error ? error.message : String(error)}`
-      );
+      throw new Error(`Failed to get commit details: ${formatError(error)}`);
     }
   }
 
@@ -323,9 +319,7 @@ export class GitHubService {
       return response.data.some((pr) => pr.number === this.config.pullNumber);
     } catch (error) {
       throw new Error(
-        `Failed to list PRs associated with commit ${sha}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `Failed to list PRs associated with commit ${sha}: ${formatError(error)}`
       );
     }
   }

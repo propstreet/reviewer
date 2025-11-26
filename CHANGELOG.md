@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2025-11-26
+
+### Added
+- **Background mode for long-running reviews** - New async polling mode for models that take 15+ minutes (like GPT-5-Pro with high reasoning effort):
+  - `backgroundMode: enabled` - Enable background polling mode
+  - `backgroundMaxWait: 30` - Maximum wait time in minutes (1-60)
+  - `backgroundPollInterval: 10` - Initial polling interval in seconds (5-60)
+  - Uses OpenAI Responses API `background: true` with automatic exponential backoff polling
+  - Automatic request cancellation on timeout
+
+### Changed
+- **DRY refactoring** - Introduced `parseIntInRange` and `formatError` helper functions
+- **Exported constants** - Background polling configuration constants now exported from validators
+
+### Security
+- **Hardened Azure endpoint validation** - Validates proper HTTP/HTTPS URL format
+- **Hardened Azure API key validation** - Minimum 16 chars, rejects whitespace and control characters
+- **Hardened Azure deployment validation** - Validates Azure naming pattern (alphanumeric, `._()-`)
+- **Improved exclude pattern validation** - Added null byte injection prevention
+
 ## [3.1.0] - 2025-11-26
 
 ### Fixed

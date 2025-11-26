@@ -10,7 +10,13 @@ import {
   isValidAzureDeployment,
   isValidAzureApiKey,
   isValidCustomPrompt,
+  isValidBackgroundMode,
+  isValidBackgroundMaxWait,
+  isValidBackgroundPollInterval,
+  BACKGROUND_MAX_INTERVAL_MS,
+  BACKGROUND_BACKOFF_MULTIPLIER,
 } from "./validators.js";
+import type { BackgroundPollingConfig } from "./azureOpenAIService.js";
 import { ReviewService } from "./reviewer.js";
 import { GitHubService } from "./githubService.js";
 import { AzureOpenAIService } from "./azureOpenAIService.js";
@@ -31,6 +37,44 @@ export async function run(): Promise<void> {
     if (!isValidCustomPrompt(customPrompt)) {
       core.setFailed("Invalid custom prompt: must be 1000 characters or less");
       return;
+    }
+
+    // Background mode configuration
+    const backgroundModeInput = core.getInput("backgroundMode") || "disabled";
+    if (!isValidBackgroundMode(backgroundModeInput)) {
+      core.setFailed(
+        `Invalid backgroundMode: ${backgroundModeInput}. Must be 'enabled' or 'disabled'.`
+      );
+      return;
+    }
+
+    // Build background polling config (only validate params when enabled)
+    let backgroundPolling: BackgroundPollingConfig | undefined;
+    if (backgroundModeInput === "enabled") {
+      const backgroundMaxWaitInput = core.getInput("backgroundMaxWait") || "30";
+      if (!isValidBackgroundMaxWait(backgroundMaxWaitInput)) {
+        core.setFailed(
+          `Invalid backgroundMaxWait: ${backgroundMaxWaitInput}. Must be 1-60 minutes.`
+        );
+        return;
+      }
+
+      const backgroundPollIntervalInput =
+        core.getInput("backgroundPollInterval") || "10";
+      if (!isValidBackgroundPollInterval(backgroundPollIntervalInput)) {
+        core.setFailed(
+          `Invalid backgroundPollInterval: ${backgroundPollIntervalInput}. Must be 5-60 seconds.`
+        );
+        return;
+      }
+
+      backgroundPolling = {
+        enabled: true,
+        maxWaitTimeMs: parseInt(backgroundMaxWaitInput, 10) * 60 * 1000,
+        initialIntervalMs: parseInt(backgroundPollIntervalInput, 10) * 1000,
+        maxIntervalMs: BACKGROUND_MAX_INTERVAL_MS,
+        backoffMultiplier: BACKGROUND_BACKOFF_MULTIPLIER,
+      };
     }
 
     const changesThreshold = core.getInput("severity") || "error";
@@ -134,6 +178,7 @@ export async function run(): Promise<void> {
       commitLimit,
       excludePatterns,
       customPrompt: customPrompt || undefined,
+      backgroundPolling,
     });
 
     // 3. Done

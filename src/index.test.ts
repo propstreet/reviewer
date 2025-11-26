@@ -12,14 +12,17 @@ vi.mock("@actions/github");
 vi.mock("./reviewer.js");
 
 describe("index", () => {
+  // Valid API key (16+ chars, no whitespace/control chars)
+  const VALID_API_KEY = "test-azure-api-key-12345";
+
   const getInputDefaults = (name: string) => {
     switch (name) {
       case "azureOpenAIEndpoint":
-        return "https://AZURE_ENDPOINT";
+        return "https://test.openai.azure.com";
       case "azureOpenAIDeployment":
-        return "AZURE_DEPLOYMENT";
+        return "gpt-5";
       case "azureOpenAIKey":
-        return "AZURE_API_KEY";
+        return VALID_API_KEY;
       case "severity":
         return "error";
       case "reasoningEffort":
@@ -120,6 +123,7 @@ describe("index", () => {
       reasoningEffort: "medium",
       commitLimit: 100,
       excludePatterns: [],
+      backgroundPolling: undefined,
     });
   });
 
@@ -149,6 +153,7 @@ describe("index", () => {
       reasoningEffort: "medium",
       commitLimit: 100,
       excludePatterns: [],
+      backgroundPolling: undefined,
     });
   });
 
@@ -181,19 +186,20 @@ describe("index", () => {
       reasoningEffort: "medium",
       commitLimit: 100,
       excludePatterns: [],
+      backgroundPolling: undefined,
     });
   });
 
   it("should call reviewer with provided values", async () => {
-    // Mock inputs with specific values
+    // Mock inputs with specific values (using valid Azure config)
     (core.getInput as MockType).mockImplementation((name: string) => {
       switch (name) {
         case "azureOpenAIEndpoint":
-          return "endpoint";
+          return "https://custom.openai.azure.com";
         case "azureOpenAIDeployment":
-          return "deployment";
+          return "gpt-5-custom";
         case "azureOpenAIKey":
-          return "key";
+          return VALID_API_KEY;
         case "severity":
           return "warning";
         case "reasoningEffort":
@@ -229,6 +235,7 @@ describe("index", () => {
       reasoningEffort: "high",
       commitLimit: 99,
       excludePatterns: [],
+      backgroundPolling: undefined,
     });
   });
 
@@ -409,5 +416,133 @@ describe("index", () => {
     expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
       "Test error message"
     );
+  });
+
+  it("should construct backgroundPolling config when backgroundMode is enabled", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      switch (name) {
+        case "base":
+          return "base-sha";
+        case "head":
+          return "head-sha";
+        case "backgroundMode":
+          return "enabled";
+        case "backgroundMaxWait":
+          return "45";
+        case "backgroundPollInterval":
+          return "15";
+        default:
+          return getInputDefaults(name);
+      }
+    });
+
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        backgroundPolling: {
+          enabled: true,
+          maxWaitTimeMs: 45 * 60 * 1000, // 45 minutes in ms
+          initialIntervalMs: 15 * 1000, // 15 seconds in ms
+          maxIntervalMs: 30 * 1000, // 30 seconds cap
+          backoffMultiplier: 1.5,
+        },
+      })
+    );
+  });
+
+  it("should not validate background params when backgroundMode is disabled", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      switch (name) {
+        case "base":
+          return "base-sha";
+        case "head":
+          return "head-sha";
+        case "backgroundMode":
+          return "disabled";
+        case "backgroundMaxWait":
+          return "invalid"; // Invalid but should not matter
+        case "backgroundPollInterval":
+          return "invalid"; // Invalid but should not matter
+        default:
+          return getInputDefaults(name);
+      }
+    });
+
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
+
+    const { run } = await import("./index.js");
+    await run();
+
+    // Should not fail because backgroundMode is disabled
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        backgroundPolling: undefined,
+      })
+    );
+  });
+
+  it("should fail on invalid backgroundMode", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "backgroundMode") return "invalid";
+      return getInputDefaults(name);
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid backgroundMode: invalid. Must be 'enabled' or 'disabled'."
+    );
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
+  });
+
+  it("should fail on invalid backgroundMaxWait when enabled", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      switch (name) {
+        case "backgroundMode":
+          return "enabled";
+        case "backgroundMaxWait":
+          return "999"; // Out of range (1-60)
+        default:
+          return getInputDefaults(name);
+      }
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid backgroundMaxWait: 999. Must be 1-60 minutes."
+    );
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
+  });
+
+  it("should fail on invalid backgroundPollInterval when enabled", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      switch (name) {
+        case "backgroundMode":
+          return "enabled";
+        case "backgroundMaxWait":
+          return "30";
+        case "backgroundPollInterval":
+          return "1"; // Out of range (5-60)
+        default:
+          return getInputDefaults(name);
+      }
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid backgroundPollInterval: 1. Must be 5-60 seconds."
+    );
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
   });
 });
