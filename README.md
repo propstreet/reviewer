@@ -98,7 +98,7 @@ jobs:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### High Reasoning Effort (for complex PRs)
+### Recommended Setup (gpt-5.1 with high reasoning)
 
 ```yaml
 - uses: propstreet/reviewer@v3
@@ -107,28 +107,27 @@ jobs:
     azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
     azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
     reasoningEffort: high
-    tokenLimit: "100000"
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Minimal Reasoning (GPT-5, for fast reviews)
+### Fast Reviews (minimal reasoning)
 
 ```yaml
 - uses: propstreet/reviewer@v3
   with:
     azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
     azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-    azureOpenAIDeployment: gpt-5
+    azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
     reasoningEffort: minimal
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Background Mode (for long-running reviews)
+### Background Mode (for gpt-5-pro)
 
-When using high reasoning effort models like GPT-5-Pro, reviews can take 15+ minutes.
-Background mode uses the OpenAI Responses API's async capabilities with automatic polling:
+When using gpt-5-pro, reviews typically take 15-20 minutes. Background mode handles this
+with automatic polling:
 
 ```yaml
 - uses: propstreet/reviewer@v3
@@ -138,8 +137,7 @@ Background mode uses the OpenAI Responses API's async capabilities with automati
     azureOpenAIDeployment: gpt-5-pro
     reasoningEffort: high
     backgroundMode: enabled
-    backgroundMaxWait: "45"        # Wait up to 45 minutes
-    backgroundPollInterval: "15"   # Start polling every 15 seconds
+    backgroundMaxWait: "30"
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -166,30 +164,14 @@ The action uses the Azure OpenAI v1 API:
 
 ### Recommended Models
 
-#### Best for Code Review
+| Model | Reasoning | Use Case |
+|-------|-----------|----------|
+| **gpt-5.1** | `high` | **Recommended default** - Best quality reviews |
+| gpt-5 | `high` | Excellent reviews, slightly older model |
+| gpt-5.1 | `medium` | Faster reviews, good quality |
+| gpt-5 | `minimal` | Quick reviews, lower latency |
 
-| Model | Use Case | Notes |
-|-------|----------|-------|
-| **gpt-5-codex** | Code review, refactoring | Trained specifically for code reviews |
-| **gpt-5.1-codex** | Latest code review model | 30% fewer tokens than gpt-5-codex |
-| **o4-mini** | Cost-effective reasoning | Best value for reasoning tasks |
-
-#### General Purpose
-
-| Model | Use Case | Notes |
-|-------|----------|-------|
-| gpt-5 | Multi-step reasoning | $1.25/$10 per 1M tokens |
-| gpt-5-mini | Cost-sensitive | $0.25/$2 per 1M tokens |
-| gpt-5-nano | Fast reviews, low latency | $0.05/$0.40 per 1M tokens |
-| o3 | Complex architectural review | 200K context, premium |
-| o3-mini | Fast reasoning | Budget-friendly |
-| o1 | Legacy reasoning | Still supported |
-
-#### Model Selection Guide
-
-- **For thorough code reviews**: Use `gpt-5-codex` or `gpt-5.1-codex` with `high` reasoning effort
-- **For fast iteration**: Use `gpt-5-nano` with `minimal` reasoning effort
-- **For balanced cost/quality**: Use `o4-mini` with `medium` reasoning effort
+We recommend **gpt-5.1 with `reasoningEffort: high`** for the best code review quality.
 
 ## Severity Levels
 
