@@ -7,7 +7,6 @@ import {
   findPositionInDiff,
   verifyMultiLineCommentRange,
 } from "./diffparser.js";
-import { type PackedCommit } from "./reviewer.js";
 
 export interface GitHubConfig {
   token: string;
@@ -155,11 +154,12 @@ export class GitHubService {
    * - Collects all valid comments and submits ONE review for the entire PR
    * - Uses HEAD sha to avoid "line must be part of diff" errors
    * - Determines review event based on ANY comment meeting severity threshold
+   * - Validates comments against cumulative PR diff (base...HEAD) to match GitHub's validation
    */
   async postReviewComments(
     comments: z.infer<typeof CodeReviewComment>[],
     changesThreshold: SeverityLevel,
-    commits: PackedCommit[]
+    patches: PatchInfo[] // Cumulative PR diff (base...HEAD) for validation
   ) {
     // Get PR details to use HEAD sha for the single review
     const prDetails = await this.getPrDetails();
@@ -169,20 +169,17 @@ export class GitHubService {
     const severityOrder = ["info", "warning", "error"];
     const thresholdIndex = severityOrder.indexOf(changesThreshold);
 
-    // Collect all patches from all commits for validation
-    const allPatches = commits.flatMap((c) => c.patches);
-
     // Validate and categorize comments
     const validComments: z.infer<typeof CodeReviewComment>[] = [];
     const issueComments: z.infer<typeof CodeReviewComment>[] = [];
 
     for (const c of comments) {
-      // Verify the comment can be placed in the diff
+      // Verify the comment can be placed in the cumulative PR diff
       const isValid = this.verifyCommentLineInPatch(
         c.file,
         c.line,
         c.side,
-        allPatches,
+        patches,
         c.start_line,
         c.start_side
       );

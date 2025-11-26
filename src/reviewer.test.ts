@@ -211,26 +211,8 @@ commit diff
     expect(GitHubService.prototype.postReviewComments).toHaveBeenCalledWith(
       mockAzureResponse.comments,
       "error",
-      [
-        {
-          commit: {
-            message: "test commit",
-            patches: [
-              {
-                filename: "commit.ts",
-                patch: "commit diff",
-              },
-            ],
-            sha: "head-sha",
-          },
-          patches: [
-            {
-              filename: "commit.ts",
-              patch: "commit diff",
-            },
-          ],
-        },
-      ]
+      // Cumulative PR diff (base...HEAD) from compareCommits
+      [{ filename: "commit.ts", patch: "commit diff" }]
     );
 
     // Verify no errors were reported

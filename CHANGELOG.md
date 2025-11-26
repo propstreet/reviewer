@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2025-11-26
+
+### Fixed
+- **Comment validation for multi-commit PRs** - Fixed bug where inline review comments on files modified in multiple commits would fail validation and be demoted to issue comments. The validation now uses the cumulative PR diff (base...HEAD) instead of per-commit patches, matching GitHub's actual validation behavior when posting reviews.
+
 ## [3.0.0] - 2025-11-26
 
 ### Added

@@ -30,6 +30,7 @@ export type BuildPromptResult = {
   prompt: string;
   commits: PackedCommit[];
   skippedCommits: SkippedCommit[];
+  patches: PatchInfo[]; // Cumulative PR diff (base...HEAD) for validation
 };
 
 export const shouldExcludeFile = (
@@ -230,6 +231,7 @@ export class ReviewService {
       prompt,
       commits: packedCommits,
       skippedCommits,
+      patches: results.patches, // Cumulative PR diff for validation
     } satisfies BuildPromptResult;
   }
 
@@ -258,7 +260,7 @@ export class ReviewService {
     const result = await this.githubService.postReviewComments(
       response.comments,
       options.changesThreshold,
-      pr.commits
+      pr.patches // Use cumulative PR diff for validation (matches GitHub's HEAD validation)
     );
 
     core.info(
