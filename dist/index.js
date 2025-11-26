@@ -29920,28 +29920,19 @@ function isValidBackgroundPollInterval(interval) {
 // ============================================================================
 /**
  * Validates Azure OpenAI endpoint URL.
- * Must be a valid HTTPS URL to prevent SSRF and ensure secure communication.
+ * Must be a valid HTTP/HTTPS URL with a hostname.
  */
 function isValidAzureEndpoint(endpoint) {
     if (!endpoint || endpoint.length === 0)
         return false;
     try {
         const url = new URL(endpoint);
-        // Must be HTTPS for security
-        if (url.protocol !== "https:")
+        // Must be HTTP or HTTPS
+        if (url.protocol !== "https:" && url.protocol !== "http:")
             return false;
         // Must have a valid hostname
         if (!url.hostname || url.hostname.length === 0)
             return false;
-        // Prevent localhost/internal IPs in production (basic SSRF protection)
-        const hostname = url.hostname.toLowerCase();
-        if (hostname === "localhost" ||
-            hostname === "127.0.0.1" ||
-            hostname.startsWith("192.168.") ||
-            hostname.startsWith("10.") ||
-            hostname.startsWith("172.16.")) {
-            return false;
-        }
         return true;
     }
     catch {
@@ -49510,6 +49501,11 @@ If you have no comments, return an empty comments array. Respond in JSON format.
         });
         core.info(`Background request initiated: ${initialResponse.id}`);
         core.info(`Initial status: ${initialResponse.status}`);
+        // Check if already in terminal state (fast completion or immediate failure)
+        if (isTerminalStatus(initialResponse.status)) {
+            core.info(`Request reached terminal status '${initialResponse.status}' immediately, skipping polling`);
+            return this.handleCompletedResponse(initialResponse);
+        }
         // Poll until completion
         const completedResponse = await this.pollForCompletion(initialResponse.id, pollingConfig);
         // Handle terminal statuses
@@ -49532,8 +49528,6 @@ If you have no comments, return an empty comments array. Respond in JSON format.
                         `(${attempts} polling attempts). Consider increasing 'backgroundMaxWait' ` +
                         `or reducing PR complexity with 'tokenLimit' or 'exclude' patterns.`);
                 }
-                // Wait before polling
-                await this.sleep(currentInterval);
                 // Retrieve response status
                 let response;
                 try {
@@ -49543,6 +49537,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
                     // Retry on transient errors
                     if (this.isRetryableError(error)) {
                         core.warning(`Polling error (will retry): ${formatError(error)}`);
+                        await this.sleep(currentInterval);
                         continue;
                     }
                     throw error;
@@ -49550,10 +49545,11 @@ If you have no comments, return an empty comments array. Respond in JSON format.
                 const elapsedSec = Math.round((Date.now() - startTime) / 1000);
                 core.info(`[${new Date().toISOString()}] Status check #${attempts}: ${response.status} (${elapsedSec}s elapsed)`);
                 if (isTerminalStatus(response.status)) {
-                    core.info(`Review completed after ${elapsedSec} seconds (${attempts} status checks)`);
+                    core.info(`Review reached terminal status '${response.status}' after ${elapsedSec} seconds (${attempts} status checks)`);
                     return response;
                 }
-                // Exponential backoff
+                // Wait before next poll with exponential backoff
+                await this.sleep(currentInterval);
                 currentInterval = Math.min(currentInterval * config.backoffMultiplier, config.maxIntervalMs);
             }
         }
@@ -49573,32 +49569,8 @@ If you have no comments, return an empty comments array. Respond in JSON format.
             const reason = response.incomplete_details?.reason || "Unknown reason";
             throw new Error(`Review request incomplete: ${reason}`);
         }
-        // Extract text output from completed response
-        // The output array contains various item types; we need to find the text content
-        let textContent = "";
-        if (response.output) {
-            for (const item of response.output) {
-                // Check for output_text type which contains the actual response text
-                if ("text" in item && typeof item.text === "string") {
-                    textContent = item.text;
-                    break;
-                }
-                // Also check for content array pattern
-                if ("content" in item && Array.isArray(item.content)) {
-                    for (const content of item.content) {
-                        if (content &&
-                            typeof content === "object" &&
-                            "text" in content &&
-                            typeof content.text === "string") {
-                            textContent = content.text;
-                            break;
-                        }
-                    }
-                    if (textContent)
-                        break;
-                }
-            }
-        }
+        // Use SDK convenience property for text output
+        const textContent = response.output_text;
         if (!textContent) {
             throw new Error("Review request did not return text output");
         }
@@ -49670,26 +49642,27 @@ async function run() {
             core.setFailed(`Invalid backgroundMode: ${backgroundModeInput}. Must be 'enabled' or 'disabled'.`);
             return;
         }
-        const backgroundMaxWaitInput = core.getInput("backgroundMaxWait") || "30";
-        if (!isValidBackgroundMaxWait(backgroundMaxWaitInput)) {
-            core.setFailed(`Invalid backgroundMaxWait: ${backgroundMaxWaitInput}. Must be 1-60 minutes.`);
-            return;
-        }
-        const backgroundPollIntervalInput = core.getInput("backgroundPollInterval") || "10";
-        if (!isValidBackgroundPollInterval(backgroundPollIntervalInput)) {
-            core.setFailed(`Invalid backgroundPollInterval: ${backgroundPollIntervalInput}. Must be 5-60 seconds.`);
-            return;
-        }
-        // Build background polling config
-        const backgroundPolling = backgroundModeInput === "enabled"
-            ? {
+        // Build background polling config (only validate params when enabled)
+        let backgroundPolling;
+        if (backgroundModeInput === "enabled") {
+            const backgroundMaxWaitInput = core.getInput("backgroundMaxWait") || "30";
+            if (!isValidBackgroundMaxWait(backgroundMaxWaitInput)) {
+                core.setFailed(`Invalid backgroundMaxWait: ${backgroundMaxWaitInput}. Must be 1-60 minutes.`);
+                return;
+            }
+            const backgroundPollIntervalInput = core.getInput("backgroundPollInterval") || "10";
+            if (!isValidBackgroundPollInterval(backgroundPollIntervalInput)) {
+                core.setFailed(`Invalid backgroundPollInterval: ${backgroundPollIntervalInput}. Must be 5-60 seconds.`);
+                return;
+            }
+            backgroundPolling = {
                 enabled: true,
                 maxWaitTimeMs: parseInt(backgroundMaxWaitInput, 10) * 60 * 1000,
                 initialIntervalMs: parseInt(backgroundPollIntervalInput, 10) * 1000,
                 maxIntervalMs: BACKGROUND_MAX_INTERVAL_MS,
                 backoffMultiplier: BACKGROUND_BACKOFF_MULTIPLIER,
-            }
-            : undefined;
+            };
+        }
         const changesThreshold = core.getInput("severity") || "error";
         if (!isValidSeverityLevel(changesThreshold)) {
             core.setFailed(`Invalid severity: ${changesThreshold}`);

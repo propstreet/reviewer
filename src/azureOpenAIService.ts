@@ -137,7 +137,9 @@ If you have no comments, return an empty comments array. Respond in JSON format.
 
     // Check if already in terminal state (fast completion or immediate failure)
     if (isTerminalStatus(initialResponse.status)) {
-      core.info("Request completed immediately, skipping polling");
+      core.info(
+        `Request reached terminal status '${initialResponse.status}' immediately, skipping polling`
+      );
       return this.handleCompletedResponse(initialResponse);
     }
 
