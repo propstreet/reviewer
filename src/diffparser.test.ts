@@ -1,6 +1,7 @@
 import {
   findPositionInDiff,
   verifyMultiLineCommentRange,
+  parseDiff,
 } from "./diffparser.js";
 
 describe("findPositionInDiff", () => {
@@ -259,5 +260,160 @@ describe("verifyMultiLineCommentRange", () => {
       "LEFT"
     );
     expect(result).not.toBeNull();
+  });
+
+  describe("cross-hunk detection", () => {
+    const multiHunkPatch = `@@ -1,3 +1,4 @@
+ line one
+-old line
++new line
+ line three
+@@ -10,2 +11,3 @@
+ other content
++added line
+ final line`;
+
+    it("returns null when range spans across hunks (RIGHT side)", () => {
+      // Line 3 is in hunk 0 (position 4), line 11 is in hunk 1 (position 6)
+      // This should return null because they span different hunks
+      const result = verifyMultiLineCommentRange(
+        multiHunkPatch,
+        3, // line three (hunk 0)
+        11, // other content (hunk 1)
+        "RIGHT",
+        "RIGHT"
+      );
+      expect(result).toBeNull();
+    });
+
+    it("returns null when range spans across hunks (LEFT side)", () => {
+      // Line 3 is in hunk 0, line 10 is in hunk 1
+      const result = verifyMultiLineCommentRange(
+        multiHunkPatch,
+        3, // line three (hunk 0)
+        10, // other content (hunk 1)
+        "LEFT",
+        "LEFT"
+      );
+      expect(result).toBeNull();
+    });
+
+    it("returns positions when range is within first hunk (RIGHT side)", () => {
+      // Lines 1-3 are all in hunk 0
+      const result = verifyMultiLineCommentRange(
+        multiHunkPatch,
+        1, // line one (hunk 0)
+        3, // line three (hunk 0)
+        "RIGHT",
+        "RIGHT"
+      );
+      expect(result).not.toBeNull();
+      expect(result?.startPosition).toBe(1);
+      expect(result?.endPosition).toBe(4);
+    });
+
+    it("returns positions when range is within second hunk (RIGHT side)", () => {
+      // Lines 11-13 are all in hunk 1
+      const result = verifyMultiLineCommentRange(
+        multiHunkPatch,
+        11, // other content (hunk 1)
+        13, // final line (hunk 1)
+        "RIGHT",
+        "RIGHT"
+      );
+      expect(result).not.toBeNull();
+      expect(result?.startPosition).toBe(6);
+      expect(result?.endPosition).toBe(8);
+    });
+
+    it("returns null when start line is at end of first hunk and end line is at start of second hunk", () => {
+      // This is a boundary case - line 4 (hunk 0) to line 11 (hunk 1)
+      const result = verifyMultiLineCommentRange(
+        multiHunkPatch,
+        4, // line four - doesn't exist in this patch, last line of hunk 0 content is line 3
+        11,
+        "RIGHT",
+        "RIGHT"
+      );
+      // Line 4 doesn't exist in the diff, so this should return null
+      expect(result).toBeNull();
+    });
+  });
+});
+
+describe("parseDiff", () => {
+  it("correctly identifies hunk count", () => {
+    const patch = `@@ -1,2 +1,2 @@
+ line one
++added
+@@ -10,1 +11,1 @@
+ other`;
+
+    const parsed = parseDiff(patch);
+
+    expect(parsed.hunks).toHaveLength(2);
+    expect(parsed.hunks[0].index).toBe(0);
+    expect(parsed.hunks[1].index).toBe(1);
+  });
+
+  it("associates lines with correct hunks", () => {
+    const patch = `@@ -1,1 +1,1 @@
++first hunk line
+@@ -10,1 +11,1 @@
++second hunk line`;
+
+    const parsed = parseDiff(patch);
+
+    const firstLine = parsed.newLineIndex.get(1);
+    const secondLine = parsed.newLineIndex.get(11);
+
+    expect(firstLine?.hunkIndex).toBe(0);
+    expect(secondLine?.hunkIndex).toBe(1);
+  });
+
+  it("handles empty patch", () => {
+    const parsed = parseDiff("");
+
+    expect(parsed.hunks).toHaveLength(0);
+    expect(parsed.lines.size).toBe(0);
+    expect(parsed.oldLineIndex.size).toBe(0);
+    expect(parsed.newLineIndex.size).toBe(0);
+  });
+
+  it("correctly maps line positions", () => {
+    const patch = `@@ -1,3 +1,4 @@
+ line one
+-old line
++new line
+ line three`;
+
+    const parsed = parseDiff(patch);
+
+    // Position 1 = "line one" (context)
+    // Position 2 = "old line" (deletion)
+    // Position 3 = "new line" (addition)
+    // Position 4 = "line three" (context)
+
+    expect(parsed.newLineIndex.get(1)?.position).toBe(1); // line one
+    expect(parsed.newLineIndex.get(2)?.position).toBe(3); // new line
+    expect(parsed.newLineIndex.get(3)?.position).toBe(4); // line three
+
+    expect(parsed.oldLineIndex.get(1)?.position).toBe(1); // line one
+    expect(parsed.oldLineIndex.get(2)?.position).toBe(2); // old line
+    expect(parsed.oldLineIndex.get(3)?.position).toBe(4); // line three
+  });
+
+  it("correctly identifies line types", () => {
+    const patch = `@@ -1,2 +1,2 @@
+ context line
+-deleted line
++added line`;
+
+    const parsed = parseDiff(patch);
+
+    expect(parsed.lines.get(0)?.type).toBe("hunk");
+    expect(parsed.lines.get(1)?.type).toBe("context");
+    expect(parsed.lines.get(2)?.type).toBe("deletion");
+    expect(parsed.lines.get(3)?.type).toBe("addition");
   });
 });
