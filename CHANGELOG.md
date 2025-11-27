@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2025-11-27
+
+### Fixed
+- **Multi-hunk comment validation** - Fixed GitHub API error "Pull request review thread start line must be part of the same hunk as the line" (422 Unprocessable Entity). Multi-line comments spanning multiple hunks now gracefully fall back to issue comments.
+
+### Added
+- **Single-pass diff parser** - New `parseDiff()` function that extracts all structural information including hunk boundaries in one pass
+- **Hunk boundary tracking** - Each parsed line now includes a `hunkIndex` for detecting cross-hunk ranges
+- **10 new test cases** - Comprehensive coverage for cross-hunk detection and `parseDiff()` functionality
+
+### Changed
+- **Refactored `findPositionInDiff()`** - Now uses `parseDiff()` internally for improved performance
+- **Refactored `verifyMultiLineCommentRange()`** - Now compares `hunkIndex` values to detect invalid cross-hunk ranges
+
 ## [3.2.0] - 2025-11-26
 
 ### Added

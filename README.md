@@ -232,6 +232,59 @@ npm run test-prompts
 npm run view-prompts
 ```
 
+### Release Process
+
+To create a new release:
+
+1. **Update version** in `package.json`
+   ```bash
+   # For minor release (new features, backwards compatible)
+   npm version minor --no-git-tag-version
+
+   # For patch release (bug fixes only)
+   npm version patch --no-git-tag-version
+   ```
+
+2. **Update CHANGELOG.md** - Add entry following [Keep a Changelog](https://keepachangelog.com/) format:
+   ```markdown
+   ## [X.Y.Z] - YYYY-MM-DD
+
+   ### Added
+   - New features
+
+   ### Changed
+   - Changes to existing functionality
+
+   ### Fixed
+   - Bug fixes
+   ```
+
+3. **Run all checks**
+   ```bash
+   npm test && npm run build && npm run lint
+   ```
+
+4. **Rebuild distribution**
+   ```bash
+   npm run package
+   ```
+
+5. **Commit, push, and create PR**
+   ```bash
+   git add -A
+   git commit -m "chore: release vX.Y.Z"
+   git push origin your-branch
+   gh pr create --title "chore: release vX.Y.Z"
+   ```
+
+6. **After PR is merged**, create tag and release:
+   ```bash
+   git checkout main && git pull
+   git tag -a vX.Y.Z -m "vX.Y.Z - Brief description"
+   git push origin vX.Y.Z
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes "See CHANGELOG.md for details"
+   ```
+
 ## Migration from v2
 
 See [CHANGELOG.md](./CHANGELOG.md) for detailed migration instructions.
