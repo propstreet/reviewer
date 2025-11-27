@@ -285,6 +285,13 @@ To create a new release:
    gh release create vX.Y.Z --title "vX.Y.Z" --notes "See CHANGELOG.md for details"
    ```
 
+7. **Update floating major tag** (e.g., `v3` → `v3.3.0`):
+   ```bash
+   git tag -fa v3 -m "Update v3 tag to vX.Y.Z"
+   git push origin v3 --force
+   ```
+   This allows users with `@v3` in their workflows to automatically get the latest release.
+
 ## Migration from v2
 
 See [CHANGELOG.md](./CHANGELOG.md) for detailed migration instructions.
