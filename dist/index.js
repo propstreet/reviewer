@@ -49767,11 +49767,17 @@ async function run() {
         core.setSecret(azureOpenAIKey); // Treat the API key as a secret
         // Check the pull_request event in the payload
         const action = github.context.payload.action;
-        let base = core.getInput("base"); // possibly empty
-        let head = core.getInput("head"); // possibly empty
+        const baseInput = core.getInput("base"); // possibly empty
+        const headInput = core.getInput("head"); // possibly empty
+        let base = baseInput;
+        let head = headInput;
+        core.debug(`Detected action: ${action ?? "(none)"}`);
+        core.debug(`Base input: ${base || "(none)"}, Head input: ${head || "(none)"}`);
+        // Events that use pull_request.base.sha and pull_request.head.sha
+        const prBasedActions = ["opened", "reopened", "ready_for_review"];
         // If user hasn't explicitly given base/head, override from the event:
         if (!base && !head) {
-            if (action === "opened") {
+            if (action && prBasedActions.includes(action)) {
                 base = github.context.payload.pull_request?.base?.sha;
                 head = github.context.payload.pull_request?.head?.sha;
             }
@@ -49780,8 +49786,28 @@ async function run() {
                 head = github.context.payload.after;
             }
         }
+        core.debug(`Resolved base: ${base || "(none)"}, head: ${head || "(none)"}`);
         if (!base || !head) {
-            core.setFailed("Missing base or head sha to review.");
+            const supportedActions = [...prBasedActions, "synchronize"];
+            // Check for partial input configuration (user provided only one of base/head)
+            const hasPartialInput = (baseInput && !headInput) || (!baseInput && headInput);
+            let hint;
+            if (hasPartialInput) {
+                const provided = baseInput ? "base" : "head";
+                const missing = baseInput ? "head" : "base";
+                hint = `Only '${provided}' was provided; '${missing}' is also required. Provide both 'base' and 'head', or omit both to use auto-detection.`;
+            }
+            else if (action) {
+                hint = supportedActions.includes(action)
+                    ? `Detected action '${action}' which should be supported, but payload is missing required SHA fields.`
+                    : `Detected action '${action}' which is not auto-detected.`;
+            }
+            else {
+                hint = "No action detected in payload.";
+            }
+            core.setFailed(`Missing base or head sha to review. ${hint} ` +
+                `Supported auto-detection: ${supportedActions.join(", ")}. ` +
+                `Alternatively, provide explicit 'base' and 'head' inputs.`);
             return;
         }
         const { owner, repo, number: pullNumber } = github.context.issue;
