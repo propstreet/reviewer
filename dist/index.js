@@ -49681,11 +49681,11 @@ const PR_BASED_ACTIONS = [
 const SUPPORTED_ACTIONS = [...PR_BASED_ACTIONS, "synchronize"];
 /** Type guard for PR-based actions (opened, reopened, ready_for_review) */
 function isPrBasedAction(action) {
-    return !!action && PR_BASED_ACTIONS.includes(action);
+    return PR_BASED_ACTIONS.some((a) => a === action);
 }
 /** Type guard for all supported actions */
 function isSupportedAction(action) {
-    return !!action && SUPPORTED_ACTIONS.includes(action);
+    return SUPPORTED_ACTIONS.some((a) => a === action);
 }
 
 ;// CONCATENATED MODULE: ./src/index.ts

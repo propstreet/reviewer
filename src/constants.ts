@@ -15,12 +15,12 @@ export type SupportedAction = (typeof SUPPORTED_ACTIONS)[number];
 export function isPrBasedAction(
   action: string | undefined
 ): action is PrBasedAction {
-  return !!action && PR_BASED_ACTIONS.includes(action as PrBasedAction);
+  return PR_BASED_ACTIONS.some((a) => a === action);
 }
 
 /** Type guard for all supported actions */
 export function isSupportedAction(
   action: string | undefined
 ): action is SupportedAction {
-  return !!action && SUPPORTED_ACTIONS.includes(action as SupportedAction);
+  return SUPPORTED_ACTIONS.some((a) => a === action);
 }
