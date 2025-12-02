@@ -29826,7 +29826,9 @@ function wrappy (fn, cb) {
 
 // EXPORTS
 __nccwpck_require__.d(__webpack_exports__, {
-  e: () => (/* binding */ run)
+  Vj: () => (/* binding */ PR_BASED_ACTIONS),
+  Jm: () => (/* binding */ SUPPORTED_ACTIONS),
+  eF: () => (/* binding */ run)
 });
 
 // NAMESPACE OBJECT: ./node_modules/gpt-tokenizer/esm/modelsMap.js
@@ -49677,6 +49679,14 @@ If you have no comments, return an empty comments array. Respond in JSON format.
 
 
 
+/** PR event actions that use pull_request.base.sha and pull_request.head.sha */
+const PR_BASED_ACTIONS = [
+    "opened",
+    "reopened",
+    "ready_for_review",
+];
+/** All supported actions for SHA auto-detection */
+const SUPPORTED_ACTIONS = [...PR_BASED_ACTIONS, "synchronize"];
 async function run() {
     try {
         // 1. Validate Inputs
@@ -49767,17 +49777,17 @@ async function run() {
         core.setSecret(azureOpenAIKey); // Treat the API key as a secret
         // Check the pull_request event in the payload
         const action = github.context.payload.action;
-        const baseInput = core.getInput("base"); // possibly empty
-        const headInput = core.getInput("head"); // possibly empty
+        // Trim inputs to treat whitespace-only as empty
+        const baseInput = core.getInput("base").trim();
+        const headInput = core.getInput("head").trim();
         let base = baseInput;
         let head = headInput;
         core.debug(`Detected action: ${action ?? "(none)"}`);
         core.debug(`Base input: ${base || "(none)"}, Head input: ${head || "(none)"}`);
-        // Events that use pull_request.base.sha and pull_request.head.sha
-        const prBasedActions = ["opened", "reopened", "ready_for_review"];
         // If user hasn't explicitly given base/head, override from the event:
         if (!base && !head) {
-            if (action && prBasedActions.includes(action)) {
+            if (action &&
+                PR_BASED_ACTIONS.includes(action)) {
                 base = github.context.payload.pull_request?.base?.sha;
                 head = github.context.payload.pull_request?.head?.sha;
             }
@@ -49788,7 +49798,6 @@ async function run() {
         }
         core.debug(`Resolved base: ${base || "(none)"}, head: ${head || "(none)"}`);
         if (!base || !head) {
-            const supportedActions = [...prBasedActions, "synchronize"];
             // Check for partial input configuration (user provided only one of base/head)
             const hasPartialInput = (baseInput && !headInput) || (!baseInput && headInput);
             let hint;
@@ -49798,7 +49807,7 @@ async function run() {
                 hint = `Only '${provided}' was provided; '${missing}' is also required. Provide both 'base' and 'head', or omit both to use auto-detection.`;
             }
             else if (action) {
-                hint = supportedActions.includes(action)
+                hint = SUPPORTED_ACTIONS.includes(action)
                     ? `Detected action '${action}' which should be supported, but payload is missing required SHA fields.`
                     : `Detected action '${action}' which is not auto-detected.`;
             }
@@ -49806,7 +49815,7 @@ async function run() {
                 hint = "No action detected in payload.";
             }
             core.setFailed(`Missing base or head sha to review. ${hint} ` +
-                `Supported auto-detection: ${supportedActions.join(", ")}. ` +
+                `Supported auto-detection: ${SUPPORTED_ACTIONS.join(", ")}. ` +
                 `Alternatively, provide explicit 'base' and 'head' inputs.`);
             return;
         }
@@ -51759,6 +51768,8 @@ module.exports = parseParams
 /******/ // startup
 /******/ // Load entry module and return exports
 /******/ var __webpack_exports__ = __nccwpck_require__(__nccwpck_require__.s = 5386);
-/******/ var __webpack_exports__run = __webpack_exports__.e;
-/******/ export { __webpack_exports__run as run };
+/******/ var __webpack_exports__PR_BASED_ACTIONS = __webpack_exports__.Vj;
+/******/ var __webpack_exports__SUPPORTED_ACTIONS = __webpack_exports__.Jm;
+/******/ var __webpack_exports__run = __webpack_exports__.eF;
+/******/ export { __webpack_exports__PR_BASED_ACTIONS as PR_BASED_ACTIONS, __webpack_exports__SUPPORTED_ACTIONS as SUPPORTED_ACTIONS, __webpack_exports__run as run };
 /******/ 

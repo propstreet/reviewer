@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { ReviewService } from "./reviewer.js";
 import { Context } from "@actions/github/lib/context.js";
+import { SUPPORTED_ACTIONS } from "./index.js";
 
 // Mock types
 type MockType = ReturnType<typeof vi.fn>;
@@ -109,9 +110,7 @@ describe("index", () => {
     expect(errorMessage).toContain("Missing base or head sha to review.");
     expect(errorMessage).toContain("Detected action 'labeled'");
     expect(errorMessage).toContain("is not auto-detected");
-    expect(errorMessage).toContain(
-      "opened, reopened, ready_for_review, synchronize"
-    );
+    expect(errorMessage).toContain(SUPPORTED_ACTIONS.join(", "));
 
     // Verify reviewer was not called
     expect(ReviewService.prototype.review).not.toHaveBeenCalled();
@@ -158,6 +157,64 @@ describe("index", () => {
 
     // Verify reviewer was not called
     expect(ReviewService.prototype.review).not.toHaveBeenCalled();
+  });
+
+  it("should show helpful error when supported action has missing payload SHAs", async () => {
+    // Mock github context with supported action but missing pull_request SHAs
+    vi.mocked(github).context.payload = {
+      action: "opened",
+      pull_request: {
+        number: 1,
+        // Missing base.sha and head.sha
+      },
+    } as Context["payload"];
+
+    const { run } = await import("./index.js");
+    await run();
+
+    // Verify setFailed called exactly once with "should be supported" message
+    expect(core.setFailed).toHaveBeenCalledTimes(1);
+    const errorMessage = vi.mocked(core.setFailed).mock.calls[0][0] as string;
+    expect(errorMessage).toContain("Missing base or head sha to review.");
+    expect(errorMessage).toContain("Detected action 'opened'");
+    expect(errorMessage).toContain("should be supported");
+    expect(errorMessage).toContain("payload is missing required SHA fields");
+
+    // Verify reviewer was not called
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
+  });
+
+  it("should treat whitespace-only base/head inputs as empty", async () => {
+    // Mock github context with supported action
+    vi.mocked(github).context.payload = {
+      action: "opened",
+      pull_request: {
+        number: 1,
+        base: { sha: "base-sha" },
+        head: { sha: "head-sha" },
+      },
+    } as Context["payload"];
+
+    // Whitespace-only inputs should be treated as empty and allow auto-detection
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "base") return "   ";
+      if (name === "head") return "\t";
+      return getInputDefaults(name);
+    });
+
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
+
+    const { run } = await import("./index.js");
+    await run();
+
+    // Should succeed using auto-detected SHAs (not fail with partial input error)
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        base: "base-sha",
+        head: "head-sha",
+      })
+    );
   });
 
   it("should use base and head from getInput", async () => {
