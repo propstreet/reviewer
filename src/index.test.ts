@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { ReviewService } from "./reviewer.js";
 import { Context } from "@actions/github/lib/context.js";
+import { SUPPORTED_ACTIONS } from "./constants.js";
 
 // Mock types
 type MockType = ReturnType<typeof vi.fn>;
@@ -77,18 +78,143 @@ describe("index", () => {
     delete process.env.GITHUB_TOKEN;
   });
 
-  it("should require base and head sha", async () => {
-    // Import and run the index file
+  it("should require base and head sha with helpful error when no action detected", async () => {
+    // Default payload is {}, so action is undefined
     const { run } = await import("./index.js");
     await run();
 
-    // Verify no errors were reported
-    expect(core.setFailed).toHaveBeenCalledWith(
-      "Missing base or head sha to review."
+    // Verify setFailed called exactly once with all expected substrings
+    expect(core.setFailed).toHaveBeenCalledTimes(1);
+    const errorMessage = vi.mocked(core.setFailed).mock.calls[0][0] as string;
+    expect(errorMessage).toContain("Missing base or head sha to review.");
+    expect(errorMessage).toContain("No action detected in payload.");
+    expect(errorMessage).toContain("Supported auto-detection:");
+    expect(errorMessage).toContain("provide explicit 'base' and 'head' inputs");
+
+    // Verify reviewer was not called
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
+  });
+
+  it("should show helpful error for unsupported action type", async () => {
+    // Mock github context payload with unsupported action
+    vi.mocked(github).context.payload = {
+      action: "labeled",
+    } as Context["payload"];
+
+    const { run } = await import("./index.js");
+    await run();
+
+    // Verify setFailed called exactly once with all expected substrings
+    expect(core.setFailed).toHaveBeenCalledTimes(1);
+    const errorMessage = vi.mocked(core.setFailed).mock.calls[0][0] as string;
+    expect(errorMessage).toContain("Missing base or head sha to review.");
+    expect(errorMessage).toContain("Detected action 'labeled'");
+    expect(errorMessage).toContain("is not auto-detected");
+    expect(errorMessage).toContain(SUPPORTED_ACTIONS.join(", "));
+
+    // Verify reviewer was not called
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
+  });
+
+  it("should show helpful error when only base is provided", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "base") return "some-base-sha";
+      return getInputDefaults(name);
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    // Verify setFailed called exactly once with partial input message
+    expect(core.setFailed).toHaveBeenCalledTimes(1);
+    const errorMessage = vi.mocked(core.setFailed).mock.calls[0][0] as string;
+    expect(errorMessage).toContain("Missing base or head sha to review.");
+    expect(errorMessage).toContain("Only 'base' was provided");
+    expect(errorMessage).toContain("'head' is also required");
+    expect(errorMessage).toContain(
+      "Provide both 'base' and 'head', or omit both to use auto-detection"
     );
 
     // Verify reviewer was not called
     expect(ReviewService.prototype.review).not.toHaveBeenCalled();
+  });
+
+  it("should show helpful error when only head is provided", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "head") return "some-head-sha";
+      return getInputDefaults(name);
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    // Verify setFailed called exactly once with partial input message
+    expect(core.setFailed).toHaveBeenCalledTimes(1);
+    const errorMessage = vi.mocked(core.setFailed).mock.calls[0][0] as string;
+    expect(errorMessage).toContain("Missing base or head sha to review.");
+    expect(errorMessage).toContain("Only 'head' was provided");
+    expect(errorMessage).toContain("'base' is also required");
+
+    // Verify reviewer was not called
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
+  });
+
+  it("should show helpful error when supported action has missing payload SHAs", async () => {
+    // Mock github context with supported action but missing pull_request SHAs
+    vi.mocked(github).context.payload = {
+      action: "opened",
+      pull_request: {
+        number: 1,
+        // Missing base.sha and head.sha
+      },
+    } as Context["payload"];
+
+    const { run } = await import("./index.js");
+    await run();
+
+    // Verify setFailed called exactly once with "should be supported" message
+    expect(core.setFailed).toHaveBeenCalledTimes(1);
+    const errorMessage = vi.mocked(core.setFailed).mock.calls[0][0] as string;
+    expect(errorMessage).toContain("Missing base or head sha to review.");
+    expect(errorMessage).toContain("Detected action 'opened'");
+    expect(errorMessage).toContain("should be supported");
+    expect(errorMessage).toContain("payload is missing required SHA fields");
+
+    // Verify reviewer was not called
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
+  });
+
+  it("should treat whitespace-only base/head inputs as empty", async () => {
+    // Mock github context with supported action
+    vi.mocked(github).context.payload = {
+      action: "opened",
+      pull_request: {
+        number: 1,
+        base: { sha: "base-sha" },
+        head: { sha: "head-sha" },
+      },
+    } as Context["payload"];
+
+    // Whitespace-only inputs should be treated as empty and allow auto-detection
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "base") return "   ";
+      if (name === "head") return "\t";
+      return getInputDefaults(name);
+    });
+
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
+
+    const { run } = await import("./index.js");
+    await run();
+
+    // Should succeed using auto-detected SHAs (not fail with partial input error)
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        base: "base-sha",
+        head: "head-sha",
+      })
+    );
   });
 
   it("should use base and head from getInput", async () => {
@@ -178,6 +304,64 @@ describe("index", () => {
     expect(core.setFailed).not.toHaveBeenCalled();
 
     // Verify reviewer was called with provided values
+    expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith({
+      base: "base-sha",
+      head: "head-sha",
+      tokenLimit: 50000,
+      changesThreshold: "error",
+      reasoningEffort: "medium",
+      commitLimit: 100,
+      excludePatterns: [],
+      backgroundPolling: undefined,
+    });
+  });
+
+  it("should use base and head from reopened event", async () => {
+    // Mock github context payload
+    vi.mocked(github).context.payload = {
+      action: "reopened",
+      pull_request: {
+        number: 1,
+        base: { sha: "base-sha" },
+        head: { sha: "head-sha" },
+      },
+    } as Context["payload"];
+
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith({
+      base: "base-sha",
+      head: "head-sha",
+      tokenLimit: 50000,
+      changesThreshold: "error",
+      reasoningEffort: "medium",
+      commitLimit: 100,
+      excludePatterns: [],
+      backgroundPolling: undefined,
+    });
+  });
+
+  it("should use base and head from ready_for_review event", async () => {
+    // Mock github context payload
+    vi.mocked(github).context.payload = {
+      action: "ready_for_review",
+      pull_request: {
+        number: 1,
+        base: { sha: "base-sha" },
+        head: { sha: "head-sha" },
+      },
+    } as Context["payload"];
+
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).not.toHaveBeenCalled();
     expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith({
       base: "base-sha",
       head: "head-sha",

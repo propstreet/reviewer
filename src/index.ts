@@ -20,6 +20,11 @@ import type { BackgroundPollingConfig } from "./azureOpenAIService.js";
 import { ReviewService } from "./reviewer.js";
 import { GitHubService } from "./githubService.js";
 import { AzureOpenAIService } from "./azureOpenAIService.js";
+import {
+  SUPPORTED_ACTIONS,
+  isPrBasedAction,
+  isSupportedAction,
+} from "./constants.js";
 
 export async function run(): Promise<void> {
   try {
@@ -134,12 +139,20 @@ export async function run(): Promise<void> {
 
     // Check the pull_request event in the payload
     const action = github.context.payload.action;
-    let base = core.getInput("base"); // possibly empty
-    let head = core.getInput("head"); // possibly empty
+    // Trim inputs to treat whitespace-only as empty
+    const baseInput = core.getInput("base").trim();
+    const headInput = core.getInput("head").trim();
+    let base = baseInput;
+    let head = headInput;
+
+    core.debug(`Detected action: ${action ?? "(none)"}`);
+    core.debug(
+      `Base input: ${base || "(none)"}, Head input: ${head || "(none)"}`
+    );
 
     // If user hasn't explicitly given base/head, override from the event:
     if (!base && !head) {
-      if (action === "opened") {
+      if (isPrBasedAction(action)) {
         base = github.context.payload.pull_request?.base?.sha;
         head = github.context.payload.pull_request?.head?.sha;
       } else if (action === "synchronize") {
@@ -148,8 +161,31 @@ export async function run(): Promise<void> {
       }
     }
 
+    core.debug(`Resolved base: ${base || "(none)"}, head: ${head || "(none)"}`);
+
     if (!base || !head) {
-      core.setFailed("Missing base or head sha to review.");
+      // Check for partial input configuration (user provided only one of base/head)
+      const hasPartialInput =
+        (baseInput && !headInput) || (!baseInput && headInput);
+      let hint: string;
+
+      if (hasPartialInput) {
+        const provided = baseInput ? "base" : "head";
+        const missing = baseInput ? "head" : "base";
+        hint = `Only '${provided}' was provided; '${missing}' is also required. Provide both 'base' and 'head', or omit both to use auto-detection.`;
+      } else if (action) {
+        hint = isSupportedAction(action)
+          ? `Detected action '${action}' which should be supported, but payload is missing required SHA fields.`
+          : `Detected action '${action}' which is not auto-detected.`;
+      } else {
+        hint = "No action detected in payload.";
+      }
+
+      core.setFailed(
+        `Missing base or head sha to review. ${hint} ` +
+          `Supported auto-detection: ${SUPPORTED_ACTIONS.join(", ")}. ` +
+          `Alternatively, provide explicit 'base' and 'head' inputs.`
+      );
       return;
     }
 

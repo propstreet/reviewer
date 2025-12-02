@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1] - 2025-12-02
+
+### Fixed
+- **Improved error message for missing SHAs** - Error now shows detected action type, supported actions list, and suggests using explicit `base`/`head` inputs
+- **Added debug logging** - Logs detected action and resolved SHAs to help troubleshoot configuration issues
+
+### Added
+- **Support for `reopened` event** - PRs that are reopened now trigger reviews automatically
+- **Support for `ready_for_review` event** - Draft PRs marked ready now trigger reviews automatically
+
 ## [3.3.0] - 2025-11-27
 
 ### Fixed
