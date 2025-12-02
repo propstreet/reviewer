@@ -2,7 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { ReviewService } from "./reviewer.js";
 import { Context } from "@actions/github/lib/context.js";
-import { SUPPORTED_ACTIONS } from "./index.js";
+import { SUPPORTED_ACTIONS } from "./constants.js";
 
 // Mock types
 type MockType = ReturnType<typeof vi.fn>;

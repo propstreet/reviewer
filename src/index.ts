@@ -20,16 +20,11 @@ import type { BackgroundPollingConfig } from "./azureOpenAIService.js";
 import { ReviewService } from "./reviewer.js";
 import { GitHubService } from "./githubService.js";
 import { AzureOpenAIService } from "./azureOpenAIService.js";
-
-/** PR event actions that use pull_request.base.sha and pull_request.head.sha */
-export const PR_BASED_ACTIONS = [
-  "opened",
-  "reopened",
-  "ready_for_review",
-] as const;
-
-/** All supported actions for SHA auto-detection */
-export const SUPPORTED_ACTIONS = [...PR_BASED_ACTIONS, "synchronize"] as const;
+import {
+  SUPPORTED_ACTIONS,
+  isPrBasedAction,
+  isSupportedAction,
+} from "./constants.js";
 
 export async function run(): Promise<void> {
   try {
@@ -157,10 +152,7 @@ export async function run(): Promise<void> {
 
     // If user hasn't explicitly given base/head, override from the event:
     if (!base && !head) {
-      if (
-        action &&
-        PR_BASED_ACTIONS.includes(action as (typeof PR_BASED_ACTIONS)[number])
-      ) {
+      if (isPrBasedAction(action)) {
         base = github.context.payload.pull_request?.base?.sha;
         head = github.context.payload.pull_request?.head?.sha;
       } else if (action === "synchronize") {
@@ -182,7 +174,7 @@ export async function run(): Promise<void> {
         const missing = baseInput ? "head" : "base";
         hint = `Only '${provided}' was provided; '${missing}' is also required. Provide both 'base' and 'head', or omit both to use auto-detection.`;
       } else if (action) {
-        hint = (SUPPORTED_ACTIONS as readonly string[]).includes(action)
+        hint = isSupportedAction(action)
           ? `Detected action '${action}' which should be supported, but payload is missing required SHA fields.`
           : `Detected action '${action}' which is not auto-detected.`;
       } else {

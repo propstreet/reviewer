@@ -29820,15 +29820,13 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
-/***/ 5386:
+/***/ 7327:
 /***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
 
 // EXPORTS
 __nccwpck_require__.d(__webpack_exports__, {
-  Vj: () => (/* binding */ PR_BASED_ACTIONS),
-  Jm: () => (/* binding */ SUPPORTED_ACTIONS),
-  eF: () => (/* binding */ run)
+  e: () => (/* binding */ run)
 });
 
 // NAMESPACE OBJECT: ./node_modules/gpt-tokenizer/esm/modelsMap.js
@@ -49672,13 +49670,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
     }
 }
 
-;// CONCATENATED MODULE: ./src/index.ts
-
-
-
-
-
-
+;// CONCATENATED MODULE: ./src/constants.ts
 /** PR event actions that use pull_request.base.sha and pull_request.head.sha */
 const PR_BASED_ACTIONS = [
     "opened",
@@ -49687,6 +49679,23 @@ const PR_BASED_ACTIONS = [
 ];
 /** All supported actions for SHA auto-detection */
 const SUPPORTED_ACTIONS = [...PR_BASED_ACTIONS, "synchronize"];
+/** Type guard for PR-based actions (opened, reopened, ready_for_review) */
+function isPrBasedAction(action) {
+    return !!action && PR_BASED_ACTIONS.includes(action);
+}
+/** Type guard for all supported actions */
+function isSupportedAction(action) {
+    return !!action && SUPPORTED_ACTIONS.includes(action);
+}
+
+;// CONCATENATED MODULE: ./src/index.ts
+
+
+
+
+
+
+
 async function run() {
     try {
         // 1. Validate Inputs
@@ -49786,8 +49795,7 @@ async function run() {
         core.debug(`Base input: ${base || "(none)"}, Head input: ${head || "(none)"}`);
         // If user hasn't explicitly given base/head, override from the event:
         if (!base && !head) {
-            if (action &&
-                PR_BASED_ACTIONS.includes(action)) {
+            if (isPrBasedAction(action)) {
                 base = github.context.payload.pull_request?.base?.sha;
                 head = github.context.payload.pull_request?.head?.sha;
             }
@@ -49807,7 +49815,7 @@ async function run() {
                 hint = `Only '${provided}' was provided; '${missing}' is also required. Provide both 'base' and 'head', or omit both to use auto-detection.`;
             }
             else if (action) {
-                hint = SUPPORTED_ACTIONS.includes(action)
+                hint = isSupportedAction(action)
                     ? `Detected action '${action}' which should be supported, but payload is missing required SHA fields.`
                     : `Detected action '${action}' which is not auto-detected.`;
             }
@@ -51767,9 +51775,7 @@ module.exports = parseParams
 /******/ // module cache are used so entry inlining is disabled
 /******/ // startup
 /******/ // Load entry module and return exports
-/******/ var __webpack_exports__ = __nccwpck_require__(__nccwpck_require__.s = 5386);
-/******/ var __webpack_exports__PR_BASED_ACTIONS = __webpack_exports__.Vj;
-/******/ var __webpack_exports__SUPPORTED_ACTIONS = __webpack_exports__.Jm;
-/******/ var __webpack_exports__run = __webpack_exports__.eF;
-/******/ export { __webpack_exports__PR_BASED_ACTIONS as PR_BASED_ACTIONS, __webpack_exports__SUPPORTED_ACTIONS as SUPPORTED_ACTIONS, __webpack_exports__run as run };
+/******/ var __webpack_exports__ = __nccwpck_require__(__nccwpck_require__.s = 7327);
+/******/ var __webpack_exports__run = __webpack_exports__.e;
+/******/ export { __webpack_exports__run as run };
 /******/ 
