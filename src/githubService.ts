@@ -323,4 +323,21 @@ export class GitHubService {
       );
     }
   }
+
+  async isMergeCommit(sha: string): Promise<boolean> {
+    try {
+      const response = await this.octokit.rest.repos.getCommit({
+        owner: this.config.owner,
+        repo: this.config.repo,
+        ref: sha,
+      });
+
+      // A merge commit has more than one parent
+      return response.data.parents.length > 1;
+    } catch (error) {
+      throw new Error(
+        `Failed to check if commit ${sha} is a merge commit: ${formatError(error)}`
+      );
+    }
+  }
 }

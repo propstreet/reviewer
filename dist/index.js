@@ -33659,6 +33659,14 @@ class ReviewService {
                 skippedCommits.push({ sha: c.sha, reason: "not_in_pr" });
                 continue;
             }
+            // Skip merge commits - their diffs represent merge resolution, not actual changes,
+            // and the merged-in changes have already been reviewed in their original PRs
+            const isMerge = await this.githubService.isMergeCommit(c.sha);
+            if (isMerge) {
+                core.info(`Skipping merge commit ${c.sha} - merged changes were reviewed in their original PRs.`);
+                skippedCommits.push({ sha: c.sha, reason: "merge_commit" });
+                continue;
+            }
             const commitDetails = await this.githubService.getCommitDetails(c.sha);
             core.debug(`Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`);
             const packed = this.packCommit(prompt, commitDetails, options.tokenLimit, options.excludePatterns);
@@ -34073,6 +34081,20 @@ class GitHubService {
         }
         catch (error) {
             throw new Error(`Failed to list PRs associated with commit ${sha}: ${formatError(error)}`);
+        }
+    }
+    async isMergeCommit(sha) {
+        try {
+            const response = await this.octokit.rest.repos.getCommit({
+                owner: this.config.owner,
+                repo: this.config.repo,
+                ref: sha,
+            });
+            // A merge commit has more than one parent
+            return response.data.parents.length > 1;
+        }
+        catch (error) {
+            throw new Error(`Failed to check if commit ${sha} is a merge commit: ${formatError(error)}`);
         }
     }
 }

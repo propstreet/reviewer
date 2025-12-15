@@ -47,14 +47,24 @@ npm run view-prompts     # View prompt evaluation results in browser
 
 ## Release Process
 
-1. Update version: `npm version minor --no-git-tag-version`
+1. Update version: `npm version patch|minor|major --no-git-tag-version`
 2. Update `CHANGELOG.md` (Keep a Changelog format)
-3. Run checks: `npm test && npm run build && npm run lint`
+3. Run checks: `npm run lint && npm run build && npm test`
 4. Rebuild dist: `npm run package`
-5. Commit, push, create PR
-6. After merge, create tag: `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`
-7. Create release: `gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."`
-8. Update floating major tag: `git tag -fa v3 -m "Update v3 tag" && git push origin v3 --force`
+5. Create branch, commit, push, and open PR:
+   ```bash
+   git checkout -b release/vX.Y.Z
+   git add -A && git commit -m "fix|feat: description"
+   git push -u origin release/vX.Y.Z
+   gh pr create --title "Release vX.Y.Z" --body "..."
+   ```
+6. After PR is merged, create tag and release from main:
+   ```bash
+   git checkout main && git pull
+   git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."
+   ```
+7. Update floating major tag: `git tag -fa v3 -m "Update v3 tag" && git push origin v3 --force`
 
 ## Code Conventions
 

@@ -132,6 +132,8 @@ describe("reviewer", () => {
     vi.mocked(GitHubService.prototype.commitBelongsToPR).mockResolvedValue(
       true
     );
+
+    vi.mocked(GitHubService.prototype.isMergeCommit).mockResolvedValue(false);
   });
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -523,6 +525,25 @@ commit diff
     // Verify skip message was logged
     expect(core.info).toHaveBeenCalledWith(
       "Skipping commit head-sha as it does not belong to the current PR."
+    );
+    expect(core.info).toHaveBeenCalledWith("No commits found to review.");
+  });
+
+  it("should skip merge commits", async () => {
+    // Mock isMergeCommit to return true
+    vi.mocked(GitHubService.prototype.isMergeCommit).mockResolvedValue(true);
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    const result = await reviewService.review(reviewOptions);
+
+    expect(result).toBe(false);
+
+    // Verify skip message was logged
+    expect(core.info).toHaveBeenCalledWith(
+      "Skipping merge commit head-sha - merged changes were reviewed in their original PRs."
     );
     expect(core.info).toHaveBeenCalledWith("No commits found to review.");
   });

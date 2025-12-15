@@ -27,7 +27,7 @@ export type PackedCommit = {
 
 export type SkippedCommit = {
   sha: string;
-  reason: "token_limit" | "all_excluded" | "not_in_pr";
+  reason: "token_limit" | "all_excluded" | "not_in_pr" | "merge_commit";
 };
 
 export type BuildPromptResult = {
@@ -181,6 +181,17 @@ export class ReviewService {
           `Skipping commit ${c.sha} as it does not belong to the current PR.`
         );
         skippedCommits.push({ sha: c.sha, reason: "not_in_pr" });
+        continue;
+      }
+
+      // Skip merge commits - their diffs represent merge resolution, not actual changes,
+      // and the merged-in changes have already been reviewed in their original PRs
+      const isMerge = await this.githubService.isMergeCommit(c.sha);
+      if (isMerge) {
+        core.info(
+          `Skipping merge commit ${c.sha} - merged changes were reviewed in their original PRs.`
+        );
+        skippedCommits.push({ sha: c.sha, reason: "merge_commit" });
         continue;
       }
 
