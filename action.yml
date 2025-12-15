@@ -1,6 +1,7 @@
 name: "Pro PR Reviewer"
-icon: "zoom-in"
-color: "black"
+branding:
+  icon: "zoom-in"
+  color: "black"
 description: "Uses Azure OpenAI to review diffs, then posts code review comments on GitHub PRs."
 author: "Propstreet"
 runs:
