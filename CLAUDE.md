@@ -45,26 +45,39 @@ npm run view-prompts     # View prompt evaluation results in browser
 
 **Background Mode**: For slow models (15+ min), `azureOpenAIService` uses OpenAI's `background: true` parameter with exponential backoff polling.
 
+## Development Workflow
+
+**Feature branches** - For new features and bug fixes:
+```bash
+git checkout -b feat/my-feature    # or fix/my-bug
+# ... make changes ...
+git add -A && git commit -m "feat: add new feature"
+git push -u origin feat/my-feature
+gh pr create --title "feat: add new feature" --body "..."
+```
+
 ## Release Process
 
-1. Update version: `npm version patch|minor|major --no-git-tag-version`
-2. Update `CHANGELOG.md` (Keep a Changelog format)
-3. Run checks: `npm run lint && npm run build && npm test`
-4. Rebuild dist: `npm run package`
-5. Create branch, commit, push, and open PR:
+**Release branches** - For preparing releases (version bump, changelog, dist rebuild):
+
+1. Create release branch: `git checkout -b release/vX.Y.Z`
+2. Update version: `npm version patch|minor|major --no-git-tag-version`
+3. Update `CHANGELOG.md` (Keep a Changelog format)
+4. Run checks: `npm run lint && npm run build && npm test`
+5. Rebuild dist: `npm run package`
+6. Commit and push:
    ```bash
-   git checkout -b release/vX.Y.Z
-   git add -A && git commit -m "fix|feat: description"
+   git add -A && git commit -m "chore(release): vX.Y.Z"
    git push -u origin release/vX.Y.Z
-   gh pr create --title "Release vX.Y.Z" --body "..."
+   gh pr create --title "chore(release): vX.Y.Z" --body "..."
    ```
-6. After PR is merged, create tag and release from main:
+7. After PR is merged, create tag and release from main:
    ```bash
    git checkout main && git pull
    git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
    gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."
    ```
-7. Update floating major tag: `git tag -fa v3 -m "Update v3 tag" && git push origin v3 --force`
+8. Update floating major tag: `git tag -fa v3 -m "Update v3 tag" && git push origin v3 --force`
 
 ## Code Conventions
 
