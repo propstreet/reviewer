@@ -536,12 +536,20 @@ commit diff
   });
 
   it("should skip merge commits by default", async () => {
-    // Mock getCommitDetails to return a merge commit (parentCount > 1)
-    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
-      sha: "head-sha",
-      message: "Merge branch 'master' into feature",
+    // Mock compareCommits to return a merge commit (parentCount > 1)
+    // The merge check now happens early using compareCommits data
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [
+        {
+          sha: "head-sha",
+          message: "Merge branch 'master' into feature",
+          patches: [{ filename: "commit.ts", patch: "commit diff" }],
+          parentCount: 2,
+        },
+      ],
       patches: [{ filename: "commit.ts", patch: "commit diff" }],
-      parentCount: 2,
     });
 
     const reviewService = new ReviewService(
@@ -571,7 +579,22 @@ commit diff
       (_input: unknown, _tokenLimit: number) => 1234
     );
 
-    // Mock getCommitDetails to return a merge commit (parentCount > 1)
+    // Mock compareCommits to return a merge commit (parentCount > 1)
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [
+        {
+          sha: "head-sha",
+          message: "Merge branch 'master' into feature",
+          patches: [{ filename: "commit.ts", patch: "commit diff" }],
+          parentCount: 2,
+        },
+      ],
+      patches: [{ filename: "commit.ts", patch: "commit diff" }],
+    });
+
+    // Mock getCommitDetails for when the commit is processed (not skipped)
     vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
       sha: "head-sha",
       message: "Merge branch 'master' into feature",

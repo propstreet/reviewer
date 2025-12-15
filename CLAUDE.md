@@ -49,6 +49,7 @@ npm run view-prompts     # View prompt evaluation results in browser
 
 **Feature branches** - For new features and bug fixes:
 ```bash
+git checkout main && git pull
 git checkout -b feat/my-feature    # or fix/my-bug
 # ... make changes ...
 git add -A && git commit -m "feat: add new feature"
@@ -58,26 +59,25 @@ gh pr create --title "feat: add new feature" --body "..."
 
 ## Release Process
 
-**Release branches** - For preparing releases (version bump, changelog, dist rebuild):
+Release prep is done on the feature branch before merging, so main is always release-ready.
 
-1. Create release branch: `git checkout -b release/vX.Y.Z`
-2. Update version: `npm version patch|minor|major --no-git-tag-version`
-3. Update `CHANGELOG.md` (Keep a Changelog format)
-4. Run checks: `npm run lint && npm run build && npm test`
-5. Rebuild dist: `npm run package`
-6. Commit and push:
+1. Before merging your feature PR, prepare the release:
    ```bash
+   npm version patch|minor|major --no-git-tag-version
+   # Update CHANGELOG.md (Keep a Changelog format)
+   npm run lint && npm run build && npm test
+   npm run package
    git add -A && git commit -m "chore(release): vX.Y.Z"
-   git push -u origin release/vX.Y.Z
-   gh pr create --title "chore(release): vX.Y.Z" --body "..."
+   git push
    ```
-7. After PR is merged, create tag and release from main:
+2. Merge PR to main (with branch protection)
+3. Tag and release from main:
    ```bash
    git checkout main && git pull
    git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
    gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."
    ```
-8. Update floating major tag: `git tag -fa v3 -m "Update v3 tag" && git push origin v3 --force`
+4. Update floating major tag: `git tag -fa v3 -m "Update v3 tag" && git push origin v3 --force`
 
 ## Code Conventions
 

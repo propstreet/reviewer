@@ -171,9 +171,20 @@ export class ReviewService {
 
     const packedCommits: PackedCommit[] = [];
     const skippedCommits: SkippedCommit[] = [];
+    const skipMergeCommits = options.skipMergeCommits ?? true;
 
     for (const c of commitsToProcess) {
       core.debug(`Processing commit: ${c.sha}`);
+
+      // Skip merge commits early using parentCount from compareCommits
+      // This avoids unnecessary getCommitDetails API calls for commits we'll skip
+      if (skipMergeCommits && c.parentCount > 1) {
+        core.info(
+          `Skipping merge commit ${c.sha} - merged changes were reviewed in their original PRs.`
+        );
+        skippedCommits.push({ sha: c.sha, reason: "merge_commit" });
+        continue;
+      }
 
       // Verify that the commit belongs to the current PR
       const belongs = await this.githubService.commitBelongsToPR(c.sha);
@@ -185,19 +196,8 @@ export class ReviewService {
         continue;
       }
 
-      // Get commit details (includes parentCount for merge detection)
+      // Get commit details for patch extraction
       const commitDetails = await this.githubService.getCommitDetails(c.sha);
-
-      // Skip merge commits - their diffs represent merge resolution, not actual changes,
-      // and the merged-in changes have already been reviewed in their original PRs
-      const skipMergeCommits = options.skipMergeCommits ?? true;
-      if (skipMergeCommits && commitDetails.parentCount > 1) {
-        core.info(
-          `Skipping merge commit ${c.sha} - merged changes were reviewed in their original PRs.`
-        );
-        skippedCommits.push({ sha: c.sha, reason: "merge_commit" });
-        continue;
-      }
 
       core.debug(
         `Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`
