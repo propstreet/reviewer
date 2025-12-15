@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2025-12-15
+
+### Added
+- **`skipMergeCommits` input** - New configurable option to control merge commit handling (default: `true`). Set to `false` to review merge commits if needed.
+- **Boolean input validators** - Added `isValidBooleanInput()` and `parseBooleanInput()` helpers for input validation.
+
+### Fixed
+- **Skip merge commits during review** - Fixed "Path could not be resolved, Line could not be resolved" errors after merging master into a feature branch. Merge commits are now automatically skipped since their diffs represent merge resolution changes that have already been reviewed in their original PRs.
+
+### Changed
+- **Optimized API usage** - Merge commit detection now uses `parentCount` from `compareCommits` response, avoiding extra `getCommitDetails` API calls for commits that will be skipped.
+
 ## [3.3.1] - 2025-12-02
 
 ### Fixed

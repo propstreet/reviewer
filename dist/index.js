@@ -29900,6 +29900,14 @@ function isValidSeverityLevel(severity) {
 function isValidBackgroundMode(mode) {
     return ["enabled", "disabled"].includes(mode);
 }
+function isValidBooleanInput(value) {
+    return ["true", "false"].includes(value.toLowerCase());
+}
+function parseBooleanInput(value, defaultValue) {
+    if (!value)
+        return defaultValue;
+    return value.toLowerCase() === "true";
+}
 // ============================================================================
 // Numeric Validators
 // ============================================================================
@@ -33650,8 +33658,16 @@ class ReviewService {
         }
         const packedCommits = [];
         const skippedCommits = [];
+        const skipMergeCommits = options.skipMergeCommits;
         for (const c of commitsToProcess) {
             core.debug(`Processing commit: ${c.sha}`);
+            // Skip merge commits early using parentCount from compareCommits
+            // This avoids unnecessary getCommitDetails API calls for commits we'll skip
+            if (skipMergeCommits && c.parentCount > 1) {
+                core.info(`Skipping merge commit ${c.sha} - merged changes were reviewed in their original PRs.`);
+                skippedCommits.push({ sha: c.sha, reason: "merge_commit" });
+                continue;
+            }
             // Verify that the commit belongs to the current PR
             const belongs = await this.githubService.commitBelongsToPR(c.sha);
             if (!belongs) {
@@ -33659,6 +33675,7 @@ class ReviewService {
                 skippedCommits.push({ sha: c.sha, reason: "not_in_pr" });
                 continue;
             }
+            // Get commit details for patch extraction
             const commitDetails = await this.githubService.getCommitDetails(c.sha);
             core.debug(`Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`);
             const packed = this.packCommit(prompt, commitDetails, options.tokenLimit, options.excludePatterns);
@@ -34034,6 +34051,7 @@ class GitHubService {
                     sha: commit.sha,
                     message: commit.commit.message,
                     patches: [], // get patches for each commit to base
+                    parentCount: commit.parents?.length ?? 0,
                 })),
                 patches: extractPatches(response.data.files),
             };
@@ -34052,10 +34070,12 @@ class GitHubService {
             if (response.status !== 200) {
                 throw new Error(`Failed to get commit details for ${sha}, status: ${response.status}`);
             }
+            const parents = response.data.parents ?? [];
             return {
                 sha,
                 message: response.data.commit.message,
                 patches: extractPatches(response.data.files),
+                parentCount: parents.length,
             };
         }
         catch (error) {
@@ -49761,6 +49781,12 @@ async function run() {
             return;
         }
         const commitLimit = parseInt(commitLimitInput, 10);
+        const skipMergeCommitsInput = core.getInput("skipMergeCommits") || "true";
+        if (!isValidBooleanInput(skipMergeCommitsInput)) {
+            core.setFailed(`Invalid skipMergeCommits: ${skipMergeCommitsInput}. Must be 'true' or 'false'.`);
+            return;
+        }
+        const skipMergeCommits = parseBooleanInput(skipMergeCommitsInput, true);
         const githubToken = process.env.GITHUB_TOKEN;
         if (!githubToken) {
             core.setFailed("Missing GITHUB_TOKEN in environment.");
@@ -49851,6 +49877,7 @@ async function run() {
             excludePatterns,
             customPrompt: customPrompt || undefined,
             backgroundPolling,
+            skipMergeCommits,
         });
         // 3. Done
         core.info("Review completed.");

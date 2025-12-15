@@ -57,3 +57,7 @@ inputs:
     description: "Initial polling interval in seconds for background requests (5-60)."
     required: false
     default: "10"
+  skipMergeCommits:
+    description: "Skip merge commits during review. Merge commit diffs may not align with GitHub's PR diff, causing comment placement errors. Set to 'false' to review merge commits (may have partial success)."
+    required: false
+    default: "true"

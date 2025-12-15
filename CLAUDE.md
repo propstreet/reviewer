@@ -45,16 +45,39 @@ npm run view-prompts     # View prompt evaluation results in browser
 
 **Background Mode**: For slow models (15+ min), `azureOpenAIService` uses OpenAI's `background: true` parameter with exponential backoff polling.
 
+## Development Workflow
+
+**Feature branches** - For new features and bug fixes:
+```bash
+git checkout main && git pull
+git checkout -b feat/my-feature    # or fix/my-bug
+# ... make changes ...
+git add -A && git commit -m "feat: add new feature"
+git push -u origin feat/my-feature
+gh pr create --title "feat: add new feature" --body "..."
+```
+
 ## Release Process
 
-1. Update version: `npm version minor --no-git-tag-version`
-2. Update `CHANGELOG.md` (Keep a Changelog format)
-3. Run checks: `npm test && npm run build && npm run lint`
-4. Rebuild dist: `npm run package`
-5. Commit, push, create PR
-6. After merge, create tag: `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`
-7. Create release: `gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."`
-8. Update floating major tag: `git tag -fa v3 -m "Update v3 tag" && git push origin v3 --force`
+Release prep is done on the feature branch before merging, so main is always release-ready.
+
+1. Before merging your feature PR, prepare the release:
+   ```bash
+   npm version patch|minor|major --no-git-tag-version
+   # Update CHANGELOG.md (Keep a Changelog format)
+   npm run lint && npm run build && npm test
+   npm run package
+   git add -A && git commit -m "chore(release): vX.Y.Z"
+   git push
+   ```
+2. Merge PR to main (with branch protection)
+3. Tag and release from main:
+   ```bash
+   git checkout main && git pull
+   git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes "..."
+   ```
+4. Update floating major tag: `git tag -fa v3 -m "Update v3 tag" && git push origin v3 --force`
 
 ## Code Conventions
 

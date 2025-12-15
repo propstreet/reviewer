@@ -78,6 +78,7 @@ describe("reviewer", () => {
     commitLimit: 10,
     base: "base-sha",
     head: "head-sha",
+    skipMergeCommits: true,
   };
 
   const mockedGithubService = new GitHubService({
@@ -105,6 +106,7 @@ describe("reviewer", () => {
           sha: "head-sha",
           message: "test commit",
           patches: [{ filename: "commit.ts", patch: "commit diff" }],
+          parentCount: 1,
         },
       ],
       patches: [{ filename: "commit.ts", patch: "commit diff" }],
@@ -127,6 +129,7 @@ describe("reviewer", () => {
       sha: "head-sha",
       message: "test commit",
       patches: [{ filename: "commit.ts", patch: "commit diff" }],
+      parentCount: 1,
     });
 
     vi.mocked(GitHubService.prototype.commitBelongsToPR).mockResolvedValue(
@@ -289,6 +292,7 @@ commit diff
         { filename: "small2.ts", patch: "small diff 2" },
         { filename: "large.ts", patch: "very large diff" },
       ],
+      parentCount: 1,
     });
 
     // Mock GitHubService to return multiple patches
@@ -304,6 +308,7 @@ commit diff
             { filename: "small2.ts", patch: "small diff 2" },
             { filename: "large.ts", patch: "very large diff" },
           ],
+          parentCount: 1,
         },
       ],
       patches: [
@@ -349,6 +354,7 @@ commit diff
       sha: "head-sha",
       message: "head commit",
       patches: [], // Empty patches
+      parentCount: 1,
     });
 
     const reviewService = new ReviewService(
@@ -385,6 +391,7 @@ commit diff
           sha: "head-sha",
           message: "test commit",
           patches: [{ filename: "commit.ts", patch: "commit diff" }],
+          parentCount: 1,
         },
       ],
       patches: [{ filename: "commit.ts", patch: "commit diff" }],
@@ -448,6 +455,7 @@ commit diff
       sha: "head-sha",
       message: "test commit",
       patches: [],
+      parentCount: 1,
     });
 
     const reviewService = new ReviewService(
@@ -481,6 +489,7 @@ commit diff
           sha: "base-sha",
           message: "test commit",
           patches: [{ filename: "commit.ts", patch: "commit diff" }],
+          parentCount: 1,
         },
       ],
       patches: [{ filename: "commit.ts", patch: "commit diff" }],
@@ -527,6 +536,114 @@ commit diff
     expect(core.info).toHaveBeenCalledWith("No commits found to review.");
   });
 
+  it("should skip merge commits by default", async () => {
+    // Mock compareCommits to return a merge commit (parentCount > 1)
+    // The merge check now happens early using compareCommits data
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [
+        {
+          sha: "head-sha",
+          message: "Merge branch 'master' into feature",
+          patches: [{ filename: "commit.ts", patch: "commit diff" }],
+          parentCount: 2,
+        },
+      ],
+      patches: [{ filename: "commit.ts", patch: "commit diff" }],
+    });
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    const result = await reviewService.review(reviewOptions);
+
+    expect(result).toBe(false);
+
+    // Verify skip message was logged
+    expect(core.info).toHaveBeenCalledWith(
+      "Skipping merge commit head-sha - merged changes were reviewed in their original PRs."
+    );
+    expect(core.info).toHaveBeenCalledWith("No commits found to review.");
+
+    // Verify that heavier work (Azure call) was skipped
+    expect(AzureOpenAIService.prototype.runReviewPrompt).not.toHaveBeenCalled();
+  });
+
+  it("should not skip merge commits when skipMergeCommits is false", async () => {
+    // Mock isWithinTokenLimit to allow diff processing
+    const { isWithinTokenLimit } = await import(
+      "gpt-tokenizer/encoding/o200k_base"
+    );
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1234
+    );
+
+    // Mock compareCommits to return a merge commit (parentCount > 1)
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [
+        {
+          sha: "head-sha",
+          message: "Merge branch 'master' into feature",
+          patches: [{ filename: "commit.ts", patch: "commit diff" }],
+          parentCount: 2,
+        },
+      ],
+      patches: [{ filename: "commit.ts", patch: "commit diff" }],
+    });
+
+    // Mock getCommitDetails for when the commit is processed (not skipped)
+    vi.mocked(GitHubService.prototype.getCommitDetails).mockResolvedValue({
+      sha: "head-sha",
+      message: "Merge branch 'master' into feature",
+      patches: [{ filename: "commit.ts", patch: "commit diff" }],
+      parentCount: 2,
+    });
+
+    // Mock Azure response with a comment to verify full flow works
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue({
+      comments: [
+        {
+          sha: "head-sha",
+          file: "commit.ts",
+          line: 1,
+          side: "RIGHT" as const,
+          start_line: 1,
+          start_side: "RIGHT" as const,
+          comment: "Test comment",
+          severity: "info" as const,
+        },
+      ],
+    });
+    vi.mocked(GitHubService.prototype.postReviewComments).mockResolvedValue({
+      reviewChanges: 0,
+      reviewComments: 1,
+      issueComments: 0,
+    });
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    const result = await reviewService.review({
+      ...reviewOptions,
+      skipMergeCommits: false,
+    });
+
+    expect(result).toBe(true);
+
+    // Verify the commit was NOT skipped
+    expect(core.info).not.toHaveBeenCalledWith(
+      expect.stringContaining("Skipping merge commit")
+    );
+
+    // Verify Azure was called (heavier work was NOT skipped)
+    expect(AzureOpenAIService.prototype.runReviewPrompt).toHaveBeenCalled();
+  });
+
   it("should skip files matching exclude patterns", async () => {
     // Mock isWithinTokenLimit to allow diff processing
     const { isWithinTokenLimit } = await import(
@@ -545,6 +662,7 @@ commit diff
         { filename: "src/app.test.ts", patch: "test diff" },
         { filename: "dist/bundle.js", patch: "dist diff" },
       ],
+      parentCount: 1,
     });
 
     vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
@@ -559,6 +677,7 @@ commit diff
             { filename: "src/app.test.ts", patch: "test diff" },
             { filename: "dist/bundle.js", patch: "dist diff" },
           ],
+          parentCount: 1,
         },
       ],
       patches: [

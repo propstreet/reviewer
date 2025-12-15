@@ -18,6 +18,7 @@ export type ReviewOptions = {
   excludePatterns?: string[];
   customPrompt?: string;
   backgroundPolling?: BackgroundPollingConfig;
+  skipMergeCommits: boolean;
 };
 
 export type PackedCommit = {
@@ -27,7 +28,7 @@ export type PackedCommit = {
 
 export type SkippedCommit = {
   sha: string;
-  reason: "token_limit" | "all_excluded" | "not_in_pr";
+  reason: "token_limit" | "all_excluded" | "not_in_pr" | "merge_commit";
 };
 
 export type BuildPromptResult = {
@@ -170,9 +171,20 @@ export class ReviewService {
 
     const packedCommits: PackedCommit[] = [];
     const skippedCommits: SkippedCommit[] = [];
+    const skipMergeCommits = options.skipMergeCommits;
 
     for (const c of commitsToProcess) {
       core.debug(`Processing commit: ${c.sha}`);
+
+      // Skip merge commits early using parentCount from compareCommits
+      // This avoids unnecessary getCommitDetails API calls for commits we'll skip
+      if (skipMergeCommits && c.parentCount > 1) {
+        core.info(
+          `Skipping merge commit ${c.sha} - merged changes were reviewed in their original PRs.`
+        );
+        skippedCommits.push({ sha: c.sha, reason: "merge_commit" });
+        continue;
+      }
 
       // Verify that the commit belongs to the current PR
       const belongs = await this.githubService.commitBelongsToPR(c.sha);
@@ -184,6 +196,7 @@ export class ReviewService {
         continue;
       }
 
+      // Get commit details for patch extraction
       const commitDetails = await this.githubService.getCommitDetails(c.sha);
 
       core.debug(
