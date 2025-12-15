@@ -37,6 +37,7 @@ export interface CommitDetails {
   sha: string;
   message: string;
   patches: PatchInfo[];
+  parentCount: number;
 }
 
 export interface PrDetails {
@@ -275,6 +276,7 @@ export class GitHubService {
           sha: commit.sha,
           message: commit.commit.message,
           patches: [], // get patches for each commit to base
+          parentCount: commit.parents?.length ?? 0,
         })),
         patches: extractPatches(response.data.files),
       };
@@ -297,10 +299,12 @@ export class GitHubService {
         );
       }
 
+      const parents = response.data.parents ?? [];
       return {
         sha,
         message: response.data.commit.message,
         patches: extractPatches(response.data.files),
+        parentCount: parents.length,
       };
     } catch (error) {
       throw new Error(`Failed to get commit details: ${formatError(error)}`);
@@ -333,7 +337,8 @@ export class GitHubService {
       });
 
       // A merge commit has more than one parent
-      return response.data.parents.length > 1;
+      const parents = response.data.parents ?? [];
+      return parents.length > 1;
     } catch (error) {
       throw new Error(
         `Failed to check if commit ${sha} is a merge commit: ${formatError(error)}`

@@ -29900,6 +29900,14 @@ function isValidSeverityLevel(severity) {
 function isValidBackgroundMode(mode) {
     return ["enabled", "disabled"].includes(mode);
 }
+function isValidBooleanInput(value) {
+    return ["true", "false"].includes(value.toLowerCase());
+}
+function parseBooleanInput(value, defaultValue) {
+    if (!value)
+        return defaultValue;
+    return value.toLowerCase() === "true";
+}
 // ============================================================================
 // Numeric Validators
 // ============================================================================
@@ -33659,15 +33667,16 @@ class ReviewService {
                 skippedCommits.push({ sha: c.sha, reason: "not_in_pr" });
                 continue;
             }
+            // Get commit details (includes parentCount for merge detection)
+            const commitDetails = await this.githubService.getCommitDetails(c.sha);
             // Skip merge commits - their diffs represent merge resolution, not actual changes,
             // and the merged-in changes have already been reviewed in their original PRs
-            const isMerge = await this.githubService.isMergeCommit(c.sha);
-            if (isMerge) {
+            const skipMergeCommits = options.skipMergeCommits ?? true;
+            if (skipMergeCommits && commitDetails.parentCount > 1) {
                 core.info(`Skipping merge commit ${c.sha} - merged changes were reviewed in their original PRs.`);
                 skippedCommits.push({ sha: c.sha, reason: "merge_commit" });
                 continue;
             }
-            const commitDetails = await this.githubService.getCommitDetails(c.sha);
             core.debug(`Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`);
             const packed = this.packCommit(prompt, commitDetails, options.tokenLimit, options.excludePatterns);
             if (!packed) {
@@ -34042,6 +34051,7 @@ class GitHubService {
                     sha: commit.sha,
                     message: commit.commit.message,
                     patches: [], // get patches for each commit to base
+                    parentCount: commit.parents?.length ?? 0,
                 })),
                 patches: extractPatches(response.data.files),
             };
@@ -34060,10 +34070,12 @@ class GitHubService {
             if (response.status !== 200) {
                 throw new Error(`Failed to get commit details for ${sha}, status: ${response.status}`);
             }
+            const parents = response.data.parents ?? [];
             return {
                 sha,
                 message: response.data.commit.message,
                 patches: extractPatches(response.data.files),
+                parentCount: parents.length,
             };
         }
         catch (error) {
@@ -34091,7 +34103,8 @@ class GitHubService {
                 ref: sha,
             });
             // A merge commit has more than one parent
-            return response.data.parents.length > 1;
+            const parents = response.data.parents ?? [];
+            return parents.length > 1;
         }
         catch (error) {
             throw new Error(`Failed to check if commit ${sha} is a merge commit: ${formatError(error)}`);
@@ -49783,6 +49796,12 @@ async function run() {
             return;
         }
         const commitLimit = parseInt(commitLimitInput, 10);
+        const skipMergeCommitsInput = core.getInput("skipMergeCommits") || "true";
+        if (!isValidBooleanInput(skipMergeCommitsInput)) {
+            core.setFailed(`Invalid skipMergeCommits: ${skipMergeCommitsInput}. Must be 'true' or 'false'.`);
+            return;
+        }
+        const skipMergeCommits = parseBooleanInput(skipMergeCommitsInput, true);
         const githubToken = process.env.GITHUB_TOKEN;
         if (!githubToken) {
             core.setFailed("Missing GITHUB_TOKEN in environment.");
@@ -49873,6 +49892,7 @@ async function run() {
             excludePatterns,
             customPrompt: customPrompt || undefined,
             backgroundPolling,
+            skipMergeCommits,
         });
         // 3. Done
         core.info("Review completed.");

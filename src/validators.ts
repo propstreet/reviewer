@@ -77,6 +77,18 @@ export function isValidBackgroundMode(mode: string): mode is BackgroundMode {
   return ["enabled", "disabled"].includes(mode);
 }
 
+export function isValidBooleanInput(value: string): boolean {
+  return ["true", "false"].includes(value.toLowerCase());
+}
+
+export function parseBooleanInput(
+  value: string,
+  defaultValue: boolean
+): boolean {
+  if (!value) return defaultValue;
+  return value.toLowerCase() === "true";
+}
+
 // ============================================================================
 // Numeric Validators
 // ============================================================================

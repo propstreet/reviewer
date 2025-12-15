@@ -13,6 +13,8 @@ import {
   isValidBackgroundMode,
   isValidBackgroundMaxWait,
   isValidBackgroundPollInterval,
+  isValidBooleanInput,
+  parseBooleanInput,
   BACKGROUND_MAX_INTERVAL_MS,
   BACKGROUND_BACKOFF_MULTIPLIER,
 } from "./validators.js";
@@ -107,6 +109,15 @@ export async function run(): Promise<void> {
       return;
     }
     const commitLimit = parseInt(commitLimitInput, 10);
+
+    const skipMergeCommitsInput = core.getInput("skipMergeCommits") || "true";
+    if (!isValidBooleanInput(skipMergeCommitsInput)) {
+      core.setFailed(
+        `Invalid skipMergeCommits: ${skipMergeCommitsInput}. Must be 'true' or 'false'.`
+      );
+      return;
+    }
+    const skipMergeCommits = parseBooleanInput(skipMergeCommitsInput, true);
 
     const githubToken = process.env.GITHUB_TOKEN;
     if (!githubToken) {
@@ -215,6 +226,7 @@ export async function run(): Promise<void> {
       excludePatterns,
       customPrompt: customPrompt || undefined,
       backgroundPolling,
+      skipMergeCommits,
     });
 
     // 3. Done

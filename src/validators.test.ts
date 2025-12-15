@@ -8,6 +8,8 @@ import {
   isValidBackgroundMode,
   isValidBackgroundMaxWait,
   isValidBackgroundPollInterval,
+  isValidBooleanInput,
+  parseBooleanInput,
 } from "./validators.js";
 
 describe("isValidAzureEndpoint", () => {
@@ -204,5 +206,45 @@ describe("isValidBackgroundPollInterval", () => {
   it("should reject non-numeric values", () => {
     expect(isValidBackgroundPollInterval("abc")).toBe(false);
     expect(isValidBackgroundPollInterval("")).toBe(false);
+  });
+});
+
+describe("isValidBooleanInput", () => {
+  it("should accept 'true' and 'false'", () => {
+    expect(isValidBooleanInput("true")).toBe(true);
+    expect(isValidBooleanInput("false")).toBe(true);
+  });
+
+  it("should be case insensitive", () => {
+    expect(isValidBooleanInput("True")).toBe(true);
+    expect(isValidBooleanInput("FALSE")).toBe(true);
+    expect(isValidBooleanInput("TrUe")).toBe(true);
+  });
+
+  it("should reject other values", () => {
+    expect(isValidBooleanInput("yes")).toBe(false);
+    expect(isValidBooleanInput("no")).toBe(false);
+    expect(isValidBooleanInput("1")).toBe(false);
+    expect(isValidBooleanInput("0")).toBe(false);
+    expect(isValidBooleanInput("")).toBe(false);
+  });
+});
+
+describe("parseBooleanInput", () => {
+  it("should parse 'true' as true", () => {
+    expect(parseBooleanInput("true", false)).toBe(true);
+    expect(parseBooleanInput("True", false)).toBe(true);
+    expect(parseBooleanInput("TRUE", false)).toBe(true);
+  });
+
+  it("should parse 'false' as false", () => {
+    expect(parseBooleanInput("false", true)).toBe(false);
+    expect(parseBooleanInput("False", true)).toBe(false);
+    expect(parseBooleanInput("FALSE", true)).toBe(false);
+  });
+
+  it("should return default for empty string", () => {
+    expect(parseBooleanInput("", true)).toBe(true);
+    expect(parseBooleanInput("", false)).toBe(false);
   });
 });

@@ -18,6 +18,7 @@ export type ReviewOptions = {
   excludePatterns?: string[];
   customPrompt?: string;
   backgroundPolling?: BackgroundPollingConfig;
+  skipMergeCommits?: boolean;
 };
 
 export type PackedCommit = {
@@ -184,18 +185,19 @@ export class ReviewService {
         continue;
       }
 
+      // Get commit details (includes parentCount for merge detection)
+      const commitDetails = await this.githubService.getCommitDetails(c.sha);
+
       // Skip merge commits - their diffs represent merge resolution, not actual changes,
       // and the merged-in changes have already been reviewed in their original PRs
-      const isMerge = await this.githubService.isMergeCommit(c.sha);
-      if (isMerge) {
+      const skipMergeCommits = options.skipMergeCommits ?? true;
+      if (skipMergeCommits && commitDetails.parentCount > 1) {
         core.info(
           `Skipping merge commit ${c.sha} - merged changes were reviewed in their original PRs.`
         );
         skippedCommits.push({ sha: c.sha, reason: "merge_commit" });
         continue;
       }
-
-      const commitDetails = await this.githubService.getCommitDetails(c.sha);
 
       core.debug(
         `Commit ${commitDetails.sha} has ${commitDetails.patches.length} patches. Message: ${commitDetails.message}`

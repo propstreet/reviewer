@@ -249,7 +249,9 @@ describe("index", () => {
       reasoningEffort: "medium",
       commitLimit: 100,
       excludePatterns: [],
+      customPrompt: undefined,
       backgroundPolling: undefined,
+      skipMergeCommits: true,
     });
   });
 
@@ -279,7 +281,9 @@ describe("index", () => {
       reasoningEffort: "medium",
       commitLimit: 100,
       excludePatterns: [],
+      customPrompt: undefined,
       backgroundPolling: undefined,
+      skipMergeCommits: true,
     });
   });
 
@@ -312,7 +316,9 @@ describe("index", () => {
       reasoningEffort: "medium",
       commitLimit: 100,
       excludePatterns: [],
+      customPrompt: undefined,
       backgroundPolling: undefined,
+      skipMergeCommits: true,
     });
   });
 
@@ -341,7 +347,9 @@ describe("index", () => {
       reasoningEffort: "medium",
       commitLimit: 100,
       excludePatterns: [],
+      customPrompt: undefined,
       backgroundPolling: undefined,
+      skipMergeCommits: true,
     });
   });
 
@@ -370,7 +378,9 @@ describe("index", () => {
       reasoningEffort: "medium",
       commitLimit: 100,
       excludePatterns: [],
+      customPrompt: undefined,
       backgroundPolling: undefined,
+      skipMergeCommits: true,
     });
   });
 
@@ -419,7 +429,9 @@ describe("index", () => {
       reasoningEffort: "high",
       commitLimit: 99,
       excludePatterns: [],
+      customPrompt: undefined,
       backgroundPolling: undefined,
+      skipMergeCommits: true,
     });
   });
 
@@ -728,5 +740,47 @@ describe("index", () => {
       "Invalid backgroundPollInterval: 1. Must be 5-60 seconds."
     );
     expect(ReviewService.prototype.review).not.toHaveBeenCalled();
+  });
+
+  it("should fail on invalid skipMergeCommits", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      if (name === "skipMergeCommits") return "invalid";
+      return getInputDefaults(name);
+    });
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).toHaveBeenCalledExactlyOnceWith(
+      "Invalid skipMergeCommits: invalid. Must be 'true' or 'false'."
+    );
+    expect(ReviewService.prototype.review).not.toHaveBeenCalled();
+  });
+
+  it("should pass skipMergeCommits=false to reviewer", async () => {
+    (core.getInput as MockType).mockImplementation((name: string) => {
+      switch (name) {
+        case "base":
+          return "base-sha";
+        case "head":
+          return "head-sha";
+        case "skipMergeCommits":
+          return "false";
+        default:
+          return getInputDefaults(name);
+      }
+    });
+
+    vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
+
+    const { run } = await import("./index.js");
+    await run();
+
+    expect(core.setFailed).not.toHaveBeenCalled();
+    expect(ReviewService.prototype.review).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        skipMergeCommits: false,
+      })
+    );
   });
 });

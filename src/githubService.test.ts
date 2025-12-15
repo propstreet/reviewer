@@ -542,6 +542,7 @@ describe("GitHubService", () => {
             { filename: "file1.ts", patch: "diff for file1" },
             { filename: "file2.ts", patch: "diff for file2" },
           ],
+          parents: [{ sha: "parent1" }],
         },
       });
 
@@ -565,6 +566,7 @@ describe("GitHubService", () => {
           { filename: "file1.ts", patch: "diff for file1" },
           { filename: "file2.ts", patch: "diff for file2" },
         ],
+        parentCount: 1,
       });
 
       expect(mockGetCommit).toHaveBeenCalledExactlyOnceWith({
@@ -572,6 +574,58 @@ describe("GitHubService", () => {
         repo: mockConfig.repo,
         ref: "testSha",
       });
+    });
+
+    it("should return parentCount for merge commits", async () => {
+      const mockGetCommit = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          commit: { message: "Merge branch 'master'" },
+          files: [],
+          parents: [{ sha: "parent1" }, { sha: "parent2" }],
+        },
+      });
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            getCommit: mockGetCommit,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.getCommitDetails("testSha");
+
+      expect(result.parentCount).toBe(2);
+    });
+
+    it("should handle missing parents in commit result", async () => {
+      const mockGetCommit = vi.fn().mockResolvedValue({
+        status: 200,
+        data: {
+          commit: { message: "Test commit" },
+          files: [],
+          // parents property is undefined
+        },
+      });
+
+      const mockOctokit = {
+        rest: {
+          repos: {
+            getCommit: mockGetCommit,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      const result = await service.getCommitDetails("testSha");
+
+      expect(result.parentCount).toBe(0);
     });
 
     it("should handle missing patches in commit result", async () => {
@@ -584,6 +638,7 @@ describe("GitHubService", () => {
             { filename: "file2.ts", patch: "diff1" },
             { filename: "file3.ts" }, // missing patch
           ],
+          parents: [{ sha: "parent1" }],
         },
       });
 
@@ -609,6 +664,7 @@ describe("GitHubService", () => {
         status: 200,
         data: {
           commit: { message: "Test commit" },
+          parents: [{ sha: "parent1" }],
           // files property is undefined
         },
       });
