@@ -34095,21 +34095,6 @@ class GitHubService {
             throw new Error(`Failed to list PRs associated with commit ${sha}: ${formatError(error)}`);
         }
     }
-    async isMergeCommit(sha) {
-        try {
-            const response = await this.octokit.rest.repos.getCommit({
-                owner: this.config.owner,
-                repo: this.config.repo,
-                ref: sha,
-            });
-            // A merge commit has more than one parent
-            const parents = response.data.parents ?? [];
-            return parents.length > 1;
-        }
-        catch (error) {
-            throw new Error(`Failed to check if commit ${sha} is a merge commit: ${formatError(error)}`);
-        }
-    }
 }
 
 ;// CONCATENATED MODULE: ./node_modules/openai/internal/tslib.mjs
