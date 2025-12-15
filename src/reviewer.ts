@@ -18,7 +18,7 @@ export type ReviewOptions = {
   excludePatterns?: string[];
   customPrompt?: string;
   backgroundPolling?: BackgroundPollingConfig;
-  skipMergeCommits?: boolean;
+  skipMergeCommits: boolean;
 };
 
 export type PackedCommit = {
@@ -171,7 +171,7 @@ export class ReviewService {
 
     const packedCommits: PackedCommit[] = [];
     const skippedCommits: SkippedCommit[] = [];
-    const skipMergeCommits = options.skipMergeCommits ?? true;
+    const skipMergeCommits = options.skipMergeCommits;
 
     for (const c of commitsToProcess) {
       core.debug(`Processing commit: ${c.sha}`);

@@ -78,6 +78,7 @@ describe("reviewer", () => {
     commitLimit: 10,
     base: "base-sha",
     head: "head-sha",
+    skipMergeCommits: true,
   };
 
   const mockedGithubService = new GitHubService({

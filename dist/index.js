@@ -33658,7 +33658,7 @@ class ReviewService {
         }
         const packedCommits = [];
         const skippedCommits = [];
-        const skipMergeCommits = options.skipMergeCommits ?? true;
+        const skipMergeCommits = options.skipMergeCommits;
         for (const c of commitsToProcess) {
             core.debug(`Processing commit: ${c.sha}`);
             // Skip merge commits early using parentCount from compareCommits
