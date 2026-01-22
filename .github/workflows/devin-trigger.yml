@@ -1,0 +1,38 @@
+# Devin Issue Trigger - Caller Workflow
+# Copy this file to your repo at .github/workflows/devin-trigger.yml
+#
+# Prerequisites:
+# 1. Add DEVIN_API_KEY to repository secrets
+# 2. Optionally add DEVIN_ISSUE_PLAYBOOK_ID to repository variables
+# 3. Create the devin label in your repository
+
+name: Devin Issue Trigger
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to trigger Devin for"
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: devin-trigger-${{ github.event.issue.number || github.event.inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  devin:
+    uses: propstreet/github-workflows/.github/workflows/devin-trigger.yml@v1
+    secrets:
+      DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+    with:
+      playbook_id: ${{ vars.DEVIN_ISSUE_PLAYBOOK_ID }}
+      issue_number: ${{ github.event.inputs.issue_number && fromJson(github.event.inputs.issue_number) || 0 }}

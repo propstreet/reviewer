@@ -1,0 +1,26 @@
+# Devin Session Monitor - Caller Workflow
+# Copy this file to your repo at .github/workflows/devin-monitor.yml
+#
+# Prerequisites:
+# 1. Add DEVIN_API_KEY to repository secrets
+
+name: Devin Session Monitor
+
+on:
+  schedule:
+    - cron: "*/10 * * * *" # Every 10 minutes
+  workflow_dispatch: # Manual trigger for debugging
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: devin-monitor
+  cancel-in-progress: true # Only one monitor at a time
+
+jobs:
+  monitor:
+    uses: propstreet/github-workflows/.github/workflows/devin-monitor.yml@v1
+    secrets:
+      DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
