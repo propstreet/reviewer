@@ -213,13 +213,21 @@ export class GitHubService {
       await this.createReview(event, validComments, headSha);
     }
 
-    // Post fallback comments as issue comments (for out-of-range comments)
-    for (const comment of issueComments) {
+    // Post fallback comments as a SINGLE bundled issue comment (for out-of-range comments)
+    // This reduces notification spam by combining all out-of-range comments into one
+    if (issueComments.length > 0) {
+      const bundledBody = issueComments
+        .map(
+          (comment) =>
+            `**${comment.severity.toUpperCase()}** - ${comment.file}:${comment.line}\n\n${comment.comment}`
+        )
+        .join("\n\n---\n\n");
+
       await this.octokit.rest.issues.createComment({
         owner: this.config.owner,
         repo: this.config.repo,
         issue_number: this.config.pullNumber,
-        body: `**${comment.severity.toUpperCase()}** - ${comment.file}:${comment.line}\n\n${comment.comment}`,
+        body: bundledBody,
       });
     }
 

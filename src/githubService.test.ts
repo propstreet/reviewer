@@ -142,7 +142,7 @@ describe("GitHubService", () => {
         ],
       });
 
-      // Verify that out-of-range comment was posted as issue comment
+      // Verify that out-of-range comment was posted as a single bundled issue comment
       expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
         owner: mockConfig.owner,
         repo: mockConfig.repo,
@@ -423,6 +423,89 @@ describe("GitHubService", () => {
 
       // No fallback to issue comments
       expect(mockCreateComment).not.toHaveBeenCalled();
+    });
+
+    it("should bundle multiple out-of-range comments into a single issue comment", async () => {
+      const mockCreateReview = vi.fn().mockResolvedValue({});
+      const mockCreateComment = vi.fn().mockResolvedValue({});
+      const mockGet = vi.fn().mockResolvedValue(mockPrResponse);
+
+      const mockOctokit = {
+        rest: {
+          pulls: {
+            createReview: mockCreateReview,
+            get: mockGet,
+          },
+          issues: {
+            createComment: mockCreateComment,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+
+      // Multiple comments that will all be out of range (no patches to validate against)
+      const multipleOutOfRangeComments = [
+        {
+          sha: "sha1",
+          file: "file1.ts",
+          line: 10,
+          side: "RIGHT" as const,
+          start_line: 10,
+          start_side: "RIGHT" as const,
+          comment: "First out of range comment",
+          severity: "error" as const,
+        },
+        {
+          sha: "sha1",
+          file: "file2.ts",
+          line: 20,
+          side: "RIGHT" as const,
+          start_line: 20,
+          start_side: "RIGHT" as const,
+          comment: "Second out of range comment",
+          severity: "warning" as const,
+        },
+        {
+          sha: "sha1",
+          file: "file3.ts",
+          line: 30,
+          side: "LEFT" as const,
+          start_line: 30,
+          start_side: "LEFT" as const,
+          comment: "Third out of range comment",
+          severity: "info" as const,
+        },
+      ];
+
+      const reviewResult = await service.postReviewComments(
+        multipleOutOfRangeComments,
+        "error",
+        [] // Empty patches - all comments will be out of range
+      );
+
+      expect(reviewResult).toEqual({
+        reviewChanges: 0,
+        reviewComments: 0,
+        issueComments: 3,
+      });
+
+      // Verify that createReview was not called (no valid comments)
+      expect(mockCreateReview).not.toHaveBeenCalled();
+
+      // Verify that only ONE issue comment was created with all comments bundled
+      expect(mockCreateComment).toHaveBeenCalledTimes(1);
+      expect(mockCreateComment).toHaveBeenCalledWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        issue_number: mockConfig.pullNumber,
+        body:
+          "**ERROR** - file1.ts:10\n\nFirst out of range comment\n\n---\n\n" +
+          "**WARNING** - file2.ts:20\n\nSecond out of range comment\n\n---\n\n" +
+          "**INFO** - file3.ts:30\n\nThird out of range comment",
+      });
     });
   });
 
