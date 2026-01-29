@@ -59,7 +59,7 @@ jobs:
 | Input | Default | Description |
 |-------|---------|-------------|
 | `severity` | `error` | Minimum severity to request changes (`info`, `warning`, `error`) |
-| `reasoningEffort` | `medium` | Reasoning effort level (`minimal`, `low`, `medium`, `high`) |
+| `reasoningEffort` | `medium` | Reasoning effort level (`minimal`, `low`, `medium`, `high`, `xhigh`) |
 | `tokenLimit` | `50000` | Maximum tokens to send (o1 supports up to 200,000) |
 | `commitLimit` | `100` | Maximum commits to include in diff |
 | `exclude` | | Comma-separated glob patterns to exclude files |
@@ -98,7 +98,7 @@ jobs:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Recommended Setup (gpt-5.1 with high reasoning)
+### Recommended Setup (gpt-5.2 with high reasoning)
 
 ```yaml
 - uses: propstreet/reviewer@v3
@@ -124,9 +124,9 @@ jobs:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Background Mode (for gpt-5-pro)
+### Background Mode (for gpt-5.2-pro)
 
-When using gpt-5-pro, reviews typically take 15-20 minutes. Background mode handles this
+When using gpt-5.2-pro, reviews typically take 15-20 minutes. Background mode handles this
 with automatic polling:
 
 ```yaml
@@ -134,7 +134,7 @@ with automatic polling:
   with:
     azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
     azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-    azureOpenAIDeployment: gpt-5-pro
+    azureOpenAIDeployment: gpt-5.2-pro
     reasoningEffort: high
     backgroundMode: enabled
     backgroundMaxWait: "30" # minutes (1-60)
@@ -168,13 +168,13 @@ The `reasoningEffort` input controls how much reasoning the model applies:
 
 | Model | `reasoningEffort` | Use Case |
 |-------|-------------------|----------|
-| **gpt-5.1** | `high` | **Recommended default** - Best quality reviews |
-| gpt-5 | `high` | Excellent reviews, slightly older model |
-| gpt-5.1 | `medium` | Faster reviews, good quality |
-| gpt-5 | `minimal` | Quick reviews, lower latency |
-| gpt-5-pro | `high` | Most thorough reviews (15-20 min, requires `backgroundMode: enabled`) |
+| **gpt-5.2** | `high` | **Recommended default** - Best quality reviews |
+| gpt-5.2 | `xhigh` | Maximum reasoning depth (highest latency/cost) |
+| gpt-5.2 | `medium` | Faster reviews, good quality |
+| gpt-5.2 | `minimal` | Quick reviews, lower latency |
+| gpt-5.2-pro | `high` | Most thorough reviews (15-20 min, requires `backgroundMode: enabled`) |
 
-We recommend **gpt-5.1 with `reasoningEffort: high`** for the best balance of quality and speed.
+We recommend **gpt-5.2 with `reasoningEffort: high`** for the best balance of quality and speed.
 
 ## Severity Levels
 
