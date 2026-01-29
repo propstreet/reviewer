@@ -761,9 +761,8 @@ commit diff
     // This tests the fix for synchronize events where options.base/head differ from PR base/head
     // GitHub validates review comments against full PR diff, not the narrow commit range
 
-    const { isWithinTokenLimit } = await import(
-      "gpt-tokenizer/encoding/o200k_base"
-    );
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
     vi.mocked(isWithinTokenLimit).mockImplementation(() => 1234);
 
     // PR details show full range (pr-base -> head-sha)
@@ -859,9 +858,8 @@ commit diff
   });
 
   it("should reuse compareCommits result when options range matches PR range", async () => {
-    const { isWithinTokenLimit } = await import(
-      "gpt-tokenizer/encoding/o200k_base"
-    );
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
     vi.mocked(isWithinTokenLimit).mockImplementation(() => 1234);
 
     // PR details match options range
