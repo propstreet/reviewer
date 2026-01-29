@@ -42,6 +42,16 @@ function isTerminalStatus(
   return TERMINAL_STATUSES.includes(status as TerminalStatus);
 }
 
+/**
+ * Converts our ReasoningEffort type to the SDK's expected type.
+ * TODO: Remove this cast once the OpenAI SDK includes "xhigh" in its type definitions.
+ * The API supports "xhigh" for models like gpt-5.2, but the SDK types lag behind.
+ * If an unsupported reasoning effort is used with a model, the API will return an error.
+ */
+function toSDKReasoningEffort(effort: ReasoningEffort): SDKReasoningEffort {
+  return effort as SDKReasoningEffort;
+}
+
 export class AzureOpenAIService {
   private client: OpenAI;
   private deployment: string;
@@ -164,7 +174,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
       model: this.deployment,
       instructions: instructions,
       input: prompt,
-      reasoning: { effort: config.reasoningEffort as SDKReasoningEffort },
+      reasoning: { effort: toSDKReasoningEffort(config.reasoningEffort) },
       text: {
         format: zodTextFormat(CodeReviewCommentArray, "review_comments"),
       },
