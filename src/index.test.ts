@@ -1,8 +1,10 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { ReviewService } from "./reviewer.js";
-import { Context } from "@actions/github/lib/context.js";
 import { SUPPORTED_ACTIONS } from "./constants.js";
+
+// Use the context type from the main export (v9+ doesn't export Context class directly)
+type GitHubContext = typeof github.context;
 
 // Mock types
 type MockType = ReturnType<typeof vi.fn>;
@@ -99,7 +101,7 @@ describe("index", () => {
     // Mock github context payload with unsupported action
     vi.mocked(github).context.payload = {
       action: "labeled",
-    } as Context["payload"];
+    } as GitHubContext["payload"];
 
     const { run } = await import("./index.js");
     await run();
@@ -167,7 +169,7 @@ describe("index", () => {
         number: 1,
         // Missing base.sha and head.sha
       },
-    } as Context["payload"];
+    } as GitHubContext["payload"];
 
     const { run } = await import("./index.js");
     await run();
@@ -193,7 +195,7 @@ describe("index", () => {
         base: { sha: "base-sha" },
         head: { sha: "head-sha" },
       },
-    } as Context["payload"];
+    } as GitHubContext["payload"];
 
     // Whitespace-only inputs should be treated as empty and allow auto-detection
     (core.getInput as MockType).mockImplementation((name: string) => {
@@ -261,7 +263,7 @@ describe("index", () => {
       action: "synchronize",
       before: "base-sha",
       after: "head-sha",
-    } as Context["payload"];
+    } as GitHubContext["payload"];
 
     vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
 
@@ -296,7 +298,7 @@ describe("index", () => {
         base: { sha: "base-sha" },
         head: { sha: "head-sha" },
       },
-    } as Context["payload"];
+    } as GitHubContext["payload"];
 
     vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
 
@@ -331,7 +333,7 @@ describe("index", () => {
         base: { sha: "base-sha" },
         head: { sha: "head-sha" },
       },
-    } as Context["payload"];
+    } as GitHubContext["payload"];
 
     vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
 
@@ -362,7 +364,7 @@ describe("index", () => {
         base: { sha: "base-sha" },
         head: { sha: "head-sha" },
       },
-    } as Context["payload"];
+    } as GitHubContext["payload"];
 
     vi.mocked(ReviewService.prototype.review).mockResolvedValue(true);
 

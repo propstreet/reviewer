@@ -16,26 +16,26 @@
         "coverage": "vitest run --coverage"
     },
     "dependencies": {
-        "@actions/core": "^1.11.1",
-        "@actions/github": "^6.0.1",
+        "@actions/core": "^3.0.0",
+        "@actions/github": "^9.0.0",
         "@types/minimatch": "^6.0.0",
         "gpt-tokenizer": "^3.4.0",
         "minimatch": "^10.1.1",
         "openai": "^6.17.0"
     },
     "devDependencies": {
-        "@eslint/js": "^9.39.1",
-        "@types/node": "^24.10.1",
+        "@eslint/js": "^9.39.2",
+        "@types/node": "^25.1.0",
         "@vercel/ncc": "^0.38.4",
-        "@vitest/coverage-v8": "^4.0.14",
-        "eslint": "^9.39.1",
+        "@vitest/coverage-v8": "^4.0.18",
+        "eslint": "^9.39.2",
         "eslint-config-prettier": "^10.1.8",
-        "eslint-plugin-prettier": "^5.5.4",
-        "globals": "^16.5.0",
-        "prettier": "^3.6.2",
+        "eslint-plugin-prettier": "^5.5.5",
+        "globals": "^17.2.0",
+        "prettier": "^3.8.1",
         "typescript": "^5.9.3",
-        "typescript-eslint": "^8.48.0",
-        "vitest": "^4.0.14",
+        "typescript-eslint": "^8.54.0",
+        "vitest": "^4.0.18",
         "zod": "^3.25.76"
     }
 }
