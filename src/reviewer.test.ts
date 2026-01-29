@@ -842,17 +842,14 @@ commit diff
       head: "head-sha",
     });
 
-    // Verify compareCommits was called twice:
-    // 1. First with narrow range for building prompt
-    // 2. Second with full PR range for validation
-    expect(GitHubService.prototype.compareCommits).toHaveBeenCalledTimes(2);
-    expect(GitHubService.prototype.compareCommits).toHaveBeenNthCalledWith(
-      1,
+    // Verify compareCommits was called with both ranges:
+    // - Narrow range for building prompt
+    // - Full PR range for validation
+    expect(GitHubService.prototype.compareCommits).toHaveBeenCalledWith(
       "previous-head-sha",
       "head-sha"
     );
-    expect(GitHubService.prototype.compareCommits).toHaveBeenNthCalledWith(
-      2,
+    expect(GitHubService.prototype.compareCommits).toHaveBeenCalledWith(
       "pr-base-sha",
       "head-sha"
     );

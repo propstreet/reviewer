@@ -250,7 +250,7 @@ export class ReviewService {
     let validationPatches = results.patches;
     if (options.base !== prDetails.base || options.head !== prDetails.head) {
       core.debug(
-        `Fetching full PR diff for validation (options range differs from PR range)`
+        `Fetching full PR diff for validation: options=${options.base.substring(0, 7)}...${options.head.substring(0, 7)} vs PR=${prDetails.base.substring(0, 7)}...${prDetails.head.substring(0, 7)}`
       );
       const fullPrDiff = await this.githubService.compareCommits(
         prDetails.base,
