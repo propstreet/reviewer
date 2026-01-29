@@ -763,4 +763,167 @@ commit diff
       { reasoningEffort: "low", customPrompt: "Focus on security issues" }
     );
   });
+
+  it("should use full PR diff for validation when options range differs from PR range", async () => {
+    // This tests the fix for synchronize events where options.base/head differ from PR base/head
+    // GitHub validates review comments against full PR diff, not the narrow commit range
+
+    const { isWithinTokenLimit } = await import(
+      "gpt-tokenizer/encoding/o200k_base"
+    );
+    vi.mocked(isWithinTokenLimit).mockImplementation(() => 1234);
+
+    // PR details show full range (pr-base -> head-sha)
+    vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({
+      number: 1,
+      title: "test title",
+      body: "test body",
+      commitCount: 3,
+      head: "head-sha",
+      base: "pr-base-sha", // Different from options.base!
+    });
+
+    // First compareCommits call: narrow range (previous-head -> head-sha) for synchronize event
+    // Second compareCommits call: full PR range (pr-base-sha -> head-sha) for validation
+    vi.mocked(GitHubService.prototype.compareCommits)
+      .mockResolvedValueOnce({
+        base: "previous-head-sha",
+        head: "head-sha",
+        commits: [
+          {
+            sha: "head-sha",
+            message: "latest commit",
+            patches: [{ filename: "changed.ts", patch: "narrow diff" }],
+            parentCount: 1,
+          },
+        ],
+        patches: [{ filename: "changed.ts", patch: "narrow diff" }],
+      })
+      .mockResolvedValueOnce({
+        base: "pr-base-sha",
+        head: "head-sha",
+        commits: [],
+        patches: [
+          { filename: "changed.ts", patch: "full pr diff" },
+          { filename: "other.ts", patch: "other file diff" },
+        ],
+      });
+
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue({
+      comments: [
+        {
+          sha: "head-sha",
+          file: "changed.ts",
+          line: 10,
+          side: "RIGHT" as const,
+          start_line: 10,
+          start_side: "RIGHT" as const,
+          comment: "Test comment",
+          severity: "info" as const,
+        },
+      ],
+    });
+
+    vi.mocked(GitHubService.prototype.postReviewComments).mockResolvedValue({
+      reviewChanges: 0,
+      reviewComments: 1,
+      issueComments: 0,
+    });
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+
+    // Review with narrow range (simulating synchronize event)
+    await reviewService.review({
+      ...reviewOptions,
+      base: "previous-head-sha", // Different from prDetails.base
+      head: "head-sha",
+    });
+
+    // Verify compareCommits was called with both ranges:
+    // - Narrow range for building prompt
+    // - Full PR range for validation
+    expect(GitHubService.prototype.compareCommits).toHaveBeenCalledWith(
+      "previous-head-sha",
+      "head-sha"
+    );
+    expect(GitHubService.prototype.compareCommits).toHaveBeenCalledWith(
+      "pr-base-sha",
+      "head-sha"
+    );
+
+    // Verify postReviewComments receives full PR diff for validation
+    expect(GitHubService.prototype.postReviewComments).toHaveBeenCalledWith(
+      expect.any(Array),
+      "error",
+      [
+        { filename: "changed.ts", patch: "full pr diff" },
+        { filename: "other.ts", patch: "other file diff" },
+      ]
+    );
+  });
+
+  it("should reuse compareCommits result when options range matches PR range", async () => {
+    const { isWithinTokenLimit } = await import(
+      "gpt-tokenizer/encoding/o200k_base"
+    );
+    vi.mocked(isWithinTokenLimit).mockImplementation(() => 1234);
+
+    // PR details match options range
+    vi.mocked(GitHubService.prototype.getPrDetails).mockResolvedValue({
+      number: 1,
+      title: "test title",
+      body: "test body",
+      commitCount: 1,
+      head: "head-sha",
+      base: "base-sha", // Same as options.base
+    });
+
+    vi.mocked(GitHubService.prototype.compareCommits).mockResolvedValue({
+      base: "base-sha",
+      head: "head-sha",
+      commits: [
+        {
+          sha: "head-sha",
+          message: "test commit",
+          patches: [{ filename: "commit.ts", patch: "commit diff" }],
+          parentCount: 1,
+        },
+      ],
+      patches: [{ filename: "commit.ts", patch: "commit diff" }],
+    });
+
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue({
+      comments: [
+        {
+          sha: "head-sha",
+          file: "commit.ts",
+          line: 1,
+          side: "RIGHT" as const,
+          start_line: 1,
+          start_side: "RIGHT" as const,
+          comment: "Test comment",
+          severity: "info" as const,
+        },
+      ],
+    });
+
+    vi.mocked(GitHubService.prototype.postReviewComments).mockResolvedValue({
+      reviewChanges: 0,
+      reviewComments: 1,
+      issueComments: 0,
+    });
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+
+    await reviewService.review(reviewOptions);
+
+    // Verify compareCommits was only called once (no extra call for validation)
+    expect(GitHubService.prototype.compareCommits).toHaveBeenCalledTimes(1);
+  });
 });

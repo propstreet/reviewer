@@ -244,11 +244,26 @@ export class ReviewService {
       );
     }
 
+    // For validation, always use full PR diff (prDetails.base...prDetails.head)
+    // This is necessary because GitHub validates review comments against the full PR diff,
+    // not the narrow commit range we might be reviewing (e.g., for synchronize events)
+    let validationPatches = results.patches;
+    if (options.base !== prDetails.base || options.head !== prDetails.head) {
+      core.debug(
+        `Fetching full PR diff for validation: options=${options.base.substring(0, 7)}...${options.head.substring(0, 7)} vs PR=${prDetails.base.substring(0, 7)}...${prDetails.head.substring(0, 7)}`
+      );
+      const fullPrDiff = await this.githubService.compareCommits(
+        prDetails.base,
+        prDetails.head
+      );
+      validationPatches = fullPrDiff.patches;
+    }
+
     return {
       prompt,
       commits: packedCommits,
       skippedCommits,
-      patches: results.patches, // Cumulative PR diff for validation
+      patches: validationPatches, // Full PR diff for validation (matches GitHub's validation)
     } satisfies BuildPromptResult;
   }
 
