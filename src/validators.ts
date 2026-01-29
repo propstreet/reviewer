@@ -1,5 +1,5 @@
-// Define ReasoningEffort locally - includes "minimal" for GPT-5 support
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+// Define ReasoningEffort locally - includes "minimal" for GPT-5 support and "xhigh" for GPT-5.2
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type SeverityLevel = "info" | "warning" | "error";
 
@@ -64,7 +64,9 @@ export function formatError(error: unknown): string {
 export function isValidReasoningEffort(
   reasoningEffort: string
 ): reasoningEffort is ReasoningEffort {
-  return ["minimal", "low", "medium", "high"].includes(reasoningEffort);
+  return ["minimal", "low", "medium", "high", "xhigh"].includes(
+    reasoningEffort
+  );
 }
 
 export function isValidSeverityLevel(

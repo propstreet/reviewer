@@ -10,7 +10,26 @@ import {
   isValidBackgroundPollInterval,
   isValidBooleanInput,
   parseBooleanInput,
+  isValidReasoningEffort,
 } from "./validators.js";
+
+describe("isValidReasoningEffort", () => {
+  it("should accept all valid reasoning effort levels", () => {
+    expect(isValidReasoningEffort("minimal")).toBe(true);
+    expect(isValidReasoningEffort("low")).toBe(true);
+    expect(isValidReasoningEffort("medium")).toBe(true);
+    expect(isValidReasoningEffort("high")).toBe(true);
+    expect(isValidReasoningEffort("xhigh")).toBe(true);
+  });
+
+  it("should reject invalid reasoning effort levels", () => {
+    expect(isValidReasoningEffort("")).toBe(false);
+    expect(isValidReasoningEffort("invalid")).toBe(false);
+    expect(isValidReasoningEffort("MEDIUM")).toBe(false);
+    expect(isValidReasoningEffort("High")).toBe(false);
+    expect(isValidReasoningEffort("extra-high")).toBe(false);
+  });
+});
 
 describe("isValidAzureEndpoint", () => {
   it("should accept valid HTTPS Azure endpoints", () => {

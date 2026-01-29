@@ -29892,7 +29892,7 @@ function formatError(error) {
 // Enum Validators
 // ============================================================================
 function isValidReasoningEffort(reasoningEffort) {
-    return ["minimal", "low", "medium", "high"].includes(reasoningEffort);
+    return ["minimal", "low", "medium", "high", "xhigh"].includes(reasoningEffort);
 }
 function isValidSeverityLevel(severity) {
     return ["info", "warning", "error"].includes(severity);

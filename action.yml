@@ -29,7 +29,7 @@ inputs:
     required: false
     default: "error"
   reasoningEffort:
-    description: "Reasoning effort level (minimal, low, medium, or high). GPT-5 supports 'minimal' for faster responses, but for review purposes 'high' is recommended."
+    description: "Reasoning effort level (minimal, low, medium, high, or xhigh). GPT-5 supports 'minimal' for faster responses, GPT-5.2 supports 'xhigh' for maximum reasoning depth. For review purposes 'high' is recommended."
     required: false
     default: "medium"
   tokenLimit:

@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 import OpenAI from "openai";
 import type { Response as OpenAIResponse } from "openai/resources/responses/responses";
+import type { ReasoningEffort as SDKReasoningEffort } from "openai/resources/shared";
 import { zodTextFormat } from "openai/helpers/zod";
 import { CodeReviewCommentArray, type ReviewResult } from "./schemas.js";
 import { formatError, type ReasoningEffort } from "./validators.js";
@@ -163,7 +164,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
       model: this.deployment,
       instructions: instructions,
       input: prompt,
-      reasoning: { effort: config.reasoningEffort },
+      reasoning: { effort: config.reasoningEffort as SDKReasoningEffort },
       text: {
         format: zodTextFormat(CodeReviewCommentArray, "review_comments"),
       },
