@@ -125,6 +125,9 @@ If you have no comments, return an empty comments array. Respond in JSON format.
 
         // Don't retry if we've exhausted all attempts
         if (attempt >= maxRetries) {
+          core.warning(
+            `Synchronous request failed after ${maxRetries + 1} attempts: ${formatError(error)}`
+          );
           break;
         }
 
@@ -138,7 +141,9 @@ If you have no comments, return an empty comments array. Respond in JSON format.
     }
 
     // All retries exhausted
-    throw lastError;
+    throw (
+      lastError ?? new Error("Synchronous review request failed after retries")
+    );
   }
 
   private async runBackgroundRequest(
