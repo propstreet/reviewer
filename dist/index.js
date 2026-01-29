@@ -49546,19 +49546,45 @@ If you have no comments, return an empty comments array. Respond in JSON format.
         return this.runSynchronousRequest(prompt, instructions, config);
     }
     async runSynchronousRequest(prompt, instructions, config) {
-        const response = await this.client.responses.parse({
-            model: this.deployment,
-            instructions: instructions,
-            input: prompt,
-            reasoning: { effort: config.reasoningEffort },
-            text: {
-                format: zodTextFormat(CodeReviewCommentArray, "review_comments"),
-            },
-        });
-        if (!response.output_parsed) {
-            throw new Error("Review request did not return parsed output");
+        const maxRetries = 3;
+        const initialDelayMs = 1000;
+        const maxDelayMs = 10000;
+        const backoffMultiplier = 2;
+        let lastError;
+        let currentDelay = initialDelayMs;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                const response = await this.client.responses.parse({
+                    model: this.deployment,
+                    instructions: instructions,
+                    input: prompt,
+                    reasoning: { effort: config.reasoningEffort },
+                    text: {
+                        format: zodTextFormat(CodeReviewCommentArray, "review_comments"),
+                    },
+                });
+                if (!response.output_parsed) {
+                    throw new Error("Review request did not return parsed output");
+                }
+                return response.output_parsed;
+            }
+            catch (error) {
+                lastError = error;
+                // Only retry on transient errors
+                if (!this.isRetryableError(error)) {
+                    throw error;
+                }
+                // Don't retry if we've exhausted all attempts
+                if (attempt >= maxRetries) {
+                    break;
+                }
+                core.warning(`Synchronous request failed with retryable error (attempt ${attempt + 1}/${maxRetries + 1}): ${formatError(error)}`);
+                await this.sleep(currentDelay);
+                currentDelay = Math.min(currentDelay * backoffMultiplier, maxDelayMs);
+            }
         }
-        return response.output_parsed;
+        // All retries exhausted
+        throw lastError;
     }
     async runBackgroundRequest(prompt, instructions, config) {
         const pollingConfig = config.backgroundPolling;

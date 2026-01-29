@@ -214,6 +214,180 @@ describe("AzureOpenAIService", () => {
     );
   });
 
+  describe("Synchronous Mode Retry Logic", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("should retry on transient 429 rate limit error", async () => {
+      const mockResponse = {
+        output_parsed: { comments: [] },
+      };
+
+      // First call: rate limit error, Second call: success
+      mockParse
+        .mockRejectedValueOnce({ status: 429, message: "Rate limit exceeded" })
+        .mockResolvedValueOnce(mockResponse);
+
+      const service = new AzureOpenAIService(mockConfig);
+      const resultPromise = service.runReviewPrompt(
+        mockInput,
+        mockReviewConfig
+      );
+
+      // Advance timers to allow retry
+      await vi.advanceTimersByTimeAsync(1000);
+
+      const result = await resultPromise;
+
+      expect(mockParse).toHaveBeenCalledTimes(2);
+      expect(result.comments).toHaveLength(0);
+    });
+
+    it("should retry on transient 503 service unavailable error", async () => {
+      const mockResponse = {
+        output_parsed: { comments: [] },
+      };
+
+      // First call: service unavailable, Second call: success
+      mockParse
+        .mockRejectedValueOnce({
+          status: 503,
+          message: "Service unavailable",
+        })
+        .mockResolvedValueOnce(mockResponse);
+
+      const service = new AzureOpenAIService(mockConfig);
+      const resultPromise = service.runReviewPrompt(
+        mockInput,
+        mockReviewConfig
+      );
+
+      // Advance timers to allow retry
+      await vi.advanceTimersByTimeAsync(1000);
+
+      const result = await resultPromise;
+
+      expect(mockParse).toHaveBeenCalledTimes(2);
+      expect(result.comments).toHaveLength(0);
+    });
+
+    it("should retry on transient 500 server error", async () => {
+      const mockResponse = {
+        output_parsed: { comments: [] },
+      };
+
+      // First call: server error, Second call: success
+      mockParse
+        .mockRejectedValueOnce({
+          status: 500,
+          message: "Internal server error",
+        })
+        .mockResolvedValueOnce(mockResponse);
+
+      const service = new AzureOpenAIService(mockConfig);
+      const resultPromise = service.runReviewPrompt(
+        mockInput,
+        mockReviewConfig
+      );
+
+      // Advance timers to allow retry
+      await vi.advanceTimersByTimeAsync(1000);
+
+      const result = await resultPromise;
+
+      expect(mockParse).toHaveBeenCalledTimes(2);
+      expect(result.comments).toHaveLength(0);
+    });
+
+    it("should throw immediately on non-retryable 400 error", async () => {
+      mockParse.mockRejectedValue({ status: 400, message: "Bad request" });
+
+      const service = new AzureOpenAIService(mockConfig);
+
+      await expect(
+        service.runReviewPrompt(mockInput, mockReviewConfig)
+      ).rejects.toEqual({ status: 400, message: "Bad request" });
+
+      expect(mockParse).toHaveBeenCalledTimes(1);
+    });
+
+    it("should throw immediately on non-retryable 401 error", async () => {
+      mockParse.mockRejectedValue({ status: 401, message: "Unauthorized" });
+
+      const service = new AzureOpenAIService(mockConfig);
+
+      await expect(
+        service.runReviewPrompt(mockInput, mockReviewConfig)
+      ).rejects.toEqual({ status: 401, message: "Unauthorized" });
+
+      expect(mockParse).toHaveBeenCalledTimes(1);
+    });
+
+    it("should exhaust retries and throw after max attempts", async () => {
+      // Return retryable error for all 4 attempts (initial + 3 retries)
+      const retryableError = { status: 503, message: "Service unavailable" };
+      mockParse
+        .mockRejectedValueOnce(retryableError)
+        .mockRejectedValueOnce(retryableError)
+        .mockRejectedValueOnce(retryableError)
+        .mockRejectedValueOnce(retryableError);
+
+      const service = new AzureOpenAIService(mockConfig);
+
+      // Capture the promise and attach error handler immediately to prevent unhandled rejection
+      let caughtError: unknown;
+      const resultPromise = service
+        .runReviewPrompt(mockInput, mockReviewConfig)
+        .catch((e) => {
+          caughtError = e;
+        });
+
+      // Advance timers through all retries (1s + 2s + 4s = 7s total delay)
+      await vi.advanceTimersByTimeAsync(10000);
+      await resultPromise;
+
+      expect(caughtError).toEqual({
+        status: 503,
+        message: "Service unavailable",
+      });
+
+      // Should have tried 4 times (initial + 3 retries)
+      expect(mockParse).toHaveBeenCalledTimes(4);
+    });
+
+    it("should succeed after multiple retries", async () => {
+      const mockResponse = {
+        output_parsed: { comments: [] },
+      };
+
+      // First 3 calls: transient errors, Fourth call: success
+      mockParse
+        .mockRejectedValueOnce({ status: 429, message: "Rate limit" })
+        .mockRejectedValueOnce({ status: 503, message: "Service unavailable" })
+        .mockRejectedValueOnce({ status: 502, message: "Bad gateway" })
+        .mockResolvedValueOnce(mockResponse);
+
+      const service = new AzureOpenAIService(mockConfig);
+      const resultPromise = service.runReviewPrompt(
+        mockInput,
+        mockReviewConfig
+      );
+
+      // Advance timers through all retries (1s + 2s + 4s = 7s total delay)
+      await vi.advanceTimersByTimeAsync(10000);
+
+      const result = await resultPromise;
+
+      expect(mockParse).toHaveBeenCalledTimes(4);
+      expect(result.comments).toHaveLength(0);
+    });
+  });
+
   describe("Background Mode", () => {
     const backgroundPollingConfig: BackgroundPollingConfig = {
       enabled: true,
