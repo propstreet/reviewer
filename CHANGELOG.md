@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2026-01-29
+
+### Added
+- **`xhigh` reasoning effort level** - Support for extended reasoning effort on gpt-5.2 and newer models. Use `reasoningEffort: xhigh` for maximum reasoning depth (note: may increase latency and cost).
+- **Retry logic for synchronous requests** - Transient errors (429, 500, 502, 503, 504) now automatically retry with exponential backoff (up to 3 retries). Previously only background mode had retry handling.
+
+### Fixed
+- **Review comment validation for synchronize events** - Fixed "Path could not be resolved" errors on multi-commit PRs when triggered by push events. The validation now always uses the full PR diff, not the narrow commit range being reviewed.
+
+### Changed
+- **Updated dependencies** - Major updates to `@actions/core` (v3), `@actions/github` (v9), `openai` SDK (v6.17.0), and dev dependencies. Zod kept at v3 for SDK compatibility.
+
 ## [3.4.1] - 2025-12-16
 
 ### Changed

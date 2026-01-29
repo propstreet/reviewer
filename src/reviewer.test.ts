@@ -140,9 +140,8 @@ describe("reviewer", () => {
   /* eslint-disable @typescript-eslint/no-unused-vars */
   it("should handle successful review flow", async () => {
     // Mock isWithinTokenLimit to allow diff processing and return token count
-    const { isWithinTokenLimit } = await import(
-      "gpt-tokenizer/encoding/o200k_base"
-    );
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
     vi.mocked(isWithinTokenLimit).mockImplementation(
       (_input: unknown, _tokenLimit: number) => 1234 // Return specific token count for verification
     );
@@ -230,9 +229,8 @@ commit diff
   /* eslint-disable @typescript-eslint/no-unused-vars */
   it("should handle patches exceeding token limit", async () => {
     // Mock isWithinTokenLimit to simulate token limit exceeded
-    const { isWithinTokenLimit } = await import(
-      "gpt-tokenizer/encoding/o200k_base"
-    );
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
 
     vi.mocked(isWithinTokenLimit).mockImplementation(
       (_input: unknown, _tokenLimit: number) => {
@@ -261,9 +259,8 @@ commit diff
   /* eslint-disable @typescript-eslint/no-unused-vars */
   it("should handle some patches within token limit", async () => {
     // Mock isWithinTokenLimit to simulate selective patch inclusion
-    const { isWithinTokenLimit } = await import(
-      "gpt-tokenizer/encoding/o200k_base"
-    );
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
     const infoSpy = vi.spyOn(core, "info");
 
     vi.mocked(isWithinTokenLimit).mockImplementation(
@@ -375,9 +372,8 @@ commit diff
 
   it("should handle empty AI response", async () => {
     // Mock isWithinTokenLimit to allow diff processing
-    const { isWithinTokenLimit } = await import(
-      "gpt-tokenizer/encoding/o200k_base"
-    );
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
     vi.mocked(isWithinTokenLimit).mockImplementation(
       (_input: unknown, _tokenLimit: number) => 1000 // Return token count instead of boolean
     );
@@ -573,9 +569,8 @@ commit diff
 
   it("should not skip merge commits when skipMergeCommits is false", async () => {
     // Mock isWithinTokenLimit to allow diff processing
-    const { isWithinTokenLimit } = await import(
-      "gpt-tokenizer/encoding/o200k_base"
-    );
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
     vi.mocked(isWithinTokenLimit).mockImplementation(
       (_input: unknown, _tokenLimit: number) => 1234
     );
@@ -646,9 +641,8 @@ commit diff
 
   it("should skip files matching exclude patterns", async () => {
     // Mock isWithinTokenLimit to allow diff processing
-    const { isWithinTokenLimit } = await import(
-      "gpt-tokenizer/encoding/o200k_base"
-    );
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
     vi.mocked(isWithinTokenLimit).mockImplementation(
       (_input: unknown, _tokenLimit: number) => 1234
     );
@@ -719,9 +713,8 @@ commit diff
 
   it("should pass customPrompt to Azure service", async () => {
     // Mock isWithinTokenLimit to allow diff processing
-    const { isWithinTokenLimit } = await import(
-      "gpt-tokenizer/encoding/o200k_base"
-    );
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
     vi.mocked(isWithinTokenLimit).mockImplementation(
       (_input: unknown, _tokenLimit: number) => 1234
     );
@@ -768,9 +761,8 @@ commit diff
     // This tests the fix for synchronize events where options.base/head differ from PR base/head
     // GitHub validates review comments against full PR diff, not the narrow commit range
 
-    const { isWithinTokenLimit } = await import(
-      "gpt-tokenizer/encoding/o200k_base"
-    );
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
     vi.mocked(isWithinTokenLimit).mockImplementation(() => 1234);
 
     // PR details show full range (pr-base -> head-sha)
@@ -866,9 +858,8 @@ commit diff
   });
 
   it("should reuse compareCommits result when options range matches PR range", async () => {
-    const { isWithinTokenLimit } = await import(
-      "gpt-tokenizer/encoding/o200k_base"
-    );
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
     vi.mocked(isWithinTokenLimit).mockImplementation(() => 1234);
 
     // PR details match options range

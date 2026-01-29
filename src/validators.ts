@@ -1,5 +1,13 @@
-// Define ReasoningEffort locally - includes "minimal" for GPT-5 support
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+/** Valid reasoning effort levels for AI models */
+const REASONING_EFFORTS = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
+
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 
 export type SeverityLevel = "info" | "warning" | "error";
 
@@ -64,7 +72,7 @@ export function formatError(error: unknown): string {
 export function isValidReasoningEffort(
   reasoningEffort: string
 ): reasoningEffort is ReasoningEffort {
-  return ["minimal", "low", "medium", "high"].includes(reasoningEffort);
+  return (REASONING_EFFORTS as readonly string[]).includes(reasoningEffort);
 }
 
 export function isValidSeverityLevel(
