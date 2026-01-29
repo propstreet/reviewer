@@ -1,7 +1,6 @@
 import * as core from "@actions/core";
 import OpenAI from "openai";
 import type { Response as OpenAIResponse } from "openai/resources/responses/responses";
-import type { ReasoningEffort as SDKReasoningEffort } from "openai/resources/shared";
 import { zodTextFormat } from "openai/helpers/zod";
 import { CodeReviewCommentArray, type ReviewResult } from "./schemas.js";
 import { formatError, type ReasoningEffort } from "./validators.js";
@@ -40,16 +39,6 @@ function isTerminalStatus(
 ): status is TerminalStatus {
   if (!status) return false;
   return TERMINAL_STATUSES.includes(status as TerminalStatus);
-}
-
-/**
- * Converts our ReasoningEffort type to the SDK's expected type.
- * TODO: Remove this cast once the OpenAI SDK includes "xhigh" in its type definitions.
- * The API supports "xhigh" for models like gpt-5.2, but the SDK types lag behind.
- * If an unsupported reasoning effort is used with a model, the API will return an error.
- */
-function toSDKReasoningEffort(effort: ReasoningEffort): SDKReasoningEffort {
-  return effort as SDKReasoningEffort;
 }
 
 export class AzureOpenAIService {
@@ -174,7 +163,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
       model: this.deployment,
       instructions: instructions,
       input: prompt,
-      reasoning: { effort: toSDKReasoningEffort(config.reasoningEffort) },
+      reasoning: { effort: config.reasoningEffort },
       text: {
         format: zodTextFormat(CodeReviewCommentArray, "review_comments"),
       },

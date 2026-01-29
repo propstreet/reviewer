@@ -29,7 +29,11 @@ inputs:
     required: false
     default: "error"
   reasoningEffort:
-    description: "Reasoning effort level (minimal, low, medium, high, or xhigh). Some models support extended levels like 'xhigh' for maximum reasoning depth. Using unsupported levels may cause API errors or increase latency/cost. For review purposes 'high' is recommended."
+    description: >
+      Reasoning effort level (minimal, low, medium, high, or xhigh).
+      Some models support extended levels like 'xhigh' for maximum reasoning depth.
+      Using unsupported levels may cause API errors or increase latency/cost.
+      For review purposes 'high' is recommended.
     required: false
     default: "medium"
   tokenLimit:

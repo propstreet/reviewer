@@ -1,5 +1,5 @@
 /** Valid reasoning effort levels for AI models */
-export const REASONING_EFFORTS = [
+const REASONING_EFFORTS = [
   "minimal",
   "low",
   "medium",
@@ -72,7 +72,7 @@ export function formatError(error: unknown): string {
 export function isValidReasoningEffort(
   reasoningEffort: string
 ): reasoningEffort is ReasoningEffort {
-  return REASONING_EFFORTS.includes(reasoningEffort as ReasoningEffort);
+  return (REASONING_EFFORTS as readonly string[]).includes(reasoningEffort);
 }
 
 export function isValidSeverityLevel(
