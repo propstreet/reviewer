@@ -105,7 +105,7 @@ jobs:
   with:
     azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
     azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-    azureOpenAIDeployment: gpt-5.4
+    azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
     reasoningEffort: high
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -169,7 +169,7 @@ The `reasoningEffort` input controls how much reasoning the model applies:
 
 | Model | `reasoningEffort` | Use Case |
 |-------|-------------------|----------|
-| **gpt-5.4** | `high` | **Recommended** - Latest frontier model, 1M context, 33% fewer errors vs 5.2 |
+| **gpt-5.4** | `high` | **Recommended** - Latest frontier model, 1M context |
 | gpt-5.4 | `xhigh` | Maximum reasoning depth (requires `backgroundMode: enabled`) |
 | gpt-5.4-pro | `high` | Most thorough reviews (requires `backgroundMode: enabled`) |
 | gpt-5.2 | `high` | Previous frontier model, 400K context |

@@ -55928,13 +55928,16 @@ If you have no comments, return an empty comments array. Respond in JSON format.
                 pollingAttempts = pollResult.pollingAttempts;
             }
             const elapsedMs = Date.now() - startTime;
-            // On failure, log detailed diagnostics and retry if transient
+            // On failure, check retryability first, then log appropriately
             if (finalResponse.status === "failed") {
-                this.logBackgroundFailureDetails(finalResponse, elapsedMs, pollingAttempts);
-                if (attempt < maxRetries &&
-                    this.isRetryableBackgroundFailure(finalResponse)) {
+                const isRetryable = this.isRetryableBackgroundFailure(finalResponse);
+                if (attempt < maxRetries && isRetryable) {
+                    // Transient failure — log at warning level to avoid false error annotations
+                    this.logBackgroundFailureDetails(finalResponse, elapsedMs, pollingAttempts, "warning");
                     continue;
                 }
+                // Non-retryable or retries exhausted — log at error level
+                this.logBackgroundFailureDetails(finalResponse, elapsedMs, pollingAttempts, "error");
             }
             // Handle terminal status (returns result or throws)
             return this.handleCompletedResponse(finalResponse);
@@ -56085,27 +56088,29 @@ If you have no comments, return an empty comments array. Respond in JSON format.
     isRetryableBackgroundFailure(response) {
         const error = response.error;
         if (!error)
-            return true; // No error details — unknown failure, worth retrying
+            return false; // No error details — unknown failure, don't retry
         // Retryable error codes from the Responses API
         if (error.code === "server_error" || error.code === "rate_limit_exceeded") {
             return true;
         }
         // Generic Azure transient error message
-        if (error.message?.includes("An error occurred while processing your request")) {
+        if (error.message &&
+            /an error occurred while processing your request/i.test(error.message)) {
             return true;
         }
         return false;
     }
-    logBackgroundFailureDetails(response, elapsedMs, pollingAttempts) {
-        error(`Background request ${response.id} failed`);
-        error(`Status: ${response.status}`);
-        error(`Error: ${JSON.stringify(response.error)}`);
+    logBackgroundFailureDetails(response, elapsedMs, pollingAttempts, level = "error") {
+        const log = level === "warning" ? warning : error;
+        log(`Background request ${response.id} failed`);
+        log(`Status: ${response.status}`);
+        log(`Error: ${JSON.stringify(response.error)}`);
         if (response.incomplete_details) {
-            error(`Incomplete details: ${JSON.stringify(response.incomplete_details)}`);
+            log(`Incomplete details: ${JSON.stringify(response.incomplete_details)}`);
         }
-        error(`Elapsed: ${Math.round(elapsedMs / 1000)}s, polling attempts: ${pollingAttempts}`);
+        log(`Elapsed: ${Math.round(elapsedMs / 1000)}s, polling attempts: ${pollingAttempts}`);
         if (response.usage) {
-            error(`Token usage: ${JSON.stringify(response.usage)}`);
+            log(`Token usage: ${JSON.stringify(response.usage)}`);
         }
     }
     sleep(ms) {

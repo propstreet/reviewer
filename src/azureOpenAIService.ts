@@ -207,20 +207,28 @@ If you have no comments, return an empty comments array. Respond in JSON format.
 
       const elapsedMs = Date.now() - startTime;
 
-      // On failure, log detailed diagnostics and retry if transient
+      // On failure, check retryability first, then log appropriately
       if (finalResponse.status === "failed") {
+        const isRetryable = this.isRetryableBackgroundFailure(finalResponse);
+
+        if (attempt < maxRetries && isRetryable) {
+          // Transient failure — log at warning level to avoid false error annotations
+          this.logBackgroundFailureDetails(
+            finalResponse,
+            elapsedMs,
+            pollingAttempts,
+            "warning"
+          );
+          continue;
+        }
+
+        // Non-retryable or retries exhausted — log at error level
         this.logBackgroundFailureDetails(
           finalResponse,
           elapsedMs,
-          pollingAttempts
+          pollingAttempts,
+          "error"
         );
-
-        if (
-          attempt < maxRetries &&
-          this.isRetryableBackgroundFailure(finalResponse)
-        ) {
-          continue;
-        }
       }
 
       // Handle terminal status (returns result or throws)
@@ -421,7 +429,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
 
   private isRetryableBackgroundFailure(response: OpenAIResponse): boolean {
     const error = response.error;
-    if (!error) return true; // No error details — unknown failure, worth retrying
+    if (!error) return false; // No error details — unknown failure, don't retry
 
     // Retryable error codes from the Responses API
     if (error.code === "server_error" || error.code === "rate_limit_exceeded") {
@@ -430,7 +438,8 @@ If you have no comments, return an empty comments array. Respond in JSON format.
 
     // Generic Azure transient error message
     if (
-      error.message?.includes("An error occurred while processing your request")
+      error.message &&
+      /an error occurred while processing your request/i.test(error.message)
     ) {
       return true;
     }
@@ -441,21 +450,21 @@ If you have no comments, return an empty comments array. Respond in JSON format.
   private logBackgroundFailureDetails(
     response: OpenAIResponse,
     elapsedMs: number,
-    pollingAttempts: number
+    pollingAttempts: number,
+    level: "warning" | "error" = "error"
   ): void {
-    core.error(`Background request ${response.id} failed`);
-    core.error(`Status: ${response.status}`);
-    core.error(`Error: ${JSON.stringify(response.error)}`);
+    const log = level === "warning" ? core.warning : core.error;
+    log(`Background request ${response.id} failed`);
+    log(`Status: ${response.status}`);
+    log(`Error: ${JSON.stringify(response.error)}`);
     if (response.incomplete_details) {
-      core.error(
-        `Incomplete details: ${JSON.stringify(response.incomplete_details)}`
-      );
+      log(`Incomplete details: ${JSON.stringify(response.incomplete_details)}`);
     }
-    core.error(
+    log(
       `Elapsed: ${Math.round(elapsedMs / 1000)}s, polling attempts: ${pollingAttempts}`
     );
     if (response.usage) {
-      core.error(`Token usage: ${JSON.stringify(response.usage)}`);
+      log(`Token usage: ${JSON.stringify(response.usage)}`);
     }
   }
 
