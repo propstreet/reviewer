@@ -28434,7 +28434,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 5651:
+/***/ 8833:
 /***/ ((__unused_webpack_module, __webpack_exports__, __nccwpck_require__) => {
 
 
@@ -35661,7 +35661,7 @@ function isValidCustomPrompt(prompt) {
     return prompt.length > 0 && prompt.length <= MAX_CUSTOM_PROMPT_LENGTH;
 }
 
-;// CONCATENATED MODULE: ./node_modules/@isaacs/balanced-match/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/minimatch/node_modules/balanced-match/dist/esm/index.js
 const balanced = (a, b, str) => {
     const ma = a instanceof RegExp ? maybeMatch(a, str) : a;
     const mb = b instanceof RegExp ? maybeMatch(b, str) : b;
@@ -35716,7 +35716,7 @@ const range = (a, b, str) => {
     return result;
 };
 //# sourceMappingURL=index.js.map
-;// CONCATENATED MODULE: ./node_modules/@isaacs/brace-expansion/dist/esm/index.js
+;// CONCATENATED MODULE: ./node_modules/minimatch/node_modules/brace-expansion/dist/esm/index.js
 
 const escSlash = '\0SLASH' + Math.random() + '\0';
 const escOpen = '\0OPEN' + Math.random() + '\0';
@@ -35732,7 +35732,8 @@ const slashPattern = /\\\\/g;
 const openPattern = /\\{/g;
 const closePattern = /\\}/g;
 const commaPattern = /\\,/g;
-const periodPattern = /\\./g;
+const periodPattern = /\\\./g;
+const EXPANSION_MAX = 100_000;
 function numeric(str) {
     return !isNaN(str) ? parseInt(str, 10) : str.charCodeAt(0);
 }
@@ -35778,10 +35779,11 @@ function parseCommaParts(str) {
     parts.push.apply(parts, p);
     return parts;
 }
-function esm_expand(str) {
+function esm_expand(str, options = {}) {
     if (!str) {
         return [];
     }
+    const { max = EXPANSION_MAX } = options;
     // I don't know why Bash 4.3 does this, but it does.
     // Anything starting with {} will have the first two bytes preserved
     // but *only* at the top level, so {},a}b will not expand to anything,
@@ -35791,7 +35793,7 @@ function esm_expand(str) {
     if (str.slice(0, 2) === '{}') {
         str = '\\{\\}' + str.slice(2);
     }
-    return expand_(escapeBraces(str), true).map(unescapeBraces);
+    return expand_(escapeBraces(str), max, true).map(unescapeBraces);
 }
 function embrace(str) {
     return '{' + str + '}';
@@ -35805,7 +35807,7 @@ function lte(i, y) {
 function gte(i, y) {
     return i >= y;
 }
-function expand_(str, isTop) {
+function expand_(str, max, isTop) {
     /** @type {string[]} */
     const expansions = [];
     const m = balanced('{', '}', str);
@@ -35813,9 +35815,9 @@ function expand_(str, isTop) {
         return [str];
     // no need to expand pre, since it is guaranteed to be free of brace-sets
     const pre = m.pre;
-    const post = m.post.length ? expand_(m.post, false) : [''];
+    const post = m.post.length ? expand_(m.post, max, false) : [''];
     if (/\$$/.test(m.pre)) {
-        for (let k = 0; k < post.length; k++) {
+        for (let k = 0; k < post.length && k < max; k++) {
             const expansion = pre + '{' + m.body + '}' + post[k];
             expansions.push(expansion);
         }
@@ -35829,7 +35831,7 @@ function expand_(str, isTop) {
             // {a},b}
             if (m.post.match(/,(?!,).*\}/)) {
                 str = m.pre + '{' + m.body + escClose + m.post;
-                return expand_(str);
+                return expand_(str, max, true);
             }
             return [str];
         }
@@ -35841,7 +35843,7 @@ function expand_(str, isTop) {
             n = parseCommaParts(m.body);
             if (n.length === 1 && n[0] !== undefined) {
                 // x{{a,b}}y ==> x{a}y x{b}y
-                n = expand_(n[0], false).map(embrace);
+                n = expand_(n[0], max, false).map(embrace);
                 //XXX is this necessary? Can't seem to hit it in tests.
                 /* c8 ignore start */
                 if (n.length === 1) {
@@ -35895,11 +35897,11 @@ function expand_(str, isTop) {
         else {
             N = [];
             for (let j = 0; j < n.length; j++) {
-                N.push.apply(N, expand_(n[j], false));
+                N.push.apply(N, expand_(n[j], max, false));
             }
         }
         for (let j = 0; j < N.length; j++) {
-            for (let k = 0; k < post.length; k++) {
+            for (let k = 0; k < post.length && expansions.length < max; k++) {
                 const expansion = pre + N[j] + post[k];
                 if (!isTop || isSequence || expansion) {
                     expansions.push(expansion);
@@ -36062,10 +36064,8 @@ const parseClass = (glob, position) => {
     }
     const sranges = '[' + (negate ? '^' : '') + rangesToString(ranges) + ']';
     const snegs = '[' + (negate ? '' : '^') + rangesToString(negs) + ']';
-    const comb = ranges.length && negs.length
-        ? '(' + sranges + '|' + snegs + ')'
-        : ranges.length
-            ? sranges
+    const comb = ranges.length && negs.length ? '(' + sranges + '|' + snegs + ')'
+        : ranges.length ? sranges
             : snegs;
     return [comb, uflag, endPos - pos, true];
 };
@@ -36092,14 +36092,14 @@ const parseClass = (glob, position) => {
  */
 const unescape_unescape = (s, { windowsPathsNoEscape = false, magicalBraces = true, } = {}) => {
     if (magicalBraces) {
-        return windowsPathsNoEscape
-            ? s.replace(/\[([^\/\\])\]/g, '$1')
+        return windowsPathsNoEscape ?
+            s.replace(/\[([^\/\\])\]/g, '$1')
             : s
                 .replace(/((?!\\).|^)\[([^\/\\])\]/g, '$1$2')
                 .replace(/\\([^\/])/g, '$1');
     }
-    return windowsPathsNoEscape
-        ? s.replace(/\[([^\/\\{}])\]/g, '$1')
+    return windowsPathsNoEscape ?
+        s.replace(/\[([^\/\\{}])\]/g, '$1')
         : s
             .replace(/((?!\\).|^)\[([^\/\\{}])\]/g, '$1$2')
             .replace(/\\([^\/{}])/g, '$1');
@@ -36107,10 +36107,112 @@ const unescape_unescape = (s, { windowsPathsNoEscape = false, magicalBraces = tr
 //# sourceMappingURL=unescape.js.map
 ;// CONCATENATED MODULE: ./node_modules/minimatch/dist/esm/ast.js
 // parse a single path portion
+var _a;
 
 
 const types = new Set(['!', '?', '+', '*', '@']);
 const isExtglobType = (c) => types.has(c);
+const isExtglobAST = (c) => isExtglobType(c.type);
+// Map of which extglob types can adopt the children of a nested extglob
+//
+// anything but ! can adopt a matching type:
+// +(a|+(b|c)|d) => +(a|b|c|d)
+// *(a|*(b|c)|d) => *(a|b|c|d)
+// @(a|@(b|c)|d) => @(a|b|c|d)
+// ?(a|?(b|c)|d) => ?(a|b|c|d)
+//
+// * can adopt anything, because 0 or repetition is allowed
+// *(a|?(b|c)|d) => *(a|b|c|d)
+// *(a|+(b|c)|d) => *(a|b|c|d)
+// *(a|@(b|c)|d) => *(a|b|c|d)
+//
+// + can adopt @, because 1 or repetition is allowed
+// +(a|@(b|c)|d) => +(a|b|c|d)
+//
+// + and @ CANNOT adopt *, because 0 would be allowed
+// +(a|*(b|c)|d) => would match "", on *(b|c)
+// @(a|*(b|c)|d) => would match "", on *(b|c)
+//
+// + and @ CANNOT adopt ?, because 0 would be allowed
+// +(a|?(b|c)|d) => would match "", on ?(b|c)
+// @(a|?(b|c)|d) => would match "", on ?(b|c)
+//
+// ? can adopt @, because 0 or 1 is allowed
+// ?(a|@(b|c)|d) => ?(a|b|c|d)
+//
+// ? and @ CANNOT adopt * or +, because >1 would be allowed
+// ?(a|*(b|c)|d) => would match bbb on *(b|c)
+// @(a|*(b|c)|d) => would match bbb on *(b|c)
+// ?(a|+(b|c)|d) => would match bbb on +(b|c)
+// @(a|+(b|c)|d) => would match bbb on +(b|c)
+//
+// ! CANNOT adopt ! (nothing else can either)
+// !(a|!(b|c)|d) => !(a|b|c|d) would fail to match on b (not not b|c)
+//
+// ! can adopt @
+// !(a|@(b|c)|d) => !(a|b|c|d)
+//
+// ! CANNOT adopt *
+// !(a|*(b|c)|d) => !(a|b|c|d) would match on bbb, not allowed
+//
+// ! CANNOT adopt +
+// !(a|+(b|c)|d) => !(a|b|c|d) would match on bbb, not allowed
+//
+// ! CANNOT adopt ?
+// x!(a|?(b|c)|d) => x!(a|b|c|d) would fail to match "x"
+const adoptionMap = new Map([
+    ['!', ['@']],
+    ['?', ['?', '@']],
+    ['@', ['@']],
+    ['*', ['*', '+', '?', '@']],
+    ['+', ['+', '@']],
+]);
+// nested extglobs that can be adopted in, but with the addition of
+// a blank '' element.
+const adoptionWithSpaceMap = new Map([
+    ['!', ['?']],
+    ['@', ['?']],
+    ['+', ['?', '*']],
+]);
+// union of the previous two maps
+const adoptionAnyMap = new Map([
+    ['!', ['?', '@']],
+    ['?', ['?', '@']],
+    ['@', ['?', '@']],
+    ['*', ['*', '+', '?', '@']],
+    ['+', ['+', '@', '?', '*']],
+]);
+// Extglobs that can take over their parent if they are the only child
+// the key is parent, value maps child to resulting extglob parent type
+// '@' is omitted because it's a special case. An `@` extglob with a single
+// member can always be usurped by that subpattern.
+const usurpMap = new Map([
+    ['!', new Map([['!', '@']])],
+    [
+        '?',
+        new Map([
+            ['*', '*'],
+            ['+', '*'],
+        ]),
+    ],
+    [
+        '@',
+        new Map([
+            ['!', '!'],
+            ['?', '?'],
+            ['@', '@'],
+            ['*', '*'],
+            ['+', '+'],
+        ]),
+    ],
+    [
+        '+',
+        new Map([
+            ['?', '*'],
+            ['*', '*'],
+        ]),
+    ],
+]);
 // Patterns that get prepended to bind to the start of either the
 // entire string, or just a single path portion, to prevent dots
 // and/or traversal patterns, when needed.
@@ -36134,6 +36236,7 @@ const star = qmark + '*?';
 const starNoEmpty = qmark + '+?';
 // remove the \ chars that we added if we end up doing a nonmagic compare
 // const deslash = (s: string) => s.replace(/\\(.)/g, '$1')
+let ID = 0;
 class AST {
     type;
     #root;
@@ -36149,6 +36252,22 @@ class AST {
     // set to true if it's an extglob with no children
     // (which really means one child of '')
     #emptyExt = false;
+    id = ++ID;
+    get depth() {
+        return (this.#parent?.depth ?? -1) + 1;
+    }
+    [Symbol.for('nodejs.util.inspect.custom')]() {
+        return {
+            '@@type': 'AST',
+            id: this.id,
+            type: this.type,
+            root: this.#root.id,
+            parent: this.#parent?.id,
+            depth: this.depth,
+            partsLength: this.#parts.length,
+            parts: this.#parts,
+        };
+    }
     constructor(type, parent, options = {}) {
         this.type = type;
         // extglobs are inherently magical
@@ -36227,7 +36346,8 @@ class AST {
             if (p === '')
                 continue;
             /* c8 ignore start */
-            if (typeof p !== 'string' && !(p instanceof AST && p.#parent === this)) {
+            if (typeof p !== 'string' &&
+                !(p instanceof _a && p.#parent === this)) {
                 throw new Error('invalid part: ' + p);
             }
             /* c8 ignore stop */
@@ -36235,8 +36355,10 @@ class AST {
         }
     }
     toJSON() {
-        const ret = this.type === null
-            ? this.#parts.slice().map(p => (typeof p === 'string' ? p : p.toJSON()))
+        const ret = this.type === null ?
+            this.#parts
+                .slice()
+                .map(p => (typeof p === 'string' ? p : p.toJSON()))
             : [this.type, ...this.#parts.map(p => p.toJSON())];
         if (this.isStart() && !this.type)
             ret.unshift([]);
@@ -36259,7 +36381,7 @@ class AST {
         const p = this.#parent;
         for (let i = 0; i < this.#parentIndex; i++) {
             const pp = p.#parts[i];
-            if (!(pp instanceof AST && pp.type === '!')) {
+            if (!(pp instanceof _a && pp.type === '!')) {
                 return false;
             }
         }
@@ -36287,13 +36409,14 @@ class AST {
             this.push(part.clone(this));
     }
     clone(parent) {
-        const c = new AST(this.type, parent);
+        const c = new _a(this.type, parent);
         for (const p of this.#parts) {
             c.copyIn(p);
         }
         return c;
     }
-    static #parseAST(str, ast, pos, opt) {
+    static #parseAST(str, ast, pos, opt, extDepth) {
+        const maxDepth = opt.maxExtglobRecursion ?? 2;
         let escaping = false;
         let inBrace = false;
         let braceStart = -1;
@@ -36330,11 +36453,17 @@ class AST {
                     acc += c;
                     continue;
                 }
-                if (!opt.noext && isExtglobType(c) && str.charAt(i) === '(') {
+                // we don't have to check for adoption here, because that's
+                // done at the other recursion point.
+                const doRecurse = !opt.noext &&
+                    isExtglobType(c) &&
+                    str.charAt(i) === '(' &&
+                    extDepth <= maxDepth;
+                if (doRecurse) {
                     ast.push(acc);
                     acc = '';
-                    const ext = new AST(c, ast);
-                    i = AST.#parseAST(str, ext, i, opt);
+                    const ext = new _a(c, ast);
+                    i = _a.#parseAST(str, ext, i, opt, extDepth + 1);
                     ast.push(ext);
                     continue;
                 }
@@ -36346,7 +36475,7 @@ class AST {
         // some kind of extglob, pos is at the (
         // find the next | or )
         let i = pos + 1;
-        let part = new AST(null, ast);
+        let part = new _a(null, ast);
         const parts = [];
         let acc = '';
         while (i < str.length) {
@@ -36377,19 +36506,26 @@ class AST {
                 acc += c;
                 continue;
             }
-            if (isExtglobType(c) && str.charAt(i) === '(') {
+            const doRecurse = !opt.noext &&
+                isExtglobType(c) &&
+                str.charAt(i) === '(' &&
+                /* c8 ignore start - the maxDepth is sufficient here */
+                (extDepth <= maxDepth || (ast && ast.#canAdoptType(c)));
+            /* c8 ignore stop */
+            if (doRecurse) {
+                const depthAdd = ast && ast.#canAdoptType(c) ? 0 : 1;
                 part.push(acc);
                 acc = '';
-                const ext = new AST(c, part);
+                const ext = new _a(c, part);
                 part.push(ext);
-                i = AST.#parseAST(str, ext, i, opt);
+                i = _a.#parseAST(str, ext, i, opt, extDepth + depthAdd);
                 continue;
             }
             if (c === '|') {
                 part.push(acc);
                 acc = '';
                 parts.push(part);
-                part = new AST(null, ast);
+                part = new _a(null, ast);
                 continue;
             }
             if (c === ')') {
@@ -36411,9 +36547,82 @@ class AST {
         ast.#parts = [str.substring(pos - 1)];
         return i;
     }
+    #canAdoptWithSpace(child) {
+        return this.#canAdopt(child, adoptionWithSpaceMap);
+    }
+    #canAdopt(child, map = adoptionMap) {
+        if (!child ||
+            typeof child !== 'object' ||
+            child.type !== null ||
+            child.#parts.length !== 1 ||
+            this.type === null) {
+            return false;
+        }
+        const gc = child.#parts[0];
+        if (!gc || typeof gc !== 'object' || gc.type === null) {
+            return false;
+        }
+        return this.#canAdoptType(gc.type, map);
+    }
+    #canAdoptType(c, map = adoptionAnyMap) {
+        return !!map.get(this.type)?.includes(c);
+    }
+    #adoptWithSpace(child, index) {
+        const gc = child.#parts[0];
+        const blank = new _a(null, gc, this.options);
+        blank.#parts.push('');
+        gc.push(blank);
+        this.#adopt(child, index);
+    }
+    #adopt(child, index) {
+        const gc = child.#parts[0];
+        this.#parts.splice(index, 1, ...gc.#parts);
+        for (const p of gc.#parts) {
+            if (typeof p === 'object')
+                p.#parent = this;
+        }
+        this.#toString = undefined;
+    }
+    #canUsurpType(c) {
+        const m = usurpMap.get(this.type);
+        return !!(m?.has(c));
+    }
+    #canUsurp(child) {
+        if (!child ||
+            typeof child !== 'object' ||
+            child.type !== null ||
+            child.#parts.length !== 1 ||
+            this.type === null ||
+            this.#parts.length !== 1) {
+            return false;
+        }
+        const gc = child.#parts[0];
+        if (!gc || typeof gc !== 'object' || gc.type === null) {
+            return false;
+        }
+        return this.#canUsurpType(gc.type);
+    }
+    #usurp(child) {
+        const m = usurpMap.get(this.type);
+        const gc = child.#parts[0];
+        const nt = m?.get(gc.type);
+        /* c8 ignore start - impossible */
+        if (!nt)
+            return false;
+        /* c8 ignore stop */
+        this.#parts = gc.#parts;
+        for (const p of this.#parts) {
+            if (typeof p === 'object') {
+                p.#parent = this;
+            }
+        }
+        this.type = nt;
+        this.#toString = undefined;
+        this.#emptyExt = false;
+    }
     static fromGlob(pattern, options = {}) {
-        const ast = new AST(null, undefined, options);
-        AST.#parseAST(pattern, ast, 0, options);
+        const ast = new _a(null, undefined, options);
+        _a.#parseAST(pattern, ast, 0, options, 0);
         return ast;
     }
     // returns the regular expression if there's magic, or the unescaped
@@ -36517,16 +36726,18 @@ class AST {
     // or start or whatever) and prepend ^ or / at the Regexp construction.
     toRegExpSource(allowDot) {
         const dot = allowDot ?? !!this.#options.dot;
-        if (this.#root === this)
+        if (this.#root === this) {
+            this.#flatten();
             this.#fillNegs();
-        if (!this.type) {
+        }
+        if (!isExtglobAST(this)) {
             const noEmpty = this.isStart() &&
                 this.isEnd() &&
                 !this.#parts.some(s => typeof s !== 'string');
             const src = this.#parts
                 .map(p => {
-                const [re, _, hasMagic, uflag] = typeof p === 'string'
-                    ? AST.#parseGlob(p, this.#hasMagic, noEmpty)
+                const [re, _, hasMagic, uflag] = typeof p === 'string' ?
+                    _a.#parseGlob(p, this.#hasMagic, noEmpty)
                     : p.toRegExpSource(allowDot);
                 this.#hasMagic = this.#hasMagic || hasMagic;
                 this.#uflag = this.#uflag || uflag;
@@ -36555,7 +36766,10 @@ class AST {
                         // no need to prevent dots if it can't match a dot, or if a
                         // sub-pattern will be preventing it anyway.
                         const needNoDot = !dot && !allowDot && aps.has(src.charAt(0));
-                        start = needNoTrav ? startNoTraversal : needNoDot ? startNoDot : '';
+                        start =
+                            needNoTrav ? startNoTraversal
+                                : needNoDot ? startNoDot
+                                    : '';
                     }
                 }
             }
@@ -36585,14 +36799,14 @@ class AST {
             // invalid extglob, has to at least be *something* present, if it's
             // the entire path portion.
             const s = this.toString();
-            this.#parts = [s];
-            this.type = null;
-            this.#hasMagic = undefined;
+            const me = this;
+            me.#parts = [s];
+            me.type = null;
+            me.#hasMagic = undefined;
             return [s, unescape_unescape(this.toString()), false, false];
         }
-        // XXX abstract out this map method
-        let bodyDotAllowed = !repeated || allowDot || dot || !startNoDot
-            ? ''
+        let bodyDotAllowed = !repeated || allowDot || dot || !startNoDot ?
+            ''
             : this.#partsToRegExp(true);
         if (bodyDotAllowed === body) {
             bodyDotAllowed = '';
@@ -36606,20 +36820,16 @@ class AST {
             final = (this.isStart() && !dot ? startNoDot : '') + starNoEmpty;
         }
         else {
-            const close = this.type === '!'
-                ? // !() must match something,but !(x) can match ''
-                    '))' +
-                        (this.isStart() && !dot && !allowDot ? startNoDot : '') +
-                        star +
-                        ')'
-                : this.type === '@'
-                    ? ')'
-                    : this.type === '?'
-                        ? ')?'
-                        : this.type === '+' && bodyDotAllowed
-                            ? ')'
-                            : this.type === '*' && bodyDotAllowed
-                                ? `)?`
+            const close = this.type === '!' ?
+                // !() must match something,but !(x) can match ''
+                '))' +
+                    (this.isStart() && !dot && !allowDot ? startNoDot : '') +
+                    star +
+                    ')'
+                : this.type === '@' ? ')'
+                    : this.type === '?' ? ')?'
+                        : this.type === '+' && bodyDotAllowed ? ')'
+                            : this.type === '*' && bodyDotAllowed ? `)?`
                                 : `)${this.type}`;
             final = start + body + close;
         }
@@ -36629,6 +36839,42 @@ class AST {
             (this.#hasMagic = !!this.#hasMagic),
             this.#uflag,
         ];
+    }
+    #flatten() {
+        if (!isExtglobAST(this)) {
+            for (const p of this.#parts) {
+                if (typeof p === 'object') {
+                    p.#flatten();
+                }
+            }
+        }
+        else {
+            // do up to 10 passes to flatten as much as possible
+            let iterations = 0;
+            let done = false;
+            do {
+                done = true;
+                for (let i = 0; i < this.#parts.length; i++) {
+                    const c = this.#parts[i];
+                    if (typeof c === 'object') {
+                        c.#flatten();
+                        if (this.#canAdopt(c)) {
+                            done = false;
+                            this.#adopt(c, i);
+                        }
+                        else if (this.#canAdoptWithSpace(c)) {
+                            done = false;
+                            this.#adoptWithSpace(c, i);
+                        }
+                        else if (this.#canUsurp(c)) {
+                            done = false;
+                            this.#usurp(c);
+                        }
+                    }
+                }
+            } while (!done && ++iterations < 10);
+        }
+        this.#toString = undefined;
     }
     #partsToRegExp(dot) {
         return this.#parts
@@ -36651,12 +36897,25 @@ class AST {
         let escaping = false;
         let re = '';
         let uflag = false;
+        // multiple stars that aren't globstars coalesce into one *
+        let inStar = false;
         for (let i = 0; i < glob.length; i++) {
             const c = glob.charAt(i);
             if (escaping) {
                 escaping = false;
                 re += (reSpecials.has(c) ? '\\' : '') + c;
                 continue;
+            }
+            if (c === '*') {
+                if (inStar)
+                    continue;
+                inStar = true;
+                re += noEmpty && /^[*]+$/.test(glob) ? starNoEmpty : star;
+                hasMagic = true;
+                continue;
+            }
+            else {
+                inStar = false;
             }
             if (c === '\\') {
                 if (i === glob.length - 1) {
@@ -36677,11 +36936,6 @@ class AST {
                     continue;
                 }
             }
-            if (c === '*') {
-                re += noEmpty && glob === '*' ? starNoEmpty : star;
-                hasMagic = true;
-                continue;
-            }
             if (c === '?') {
                 re += qmark;
                 hasMagic = true;
@@ -36692,6 +36946,7 @@ class AST {
         return [re, unescape_unescape(glob), !!hasMagic, uflag];
     }
 }
+_a = AST;
 //# sourceMappingURL=ast.js.map
 ;// CONCATENATED MODULE: ./node_modules/minimatch/dist/esm/escape.js
 /**
@@ -36711,12 +36966,12 @@ const escape_escape = (s, { windowsPathsNoEscape = false, magicalBraces = false,
     // that make those magic, and escaping ! as [!] isn't valid,
     // because [!]] is a valid glob class meaning not ']'.
     if (magicalBraces) {
-        return windowsPathsNoEscape
-            ? s.replace(/[?*()[\]{}]/g, '[$&]')
+        return windowsPathsNoEscape ?
+            s.replace(/[?*()[\]{}]/g, '[$&]')
             : s.replace(/[?*()[\]\\{}]/g, '\\$&');
     }
-    return windowsPathsNoEscape
-        ? s.replace(/[?*()[\]]/g, '[$&]')
+    return windowsPathsNoEscape ?
+        s.replace(/[?*()[\]]/g, '[$&]')
         : s.replace(/[?*()[\]\\]/g, '\\$&');
 };
 //# sourceMappingURL=escape.js.map
@@ -36786,8 +37041,8 @@ const qmarksTestNoExtDot = ([$0]) => {
     return (f) => f.length === len && f !== '.' && f !== '..';
 };
 /* c8 ignore start */
-const defaultPlatform = (typeof process === 'object' && process
-    ? (typeof process.env === 'object' &&
+const defaultPlatform = (typeof process === 'object' && process ?
+    (typeof process.env === 'object' &&
         process.env &&
         process.env.__MINIMATCH_TESTING_PLATFORM__) ||
         process.platform
@@ -36871,7 +37126,7 @@ const braceExpand = (pattern, options = {}) => {
         // shortcut. no need to expand.
         return [pattern];
     }
-    return esm_expand(pattern);
+    return esm_expand(pattern, { max: options.braceExpandMax });
 };
 minimatch.braceExpand = braceExpand;
 // parse a component of the expanded set.
@@ -36916,16 +37171,20 @@ class Minimatch {
     isWindows;
     platform;
     windowsNoMagicRoot;
+    maxGlobstarRecursion;
     regexp;
     constructor(pattern, options = {}) {
         assertValidPattern(pattern);
         options = options || {};
         this.options = options;
+        this.maxGlobstarRecursion = options.maxGlobstarRecursion ?? 200;
         this.pattern = pattern;
         this.platform = options.platform || defaultPlatform;
         this.isWindows = this.platform === 'win32';
+        // avoid the annoying deprecation flag lol
+        const awe = ('allowWindow' + 'sEscape');
         this.windowsPathsNoEscape =
-            !!options.windowsPathsNoEscape || options.allowWindowsEscape === false;
+            !!options.windowsPathsNoEscape || options[awe] === false;
         if (this.windowsPathsNoEscape) {
             this.pattern = this.pattern.replace(/\\/g, '/');
         }
@@ -36938,8 +37197,8 @@ class Minimatch {
         this.partial = !!options.partial;
         this.nocase = !!this.options.nocase;
         this.windowsNoMagicRoot =
-            options.windowsNoMagicRoot !== undefined
-                ? options.windowsNoMagicRoot
+            options.windowsNoMagicRoot !== undefined ?
+                options.windowsNoMagicRoot
                 : !!(this.isWindows && this.nocase);
         this.globSet = [];
         this.globParts = [];
@@ -37002,7 +37261,10 @@ class Minimatch {
                     !globMagic.test(s[3]);
                 const isDrive = /^[a-z]:/i.test(s[0]);
                 if (isUNC) {
-                    return [...s.slice(0, 4), ...s.slice(4).map(ss => this.parse(ss))];
+                    return [
+                        ...s.slice(0, 4),
+                        ...s.slice(4).map(ss => this.parse(ss)),
+                    ];
                 }
                 else if (isDrive) {
                     return [s[0], ...s.slice(1).map(ss => this.parse(ss))];
@@ -37034,7 +37296,7 @@ class Minimatch {
     // to the right as possible, even if it increases the number
     // of patterns that we have to process.
     preprocess(globParts) {
-        // if we're not in globstar mode, then turn all ** into *
+        // if we're not in globstar mode, then turn ** into *
         if (this.options.noglobstar) {
             for (let i = 0; i < globParts.length; i++) {
                 for (let j = 0; j < globParts[i].length; j++) {
@@ -37320,7 +37582,8 @@ class Minimatch {
     // out of pattern, then that's fine, as long as all
     // the parts match.
     matchOne(file, pattern, partial = false) {
-        const options = this.options;
+        let fileStartIndex = 0;
+        let patternStartIndex = 0;
         // UNC paths like //?/X:/... can match X:/... and vice versa
         // Drive letters in absolute drive or unc paths are always compared
         // case-insensitively.
@@ -37338,18 +37601,22 @@ class Minimatch {
                 pattern[2] === '?' &&
                 typeof pattern[3] === 'string' &&
                 /^[a-z]:$/i.test(pattern[3]);
-            const fdi = fileUNC ? 3 : fileDrive ? 0 : undefined;
-            const pdi = patternUNC ? 3 : patternDrive ? 0 : undefined;
+            const fdi = fileUNC ? 3
+                : fileDrive ? 0
+                    : undefined;
+            const pdi = patternUNC ? 3
+                : patternDrive ? 0
+                    : undefined;
             if (typeof fdi === 'number' && typeof pdi === 'number') {
-                const [fd, pd] = [file[fdi], pattern[pdi]];
+                const [fd, pd] = [
+                    file[fdi],
+                    pattern[pdi],
+                ];
+                // start matching at the drive letter index of each
                 if (fd.toLowerCase() === pd.toLowerCase()) {
                     pattern[pdi] = fd;
-                    if (pdi > fdi) {
-                        pattern = pattern.slice(pdi);
-                    }
-                    else if (fdi > pdi) {
-                        file = file.slice(fdi);
-                    }
+                    patternStartIndex = pdi;
+                    fileStartIndex = fdi;
                 }
             }
         }
@@ -37359,99 +37626,185 @@ class Minimatch {
         if (optimizationLevel >= 2) {
             file = this.levelTwoFileOptimize(file);
         }
-        this.debug('matchOne', this, { file, pattern });
-        this.debug('matchOne', file.length, pattern.length);
-        for (var fi = 0, pi = 0, fl = file.length, pl = pattern.length; fi < fl && pi < pl; fi++, pi++) {
+        if (pattern.includes(GLOBSTAR)) {
+            return this.#matchGlobstar(file, pattern, partial, fileStartIndex, patternStartIndex);
+        }
+        return this.#matchOne(file, pattern, partial, fileStartIndex, patternStartIndex);
+    }
+    #matchGlobstar(file, pattern, partial, fileIndex, patternIndex) {
+        // split the pattern into head, tail, and middle of ** delimited parts
+        const firstgs = pattern.indexOf(GLOBSTAR, patternIndex);
+        const lastgs = pattern.lastIndexOf(GLOBSTAR);
+        // split the pattern up into globstar-delimited sections
+        // the tail has to be at the end, and the others just have
+        // to be found in order from the head.
+        const [head, body, tail] = partial ? [
+            pattern.slice(patternIndex, firstgs),
+            pattern.slice(firstgs + 1),
+            [],
+        ] : [
+            pattern.slice(patternIndex, firstgs),
+            pattern.slice(firstgs + 1, lastgs),
+            pattern.slice(lastgs + 1),
+        ];
+        // check the head, from the current file/pattern index.
+        if (head.length) {
+            const fileHead = file.slice(fileIndex, fileIndex + head.length);
+            if (!this.#matchOne(fileHead, head, partial, 0, 0)) {
+                return false;
+            }
+            fileIndex += head.length;
+            patternIndex += head.length;
+        }
+        // now we know the head matches!
+        // if the last portion is not empty, it MUST match the end
+        // check the tail
+        let fileTailMatch = 0;
+        if (tail.length) {
+            // if head + tail > file, then we cannot possibly match
+            if (tail.length + fileIndex > file.length)
+                return false;
+            // try to match the tail
+            let tailStart = file.length - tail.length;
+            if (this.#matchOne(file, tail, partial, tailStart, 0)) {
+                fileTailMatch = tail.length;
+            }
+            else {
+                // affordance for stuff like a/**/* matching a/b/
+                // if the last file portion is '', and there's more to the pattern
+                // then try without the '' bit.
+                if (file[file.length - 1] !== '' ||
+                    fileIndex + tail.length === file.length) {
+                    return false;
+                }
+                tailStart--;
+                if (!this.#matchOne(file, tail, partial, tailStart, 0)) {
+                    return false;
+                }
+                fileTailMatch = tail.length + 1;
+            }
+        }
+        // now we know the tail matches!
+        // the middle is zero or more portions wrapped in **, possibly
+        // containing more ** sections.
+        // so a/**/b/**/c/**/d has become **/b/**/c/**
+        // if it's empty, it means a/**/b, just verify we have no bad dots
+        // if there's no tail, so it ends on /**, then we must have *something*
+        // after the head, or it's not a matc
+        if (!body.length) {
+            let sawSome = !!fileTailMatch;
+            for (let i = fileIndex; i < file.length - fileTailMatch; i++) {
+                const f = String(file[i]);
+                sawSome = true;
+                if (f === '.' ||
+                    f === '..' ||
+                    (!this.options.dot && f.startsWith('.'))) {
+                    return false;
+                }
+            }
+            // in partial mode, we just need to get past all file parts
+            return partial || sawSome;
+        }
+        // now we know that there's one or more body sections, which can
+        // be matched anywhere from the 0 index (because the head was pruned)
+        // through to the length-fileTailMatch index.
+        // split the body up into sections, and note the minimum index it can
+        // be found at (start with the length of all previous segments)
+        // [section, before, after]
+        const bodySegments = [[[], 0]];
+        let currentBody = bodySegments[0];
+        let nonGsParts = 0;
+        const nonGsPartsSums = [0];
+        for (const b of body) {
+            if (b === GLOBSTAR) {
+                nonGsPartsSums.push(nonGsParts);
+                currentBody = [[], 0];
+                bodySegments.push(currentBody);
+            }
+            else {
+                currentBody[0].push(b);
+                nonGsParts++;
+            }
+        }
+        let i = bodySegments.length - 1;
+        const fileLength = file.length - fileTailMatch;
+        for (const b of bodySegments) {
+            b[1] = fileLength - (nonGsPartsSums[i--] + b[0].length);
+        }
+        return !!this.#matchGlobStarBodySections(file, bodySegments, fileIndex, 0, partial, 0, !!fileTailMatch);
+    }
+    // return false for "nope, not matching"
+    // return null for "not matching, cannot keep trying"
+    #matchGlobStarBodySections(file, 
+    // pattern section, last possible position for it
+    bodySegments, fileIndex, bodyIndex, partial, globStarDepth, sawTail) {
+        // take the first body segment, and walk from fileIndex to its "after"
+        // value at the end
+        // If it doesn't match at that position, we increment, until we hit
+        // that final possible position, and give up.
+        // If it does match, then advance and try to rest.
+        // If any of them fail we keep walking forward.
+        // this is still a bit recursively painful, but it's more constrained
+        // than previous implementations, because we never test something that
+        // can't possibly be a valid matching condition.
+        const bs = bodySegments[bodyIndex];
+        if (!bs) {
+            // just make sure that there's no bad dots
+            for (let i = fileIndex; i < file.length; i++) {
+                sawTail = true;
+                const f = file[i];
+                if (f === '.' ||
+                    f === '..' ||
+                    (!this.options.dot && f.startsWith('.'))) {
+                    return false;
+                }
+            }
+            return sawTail;
+        }
+        // have a non-globstar body section to test
+        const [body, after] = bs;
+        while (fileIndex <= after) {
+            const m = this.#matchOne(file.slice(0, fileIndex + body.length), body, partial, fileIndex, 0);
+            // if limit exceeded, no match. intentional false negative,
+            // acceptable break in correctness for security.
+            if (m && globStarDepth < this.maxGlobstarRecursion) {
+                // match! see if the rest match. if so, we're done!
+                const sub = this.#matchGlobStarBodySections(file, bodySegments, fileIndex + body.length, bodyIndex + 1, partial, globStarDepth + 1, sawTail);
+                if (sub !== false) {
+                    return sub;
+                }
+            }
+            const f = file[fileIndex];
+            if (f === '.' ||
+                f === '..' ||
+                (!this.options.dot && f.startsWith('.'))) {
+                return false;
+            }
+            fileIndex++;
+        }
+        // walked off. no point continuing
+        return partial || null;
+    }
+    #matchOne(file, pattern, partial, fileIndex, patternIndex) {
+        let fi;
+        let pi;
+        let pl;
+        let fl;
+        for (fi = fileIndex,
+            pi = patternIndex,
+            fl = file.length,
+            pl = pattern.length; fi < fl && pi < pl; fi++, pi++) {
             this.debug('matchOne loop');
-            var p = pattern[pi];
-            var f = file[fi];
+            let p = pattern[pi];
+            let f = file[fi];
             this.debug(pattern, p, f);
             // should be impossible.
             // some invalid regexp stuff in the set.
             /* c8 ignore start */
-            if (p === false) {
+            if (p === false || p === GLOBSTAR) {
                 return false;
             }
             /* c8 ignore stop */
-            if (p === GLOBSTAR) {
-                this.debug('GLOBSTAR', [pattern, p, f]);
-                // "**"
-                // a/**/b/**/c would match the following:
-                // a/b/x/y/z/c
-                // a/x/y/z/b/c
-                // a/b/x/b/x/c
-                // a/b/c
-                // To do this, take the rest of the pattern after
-                // the **, and see if it would match the file remainder.
-                // If so, return success.
-                // If not, the ** "swallows" a segment, and try again.
-                // This is recursively awful.
-                //
-                // a/**/b/**/c matching a/b/x/y/z/c
-                // - a matches a
-                // - doublestar
-                //   - matchOne(b/x/y/z/c, b/**/c)
-                //     - b matches b
-                //     - doublestar
-                //       - matchOne(x/y/z/c, c) -> no
-                //       - matchOne(y/z/c, c) -> no
-                //       - matchOne(z/c, c) -> no
-                //       - matchOne(c, c) yes, hit
-                var fr = fi;
-                var pr = pi + 1;
-                if (pr === pl) {
-                    this.debug('** at the end');
-                    // a ** at the end will just swallow the rest.
-                    // We have found a match.
-                    // however, it will not swallow /.x, unless
-                    // options.dot is set.
-                    // . and .. are *never* matched by **, for explosively
-                    // exponential reasons.
-                    for (; fi < fl; fi++) {
-                        if (file[fi] === '.' ||
-                            file[fi] === '..' ||
-                            (!options.dot && file[fi].charAt(0) === '.'))
-                            return false;
-                    }
-                    return true;
-                }
-                // ok, let's see if we can swallow whatever we can.
-                while (fr < fl) {
-                    var swallowee = file[fr];
-                    this.debug('\nglobstar while', file, fr, pattern, pr, swallowee);
-                    // XXX remove this slice.  Just pass the start index.
-                    if (this.matchOne(file.slice(fr), pattern.slice(pr), partial)) {
-                        this.debug('globstar found match!', fr, fl, swallowee);
-                        // found a match.
-                        return true;
-                    }
-                    else {
-                        // can't swallow "." or ".." ever.
-                        // can only swallow ".foo" when explicitly asked.
-                        if (swallowee === '.' ||
-                            swallowee === '..' ||
-                            (!options.dot && swallowee.charAt(0) === '.')) {
-                            this.debug('dot detected!', file, fr, pattern, pr);
-                            break;
-                        }
-                        // ** swallows a segment, and continue.
-                        this.debug('globstar swallow a segment, and continue');
-                        fr++;
-                    }
-                }
-                // no match was found.
-                // However, in partial mode, we can't say this is necessarily over.
-                /* c8 ignore start */
-                if (partial) {
-                    // ran out of file
-                    this.debug('\n>>> no match, partial?', file, fr, pattern, pr);
-                    if (fr === fl) {
-                        return true;
-                    }
-                }
-                /* c8 ignore stop */
-                return false;
-            }
             // something other than **
             // non-magic patterns just have to match exactly
             // patterns with magic have been turned into regexps.
@@ -37522,21 +37875,19 @@ class Minimatch {
             fastTest = options.dot ? starTestDot : starTest;
         }
         else if ((m = pattern.match(starDotExtRE))) {
-            fastTest = (options.nocase
-                ? options.dot
-                    ? starDotExtTestNocaseDot
+            fastTest = (options.nocase ?
+                options.dot ?
+                    starDotExtTestNocaseDot
                     : starDotExtTestNocase
-                : options.dot
-                    ? starDotExtTestDot
+                : options.dot ? starDotExtTestDot
                     : starDotExtTest)(m[1]);
         }
         else if ((m = pattern.match(qmarksRE))) {
-            fastTest = (options.nocase
-                ? options.dot
-                    ? qmarksTestNocaseDot
+            fastTest = (options.nocase ?
+                options.dot ?
+                    qmarksTestNocaseDot
                     : qmarksTestNocase
-                : options.dot
-                    ? qmarksTestDot
+                : options.dot ? qmarksTestDot
                     : qmarksTest)(m);
         }
         else if ((m = pattern.match(starDotStarRE))) {
@@ -37567,10 +37918,8 @@ class Minimatch {
             return this.regexp;
         }
         const options = this.options;
-        const twoStar = options.noglobstar
-            ? esm_star
-            : options.dot
-                ? twoStarDot
+        const twoStar = options.noglobstar ? esm_star
+            : options.dot ? twoStarDot
                 : twoStarNoDot;
         const flags = new Set(options.nocase ? ['i'] : []);
         // regexpify non-globstar patterns
@@ -37586,11 +37935,9 @@ class Minimatch {
                     for (const f of p.flags.split(''))
                         flags.add(f);
                 }
-                return typeof p === 'string'
-                    ? esm_regExpEscape(p)
-                    : p === GLOBSTAR
-                        ? GLOBSTAR
-                        : p._src;
+                return (typeof p === 'string' ? esm_regExpEscape(p)
+                    : p === GLOBSTAR ? GLOBSTAR
+                        : p._src);
             });
             pp.forEach((p, i) => {
                 const next = pp[i + 1];
@@ -40038,7 +40385,7 @@ const safeJSON = (text) => {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 //# sourceMappingURL=sleep.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/version.mjs
-const openai_version_VERSION = '6.17.0'; // x-release-please-version
+const openai_version_VERSION = '6.27.0'; // x-release-please-version
 //# sourceMappingURL=version.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/internal/detect-platform.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
@@ -40798,17 +41145,13 @@ function stringify(object, opts = {}) {
     return joined.length > 0 ? prefix + joined : '';
 }
 //# sourceMappingURL=stringify.mjs.map
-;// CONCATENATED MODULE: ./node_modules/openai/internal/qs/index.mjs
+;// CONCATENATED MODULE: ./node_modules/openai/internal/utils/query.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-const formats = {
-    formatters: formatters,
-    RFC1738: RFC1738,
-    RFC3986: RFC3986,
-    default: default_format,
-};
-
-
-//# sourceMappingURL=index.mjs.map
+function stringifyQuery(query) {
+    return stringify(query, { arrayFormat: 'brackets' });
+}
+//# sourceMappingURL=query.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/internal/utils/bytes.mjs
 function concatBytes(buffers) {
     let length = 0;
@@ -41043,7 +41386,7 @@ class Stream {
         this.controller = controller;
         __classPrivateFieldSet(this, _Stream_client, client, "f");
     }
-    static fromSSEResponse(response, controller, client) {
+    static fromSSEResponse(response, controller, client, synthesizeEventData) {
         let consumed = false;
         const logger = client ? loggerFor(client) : console;
         async function* iterator() {
@@ -41073,7 +41416,7 @@ class Stream {
                         if (data && data.error) {
                             throw new APIError(undefined, data.error, undefined, response.headers);
                         }
-                        yield data;
+                        yield synthesizeEventData ? { event: sse.event, data } : data;
                     }
                     else {
                         let data;
@@ -41326,9 +41669,9 @@ async function defaultParseResponse(client, props) {
             // Note: there is an invariant here that isn't represented in the type system
             // that if you set `stream: true` the response type must also be `Stream<T>`
             if (props.options.__streamClass) {
-                return props.options.__streamClass.fromSSEResponse(response, props.controller, client);
+                return props.options.__streamClass.fromSSEResponse(response, props.controller, client, props.options.__synthesizeEventData);
             }
-            return Stream.fromSSEResponse(response, props.controller, client);
+            return Stream.fromSSEResponse(response, props.controller, client, props.options.__synthesizeEventData);
         }
         // fetch refuses to read the body when the status code is 204.
         if (response.status === 204) {
@@ -41341,6 +41684,11 @@ async function defaultParseResponse(client, props) {
         const mediaType = contentType?.split(';')[0]?.trim();
         const isJSON = mediaType?.includes('application/json') || mediaType?.endsWith('+json');
         if (isJSON) {
+            const contentLength = response.headers.get('content-length');
+            if (contentLength === '0') {
+                // if there is no content we can't do anything
+                return undefined;
+            }
             const json = await response.json();
             return addRequestID(json, response);
         }
@@ -41900,6 +42248,9 @@ const path_path = /* @__PURE__ */ createPathTagFunction(encodeURIPath);
 
 
 
+/**
+ * Given a list of messages comprising a conversation, the model will return a response.
+ */
 class Messages extends APIResource {
     /**
      * Get the messages in a stored chat completion. Only Chat Completions that have
@@ -43375,6 +43726,9 @@ class ChatCompletionStreamingRunner extends ChatCompletionStream {
 
 
 
+/**
+ * Given a list of messages comprising a conversation, the model will return a response.
+ */
 class Completions extends APIResource {
     constructor() {
         super(...arguments);
@@ -43574,9 +43928,14 @@ const isEmptyHeaders = (headers) => {
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 
+/**
+ * Turn audio into text or text into audio.
+ */
 class Speech extends APIResource {
     /**
      * Generates audio from the input text.
+     *
+     * Returns the audio file content, or a stream of audio events.
      *
      * @example
      * ```ts
@@ -43604,6 +43963,9 @@ class Speech extends APIResource {
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 
+/**
+ * Turn audio into text or text into audio.
+ */
 class Transcriptions extends APIResource {
     create(body, options) {
         return this._client.post('/audio/transcriptions', multipartFormRequestOptions({
@@ -43619,6 +43981,9 @@ class Transcriptions extends APIResource {
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 
+/**
+ * Turn audio into text or text into audio.
+ */
 class Translations extends APIResource {
     create(body, options) {
         return this._client.post('/audio/translations', multipartFormRequestOptions({ body, ...options, __metadata: { model: body.model } }, this._client));
@@ -43651,6 +44016,9 @@ Audio.Speech = Speech;
 
 
 
+/**
+ * Create large batches of API requests to run asynchronously.
+ */
 class Batches extends APIResource {
     /**
      * Creates and executes a batch from an uploaded file of requests
@@ -43686,6 +44054,9 @@ class Batches extends APIResource {
 
 
 
+/**
+ * Build Assistants that can call models and use tools.
+ */
 class Assistants extends APIResource {
     /**
      * Create an assistant with a model and instructions.
@@ -43832,7 +44203,7 @@ Realtime.TranscriptionSessions = TranscriptionSessions;
 
 class sessions_Sessions extends APIResource {
     /**
-     * Create a ChatKit session
+     * Create a ChatKit session.
      *
      * @example
      * ```ts
@@ -43851,7 +44222,9 @@ class sessions_Sessions extends APIResource {
         });
     }
     /**
-     * Cancel a ChatKit session
+     * Cancel an active ChatKit session and return its most recent metadata.
+     *
+     * Cancelling prevents new requests from using the issued client secret.
      *
      * @example
      * ```ts
@@ -43875,7 +44248,7 @@ class sessions_Sessions extends APIResource {
 
 class Threads extends APIResource {
     /**
-     * Retrieve a ChatKit thread
+     * Retrieve a ChatKit thread by its identifier.
      *
      * @example
      * ```ts
@@ -43890,7 +44263,7 @@ class Threads extends APIResource {
         });
     }
     /**
-     * List ChatKit threads
+     * List ChatKit threads with optional pagination and user filters.
      *
      * @example
      * ```ts
@@ -43908,7 +44281,7 @@ class Threads extends APIResource {
         });
     }
     /**
-     * Delete a ChatKit thread
+     * Delete a ChatKit thread along with its items and stored attachments.
      *
      * @example
      * ```ts
@@ -43924,7 +44297,7 @@ class Threads extends APIResource {
         });
     }
     /**
-     * List ChatKit thread items
+     * List items that belong to a ChatKit thread.
      *
      * @example
      * ```ts
@@ -43965,6 +44338,8 @@ ChatKit.Threads = Threads;
 
 
 /**
+ * Build Assistants that can call models and use tools.
+ *
  * @deprecated The Assistants API is deprecated in favor of the Responses API
  */
 class messages_Messages extends APIResource {
@@ -44038,6 +44413,8 @@ class messages_Messages extends APIResource {
 
 
 /**
+ * Build Assistants that can call models and use tools.
+ *
  * @deprecated The Assistants API is deprecated in favor of the Responses API
  */
 class Steps extends APIResource {
@@ -44152,9 +44529,10 @@ const readEnv = (env) => {
 
 
 
+
 //# sourceMappingURL=utils.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/lib/AssistantStream.mjs
-var _AssistantStream_instances, _a, _AssistantStream_events, _AssistantStream_runStepSnapshots, _AssistantStream_messageSnapshots, _AssistantStream_messageSnapshot, _AssistantStream_finalRun, _AssistantStream_currentContentIndex, _AssistantStream_currentContent, _AssistantStream_currentToolCallIndex, _AssistantStream_currentToolCall, _AssistantStream_currentEvent, _AssistantStream_currentRunSnapshot, _AssistantStream_currentRunStepSnapshot, _AssistantStream_addEvent, _AssistantStream_endRequest, _AssistantStream_handleMessage, _AssistantStream_handleRunStep, _AssistantStream_handleEvent, _AssistantStream_accumulateRunStep, _AssistantStream_accumulateMessage, _AssistantStream_accumulateContent, _AssistantStream_handleRun;
+var _AssistantStream_instances, AssistantStream_a, _AssistantStream_events, _AssistantStream_runStepSnapshots, _AssistantStream_messageSnapshots, _AssistantStream_messageSnapshot, _AssistantStream_finalRun, _AssistantStream_currentContentIndex, _AssistantStream_currentContent, _AssistantStream_currentToolCallIndex, _AssistantStream_currentToolCall, _AssistantStream_currentEvent, _AssistantStream_currentRunSnapshot, _AssistantStream_currentRunStepSnapshot, _AssistantStream_addEvent, _AssistantStream_endRequest, _AssistantStream_handleMessage, _AssistantStream_handleRunStep, _AssistantStream_handleEvent, _AssistantStream_accumulateRunStep, _AssistantStream_accumulateMessage, _AssistantStream_accumulateContent, _AssistantStream_handleRun;
 
 
 
@@ -44234,7 +44612,7 @@ class AssistantStream extends EventStream {
         };
     }
     static fromReadableStream(stream) {
-        const runner = new _a();
+        const runner = new AssistantStream_a();
         runner._run(() => runner._fromReadableStream(stream));
         return runner;
     }
@@ -44260,7 +44638,7 @@ class AssistantStream extends EventStream {
         return stream.toReadableStream();
     }
     static createToolAssistantStream(runId, runs, params, options) {
-        const runner = new _a();
+        const runner = new AssistantStream_a();
         runner._run(() => runner._runToolAssistantStream(runId, runs, params, {
             ...options,
             headers: { ...options?.headers, 'X-Stainless-Helper-Method': 'stream' },
@@ -44289,7 +44667,7 @@ class AssistantStream extends EventStream {
         return this._addRun(__classPrivateFieldGet(this, _AssistantStream_instances, "m", _AssistantStream_endRequest).call(this));
     }
     static createThreadAssistantStream(params, thread, options) {
-        const runner = new _a();
+        const runner = new AssistantStream_a();
         runner._run(() => runner._threadAssistantStream(params, thread, {
             ...options,
             headers: { ...options?.headers, 'X-Stainless-Helper-Method': 'stream' },
@@ -44297,7 +44675,7 @@ class AssistantStream extends EventStream {
         return runner;
     }
     static createAssistantStream(threadId, runs, params, options) {
-        const runner = new _a();
+        const runner = new AssistantStream_a();
         runner._run(() => runner._runAssistantStream(threadId, runs, params, {
             ...options,
             headers: { ...options?.headers, 'X-Stainless-Helper-Method': 'stream' },
@@ -44439,7 +44817,7 @@ class AssistantStream extends EventStream {
         return await this._createToolAssistantStream(runs, runId, params, options);
     }
 }
-_a = AssistantStream, _AssistantStream_addEvent = function _AssistantStream_addEvent(event) {
+AssistantStream_a = AssistantStream, _AssistantStream_addEvent = function _AssistantStream_addEvent(event) {
     if (this.ended)
         return;
     __classPrivateFieldSet(this, _AssistantStream_currentEvent, event, "f");
@@ -44621,7 +44999,7 @@ _a = AssistantStream, _AssistantStream_addEvent = function _AssistantStream_addE
             }
             let data = event.data;
             if (data.delta) {
-                const accumulated = _a.accumulateDelta(snapshot, data.delta);
+                const accumulated = AssistantStream_a.accumulateDelta(snapshot, data.delta);
                 __classPrivateFieldGet(this, _AssistantStream_runStepSnapshots, "f")[event.data.id] = accumulated;
             }
             return __classPrivateFieldGet(this, _AssistantStream_runStepSnapshots, "f")[event.data.id];
@@ -44675,7 +45053,7 @@ _a = AssistantStream, _AssistantStream_addEvent = function _AssistantStream_addE
     }
     throw Error('Tried to accumulate a non-message event');
 }, _AssistantStream_accumulateContent = function _AssistantStream_accumulateContent(contentElement, currentContent) {
-    return _a.accumulateDelta(currentContent, contentElement);
+    return AssistantStream_a.accumulateDelta(currentContent, contentElement);
 }, _AssistantStream_handleRun = function _AssistantStream_handleRun(event) {
     __classPrivateFieldSet(this, _AssistantStream_currentRunSnapshot, event.data, "f");
     switch (event.event) {
@@ -44714,6 +45092,8 @@ function AssistantStream_assertNever(_x) { }
 
 
 /**
+ * Build Assistants that can call models and use tools.
+ *
  * @deprecated The Assistants API is deprecated in favor of the Responses API
  */
 class Runs extends APIResource {
@@ -44729,6 +45109,7 @@ class Runs extends APIResource {
             ...options,
             headers: buildHeaders([{ 'OpenAI-Beta': 'assistants=v2' }, options?.headers]),
             stream: params.stream ?? false,
+            __synthesizeEventData: true,
         });
     }
     /**
@@ -44859,6 +45240,7 @@ class Runs extends APIResource {
             ...options,
             headers: buildHeaders([{ 'OpenAI-Beta': 'assistants=v2' }, options?.headers]),
             stream: params.stream ?? false,
+            __synthesizeEventData: true,
         });
     }
     /**
@@ -44892,6 +45274,8 @@ Runs.Steps = Steps;
 
 
 /**
+ * Build Assistants that can call models and use tools.
+ *
  * @deprecated The Assistants API is deprecated in favor of the Responses API
  */
 class threads_Threads extends APIResource {
@@ -44952,6 +45336,7 @@ class threads_Threads extends APIResource {
             ...options,
             headers: buildHeaders([{ 'OpenAI-Beta': 'assistants=v2' }, options?.headers]),
             stream: body.stream ?? false,
+            __synthesizeEventData: true,
         });
     }
     /**
@@ -45001,6 +45386,9 @@ Beta.Threads = threads_Threads;
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/completions.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
+/**
+ * Given a prompt, the model will return one or more predicted completions, and can also return the probabilities of alternative tokens at each position.
+ */
 class completions_Completions extends APIResource {
     create(body, options) {
         return this._client.post('/completions', { body, ...options, stream: body.stream ?? false });
@@ -45047,7 +45435,7 @@ class Files extends APIResource {
      * a JSON request with a file ID.
      */
     create(containerID, body, options) {
-        return this._client.post(path_path `/containers/${containerID}/files`, multipartFormRequestOptions({ body, ...options }, this._client));
+        return this._client.post(path_path `/containers/${containerID}/files`, maybeMultipartFormRequestOptions({ body, ...options }, this._client));
     }
     /**
      * Retrieve Container File
@@ -45126,6 +45514,9 @@ Containers.Files = Files;
 
 
 
+/**
+ * Manage conversations and conversation items.
+ */
 class Items extends APIResource {
     /**
      * Create items in a conversation with the given ID.
@@ -45166,6 +45557,9 @@ class Items extends APIResource {
 
 
 
+/**
+ * Manage conversations and conversation items.
+ */
 class Conversations extends APIResource {
     constructor() {
         super(...arguments);
@@ -45202,6 +45596,9 @@ Conversations.Items = Items;
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 
+/**
+ * Get a vector representation of a given input that can be easily consumed by machine learning models and algorithms.
+ */
 class Embeddings extends APIResource {
     /**
      * Creates an embedding vector representing the input text.
@@ -45256,6 +45653,9 @@ class Embeddings extends APIResource {
 
 
 
+/**
+ * Manage and run evals in the OpenAI platform.
+ */
 class OutputItems extends APIResource {
     /**
      * Get an evaluation run output item by ID.
@@ -45280,6 +45680,9 @@ class OutputItems extends APIResource {
 
 
 
+/**
+ * Manage and run evals in the OpenAI platform.
+ */
 class runs_Runs extends APIResource {
     constructor() {
         super(...arguments);
@@ -45333,6 +45736,9 @@ runs_Runs.OutputItems = OutputItems;
 
 
 
+/**
+ * Manage and run evals in the OpenAI platform.
+ */
 class Evals extends APIResource {
     constructor() {
         super(...arguments);
@@ -45385,6 +45791,9 @@ Evals.Runs = runs_Runs;
 
 
 
+/**
+ * Files are used to upload documents that can be used with features like Assistants and Fine-tuning.
+ */
 class files_Files extends APIResource {
     /**
      * Upload a file that can be used across various endpoints. Individual files can be
@@ -45468,6 +45877,9 @@ class Methods extends APIResource {
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/fine-tuning/alpha/graders.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
+/**
+ * Manage fine-tuning jobs to tailor a model to your specific training data.
+ */
 class Graders extends APIResource {
     /**
      * Run a grader.
@@ -45529,6 +45941,9 @@ Alpha.Graders = Graders;
 
 
 
+/**
+ * Manage fine-tuning jobs to tailor a model to your specific training data.
+ */
 class Permissions extends APIResource {
     /**
      * **NOTE:** Calling this endpoint requires an [admin API key](../admin-api-keys).
@@ -45556,19 +45971,32 @@ class Permissions extends APIResource {
      * Organization owners can use this endpoint to view all permissions for a
      * fine-tuned model checkpoint.
      *
-     * @example
-     * ```ts
-     * const permission =
-     *   await client.fineTuning.checkpoints.permissions.retrieve(
-     *     'ft-AF1WoRqd3aJAHsqc9NY7iL8F',
-     *   );
-     * ```
+     * @deprecated Retrieve is deprecated. Please swap to the paginated list method instead.
      */
     retrieve(fineTunedModelCheckpoint, query = {}, options) {
         return this._client.get(path_path `/fine_tuning/checkpoints/${fineTunedModelCheckpoint}/permissions`, {
             query,
             ...options,
         });
+    }
+    /**
+     * **NOTE:** This endpoint requires an [admin API key](../admin-api-keys).
+     *
+     * Organization owners can use this endpoint to view all permissions for a
+     * fine-tuned model checkpoint.
+     *
+     * @example
+     * ```ts
+     * // Automatically fetches more pages as needed.
+     * for await (const permissionListResponse of client.fineTuning.checkpoints.permissions.list(
+     *   'ft-AF1WoRqd3aJAHsqc9NY7iL8F',
+     * )) {
+     *   // ...
+     * }
+     * ```
+     */
+    list(fineTunedModelCheckpoint, query = {}, options) {
+        return this._client.getAPIList(path_path `/fine_tuning/checkpoints/${fineTunedModelCheckpoint}/permissions`, (ConversationCursorPage), { query, ...options });
     }
     /**
      * **NOTE:** This endpoint requires an [admin API key](../admin-api-keys).
@@ -45612,6 +46040,9 @@ Checkpoints.Permissions = Permissions;
 
 
 
+/**
+ * Manage fine-tuning jobs to tailor a model to your specific training data.
+ */
 class checkpoints_Checkpoints extends APIResource {
     /**
      * List checkpoints for a fine-tuning job.
@@ -45638,6 +46069,9 @@ class checkpoints_Checkpoints extends APIResource {
 
 
 
+/**
+ * Manage fine-tuning jobs to tailor a model to your specific training data.
+ */
 class Jobs extends APIResource {
     constructor() {
         super(...arguments);
@@ -45798,6 +46232,9 @@ graders_Graders.GraderModels = GraderModels;
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 
+/**
+ * Given a prompt and/or an input image, the model will generate a new image.
+ */
 class Images extends APIResource {
     /**
      * Creates a variation of a given image. This endpoint only supports `dall-e-2`.
@@ -45825,6 +46262,9 @@ class Images extends APIResource {
 
 
 
+/**
+ * List and describe the various models available in the API.
+ */
 class Models extends APIResource {
     /**
      * Retrieves a model instance, providing basic information about the model such as
@@ -45852,6 +46292,9 @@ class Models extends APIResource {
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/moderations.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
+/**
+ * Given text and/or image inputs, classifies if those inputs are potentially harmful.
+ */
 class Moderations extends APIResource {
     /**
      * Classifies if text and/or image inputs are potentially harmful. Learn more in
@@ -45940,6 +46383,20 @@ class Calls extends APIResource {
 class ClientSecrets extends APIResource {
     /**
      * Create a Realtime client secret with an associated session configuration.
+     *
+     * Client secrets are short-lived tokens that can be passed to a client app, such
+     * as a web frontend or mobile client, which grants access to the Realtime API
+     * without leaking your main API key. You can configure a custom TTL for each
+     * client secret.
+     *
+     * You can also attach session configuration options to the client secret, which
+     * will be applied to any sessions created using that client secret, but these can
+     * also be overridden by the client connection.
+     *
+     * [Learn more about authentication with client secrets over WebRTC](https://platform.openai.com/docs/guides/realtime-webrtc).
+     *
+     * Returns the created client secret and the effective session object. The client
+     * secret is a string that looks like `ek_1234`.
      *
      * @example
      * ```ts
@@ -46421,7 +46878,10 @@ class InputItems extends APIResource {
 
 class InputTokens extends APIResource {
     /**
-     * Get input token counts
+     * Returns input token counts of the request.
+     *
+     * Returns an object with `object` set to `response.input_tokens` and an
+     * `input_tokens` count.
      *
      * @example
      * ```ts
@@ -46513,12 +46973,17 @@ class Responses extends APIResource {
         return this._client.post(path_path `/responses/${responseID}/cancel`, options);
     }
     /**
-     * Compact conversation
+     * Compact a conversation. Returns a compacted response object.
+     *
+     * Learn when and how to compact long-running conversations in the
+     * [conversation state guide](https://platform.openai.com/docs/guides/conversation-state#managing-the-context-window).
+     * For ZDR-compatible compaction details, see
+     * [Compaction (advanced)](https://platform.openai.com/docs/guides/conversation-state#compaction-advanced).
      *
      * @example
      * ```ts
      * const compactedResponse = await client.responses.compact({
-     *   model: 'gpt-5.2',
+     *   model: 'gpt-5.4',
      * });
      * ```
      */
@@ -46529,11 +46994,146 @@ class Responses extends APIResource {
 Responses.InputItems = InputItems;
 Responses.InputTokens = InputTokens;
 //# sourceMappingURL=responses.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/skills/content.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+class content_Content extends APIResource {
+    /**
+     * Download a skill zip bundle by its ID.
+     */
+    retrieve(skillID, options) {
+        return this._client.get(path_path `/skills/${skillID}/content`, {
+            ...options,
+            headers: buildHeaders([{ Accept: 'application/binary' }, options?.headers]),
+            __binaryResponse: true,
+        });
+    }
+}
+//# sourceMappingURL=content.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/skills/versions/content.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+class versions_content_Content extends APIResource {
+    /**
+     * Download a skill version zip bundle.
+     */
+    retrieve(version, params, options) {
+        const { skill_id } = params;
+        return this._client.get(path_path `/skills/${skill_id}/versions/${version}/content`, {
+            ...options,
+            headers: buildHeaders([{ Accept: 'application/binary' }, options?.headers]),
+            __binaryResponse: true,
+        });
+    }
+}
+//# sourceMappingURL=content.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/skills/versions/versions.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+
+
+
+class Versions extends APIResource {
+    constructor() {
+        super(...arguments);
+        this.content = new versions_content_Content(this._client);
+    }
+    /**
+     * Create a new immutable skill version.
+     */
+    create(skillID, body = {}, options) {
+        return this._client.post(path_path `/skills/${skillID}/versions`, maybeMultipartFormRequestOptions({ body, ...options }, this._client));
+    }
+    /**
+     * Get a specific skill version.
+     */
+    retrieve(version, params, options) {
+        const { skill_id } = params;
+        return this._client.get(path_path `/skills/${skill_id}/versions/${version}`, options);
+    }
+    /**
+     * List skill versions for a skill.
+     */
+    list(skillID, query = {}, options) {
+        return this._client.getAPIList(path_path `/skills/${skillID}/versions`, (CursorPage), {
+            query,
+            ...options,
+        });
+    }
+    /**
+     * Delete a skill version.
+     */
+    delete(version, params, options) {
+        const { skill_id } = params;
+        return this._client.delete(path_path `/skills/${skill_id}/versions/${version}`, options);
+    }
+}
+Versions.Content = versions_content_Content;
+//# sourceMappingURL=versions.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/skills/skills.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+
+
+
+
+
+
+
+class Skills extends APIResource {
+    constructor() {
+        super(...arguments);
+        this.content = new content_Content(this._client);
+        this.versions = new Versions(this._client);
+    }
+    /**
+     * Create a new skill.
+     */
+    create(body = {}, options) {
+        return this._client.post('/skills', maybeMultipartFormRequestOptions({ body, ...options }, this._client));
+    }
+    /**
+     * Get a skill by its ID.
+     */
+    retrieve(skillID, options) {
+        return this._client.get(path_path `/skills/${skillID}`, options);
+    }
+    /**
+     * Update the default version pointer for a skill.
+     */
+    update(skillID, body, options) {
+        return this._client.post(path_path `/skills/${skillID}`, { body, ...options });
+    }
+    /**
+     * List all skills for the current project.
+     */
+    list(query = {}, options) {
+        return this._client.getAPIList('/skills', (CursorPage), { query, ...options });
+    }
+    /**
+     * Delete a skill by its ID.
+     */
+    delete(skillID, options) {
+        return this._client.delete(path_path `/skills/${skillID}`, options);
+    }
+}
+Skills.Content = content_Content;
+Skills.Versions = Versions;
+//# sourceMappingURL=skills.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/uploads/parts.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 
 
+/**
+ * Use Uploads to upload large files in multiple parts.
+ */
 class Parts extends APIResource {
     /**
      * Adds a
@@ -46559,6 +47159,9 @@ class Parts extends APIResource {
 
 
 
+/**
+ * Use Uploads to upload large files in multiple parts.
+ */
 class Uploads extends APIResource {
     constructor() {
         super(...arguments);
@@ -46584,12 +47187,16 @@ class Uploads extends APIResource {
      * For guidance on the proper filename extensions for each purpose, please follow
      * the documentation on
      * [creating a File](https://platform.openai.com/docs/api-reference/files/create).
+     *
+     * Returns the Upload object with status `pending`.
      */
     create(body, options) {
         return this._client.post('/uploads', { body, ...options });
     }
     /**
      * Cancels the Upload. No Parts may be added after an Upload is cancelled.
+     *
+     * Returns the Upload object with status `cancelled`.
      */
     cancel(uploadID, options) {
         return this._client.post(path_path `/uploads/${uploadID}/cancel`, options);
@@ -46607,7 +47214,9 @@ class Uploads extends APIResource {
      *
      * The number of bytes uploaded upon completion must match the number of bytes
      * initially specified when creating the Upload object. No Parts may be added after
-     * an Upload is completed.
+     * an Upload is completed. Returns the Upload object with status `completed`,
+     * including an additional `file` property containing the created usable File
+     * object.
      */
     complete(uploadID, body, options) {
         return this._client.post(path_path `/uploads/${uploadID}/complete`, { body, ...options });
@@ -46996,31 +47605,33 @@ VectorStores.FileBatches = FileBatches;
 
 class Videos extends APIResource {
     /**
-     * Create a video
+     * Create a new video generation job from a prompt and optional reference assets.
      */
     create(body, options) {
         return this._client.post('/videos', maybeMultipartFormRequestOptions({ body, ...options }, this._client));
     }
     /**
-     * Retrieve a video
+     * Fetch the latest metadata for a generated video.
      */
     retrieve(videoID, options) {
         return this._client.get(path_path `/videos/${videoID}`, options);
     }
     /**
-     * List videos
+     * List recently generated videos for the current project.
      */
     list(query = {}, options) {
         return this._client.getAPIList('/videos', (ConversationCursorPage), { query, ...options });
     }
     /**
-     * Delete a video
+     * Permanently delete a completed or failed video and its stored assets.
      */
     delete(videoID, options) {
         return this._client.delete(path_path `/videos/${videoID}`, options);
     }
     /**
-     * Download video content
+     * Download the generated video bytes or a derived preview asset.
+     *
+     * Streams the rendered video content for the specified video job.
      */
     downloadContent(videoID, query = {}, options) {
         return this._client.get(path_path `/videos/${videoID}/content`, {
@@ -47031,14 +47642,14 @@ class Videos extends APIResource {
         });
     }
     /**
-     * Create a video remix
+     * Create a remix of a completed video using a refreshed prompt.
      */
     remix(videoID, body, options) {
         return this._client.post(path_path `/videos/${videoID}/remix`, maybeMultipartFormRequestOptions({ body, ...options }, this._client));
     }
 }
 //# sourceMappingURL=videos.mjs.map
-;// CONCATENATED MODULE: ./node_modules/openai/resources/webhooks.mjs
+;// CONCATENATED MODULE: ./node_modules/openai/resources/webhooks/webhooks.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 var _Webhooks_instances, _Webhooks_validateSecret, _Webhooks_getRequiredHeader;
 
@@ -47136,8 +47747,17 @@ _Webhooks_instances = new WeakSet(), _Webhooks_validateSecret = function _Webhoo
     return value;
 };
 //# sourceMappingURL=webhooks.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/webhooks/index.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+//# sourceMappingURL=index.mjs.map
+;// CONCATENATED MODULE: ./node_modules/openai/resources/webhooks.mjs
+// File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+//# sourceMappingURL=webhooks.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/resources/index.mjs
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
 
 
 
@@ -47205,6 +47825,7 @@ var _OpenAI_instances, client_a, _OpenAI_encoder, _OpenAI_baseURLOverridden;
 
 
 
+
 /**
  * API Client for interfacing with the OpenAI API.
  */
@@ -47228,26 +47849,57 @@ class OpenAI {
     constructor({ baseURL = readEnv('OPENAI_BASE_URL'), apiKey = readEnv('OPENAI_API_KEY'), organization = readEnv('OPENAI_ORG_ID') ?? null, project = readEnv('OPENAI_PROJECT_ID') ?? null, webhookSecret = readEnv('OPENAI_WEBHOOK_SECRET') ?? null, ...opts } = {}) {
         _OpenAI_instances.add(this);
         _OpenAI_encoder.set(this, void 0);
+        /**
+         * Given a prompt, the model will return one or more predicted completions, and can also return the probabilities of alternative tokens at each position.
+         */
         this.completions = new completions_Completions(this);
         this.chat = new Chat(this);
+        /**
+         * Get a vector representation of a given input that can be easily consumed by machine learning models and algorithms.
+         */
         this.embeddings = new Embeddings(this);
+        /**
+         * Files are used to upload documents that can be used with features like Assistants and Fine-tuning.
+         */
         this.files = new files_Files(this);
+        /**
+         * Given a prompt and/or an input image, the model will generate a new image.
+         */
         this.images = new Images(this);
         this.audio = new Audio(this);
+        /**
+         * Given text and/or image inputs, classifies if those inputs are potentially harmful.
+         */
         this.moderations = new Moderations(this);
+        /**
+         * List and describe the various models available in the API.
+         */
         this.models = new Models(this);
         this.fineTuning = new FineTuning(this);
         this.graders = new graders_Graders(this);
         this.vectorStores = new VectorStores(this);
         this.webhooks = new Webhooks(this);
         this.beta = new Beta(this);
+        /**
+         * Create large batches of API requests to run asynchronously.
+         */
         this.batches = new Batches(this);
+        /**
+         * Use Uploads to upload large files in multiple parts.
+         */
         this.uploads = new Uploads(this);
         this.responses = new Responses(this);
         this.realtime = new realtime_Realtime(this);
+        /**
+         * Manage conversations and conversation items.
+         */
         this.conversations = new Conversations(this);
+        /**
+         * Manage and run evals in the OpenAI platform.
+         */
         this.evals = new Evals(this);
         this.containers = new Containers(this);
+        this.skills = new Skills(this);
         this.videos = new Videos(this);
         if (apiKey === undefined) {
             throw new error_OpenAIError('Missing credentials. Please pass an `apiKey`, or set the `OPENAI_API_KEY` environment variable.');
@@ -47314,7 +47966,7 @@ class OpenAI {
         return buildHeaders([{ Authorization: `Bearer ${this.apiKey}` }]);
     }
     stringifyQuery(query) {
-        return stringify(query, { arrayFormat: 'brackets' });
+        return stringifyQuery(query);
     }
     getUserAgent() {
         return `${this.constructor.name}/JS ${openai_version_VERSION}`;
@@ -47505,7 +48157,9 @@ class OpenAI {
         return { response, options, controller, requestLogID, retryOfRequestLogID, startTime };
     }
     getAPIList(path, Page, opts) {
-        return this.requestAPIList(Page, { method: 'get', path, ...opts });
+        return this.requestAPIList(Page, opts && 'then' in opts ?
+            opts.then((opts) => ({ method: 'get', path, ...opts }))
+            : { method: 'get', path, ...opts });
     }
     requestAPIList(Page, options) {
         const request = this.makeRequest(options, null, undefined);
@@ -47513,9 +48167,10 @@ class OpenAI {
     }
     async fetchWithTimeout(url, init, ms, controller) {
         const { signal, method, ...options } = init || {};
+        const abort = this._makeAbort(controller);
         if (signal)
-            signal.addEventListener('abort', () => controller.abort());
-        const timeout = setTimeout(() => controller.abort(), ms);
+            signal.addEventListener('abort', abort, { once: true });
+        const timeout = setTimeout(abort, ms);
         const isReadableBody = (globalThis.ReadableStream && options.body instanceof globalThis.ReadableStream) ||
             (typeof options.body === 'object' && options.body !== null && Symbol.asyncIterator in options.body);
         const fetchOptions = {
@@ -47580,9 +48235,9 @@ class OpenAI {
                 timeoutMillis = Date.parse(retryAfterHeader) - Date.now();
             }
         }
-        // If the API asks us to wait a certain amount of time (and it's a reasonable amount),
-        // just do what it says, but otherwise calculate a default
-        if (!(timeoutMillis && 0 <= timeoutMillis && timeoutMillis < 60 * 1000)) {
+        // If the API asks us to wait a certain amount of time, just do what it
+        // says, but otherwise calculate a default
+        if (timeoutMillis === undefined) {
             const maxRetries = options.maxRetries ?? this.maxRetries;
             timeoutMillis = this.calculateDefaultRetryTimeoutMillis(retriesRemaining, maxRetries);
         }
@@ -47646,6 +48301,11 @@ class OpenAI {
         this.validateHeaders(headers);
         return headers.values;
     }
+    _makeAbort(controller) {
+        // note: we can't just inline this method inside `fetchWithTimeout()` because then the closure
+        //       would capture all request options, and cause a memory leak.
+        return () => controller.abort();
+    }
     buildBody({ options: { body, headers: rawHeaders } }) {
         if (!body) {
             return { bodyHeaders: undefined, body: undefined };
@@ -47673,6 +48333,13 @@ class OpenAI {
             (Symbol.asyncIterator in body ||
                 (Symbol.iterator in body && 'next' in body && typeof body.next === 'function'))) {
             return { bodyHeaders: undefined, body: ReadableStreamFrom(body) };
+        }
+        else if (typeof body === 'object' &&
+            headers.values.get('content-type') === 'application/x-www-form-urlencoded') {
+            return {
+                bodyHeaders: { 'content-type': 'application/x-www-form-urlencoded' },
+                body: this.stringifyQuery(body),
+            };
         }
         else {
             return __classPrivateFieldGet(this, _OpenAI_encoder, "f").call(this, { body, headers });
@@ -47719,6 +48386,7 @@ OpenAI.Realtime = realtime_Realtime;
 OpenAI.Conversations = Conversations;
 OpenAI.Evals = Evals;
 OpenAI.Containers = Containers;
+OpenAI.Skills = Skills;
 OpenAI.Videos = Videos;
 //# sourceMappingURL=client.mjs.map
 ;// CONCATENATED MODULE: ./node_modules/openai/azure.mjs
@@ -55228,31 +55896,97 @@ If you have no comments, return an empty comments array. Respond in JSON format.
     }
     async runBackgroundRequest(prompt, instructions, config) {
         const pollingConfig = config.backgroundPolling;
-        info("Starting background review request...");
-        info(`Maximum wait time: ${Math.round(pollingConfig.maxWaitTimeMs / 60000)} minutes`);
-        // Create background request with store: true (required for background mode)
-        const initialResponse = await this.client.responses.create({
-            model: this.deployment,
-            instructions: instructions,
-            input: prompt,
-            reasoning: { effort: config.reasoningEffort },
-            text: {
-                format: zodTextFormat(CodeReviewCommentArray, "review_comments"),
-            },
-            background: true,
-            store: true,
-        });
-        info(`Background request initiated: ${initialResponse.id}`);
-        info(`Initial status: ${initialResponse.status}`);
-        // Check if already in terminal state (fast completion or immediate failure)
-        if (isTerminalStatus(initialResponse.status)) {
-            info(`Request reached terminal status '${initialResponse.status}' immediately, skipping polling`);
-            return this.handleCompletedResponse(initialResponse);
+        const maxRetries = 3;
+        const initialRetryDelayMs = 5000;
+        const maxRetryDelayMs = 20000;
+        const retryBackoffMultiplier = 2;
+        let currentRetryDelay = initialRetryDelayMs;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            if (attempt > 0) {
+                warning(`Retrying background request (attempt ${attempt + 1}/${maxRetries + 1}) after ${Math.round(currentRetryDelay / 1000)}s delay...`);
+                await this.sleep(currentRetryDelay);
+                currentRetryDelay = Math.min(currentRetryDelay * retryBackoffMultiplier, maxRetryDelayMs);
+            }
+            const startTime = Date.now();
+            info("Starting background review request...");
+            info(`Maximum wait time: ${Math.round(pollingConfig.maxWaitTimeMs / 60000)} minutes`);
+            // Create background request with retry for HTTP-level errors
+            const initialResponse = await this.createBackgroundRequestWithRetry(prompt, instructions, config);
+            info(`Background request initiated: ${initialResponse.id}`);
+            info(`Initial status: ${initialResponse.status}`);
+            let finalResponse;
+            let pollingAttempts = 0;
+            // Check if already in terminal state (fast completion or immediate failure)
+            if (isTerminalStatus(initialResponse.status)) {
+                info(`Request reached terminal status '${initialResponse.status}' immediately, skipping polling`);
+                finalResponse = initialResponse;
+            }
+            else {
+                // Poll until completion
+                const pollResult = await this.pollForCompletion(initialResponse.id, pollingConfig);
+                finalResponse = pollResult.response;
+                pollingAttempts = pollResult.pollingAttempts;
+            }
+            const elapsedMs = Date.now() - startTime;
+            // On failure, check retryability first, then log appropriately
+            if (finalResponse.status === "failed") {
+                const isRetryable = this.isRetryableBackgroundFailure(finalResponse);
+                if (attempt < maxRetries && isRetryable) {
+                    // Transient failure — log at warning level to avoid false error annotations
+                    this.logBackgroundFailureDetails(finalResponse, elapsedMs, pollingAttempts, "warning");
+                    continue;
+                }
+                // Non-retryable or retries exhausted — log at error level
+                this.logBackgroundFailureDetails(finalResponse, elapsedMs, pollingAttempts, "error");
+            }
+            // Handle terminal status (returns result or throws)
+            return this.handleCompletedResponse(finalResponse);
         }
-        // Poll until completion
-        const completedResponse = await this.pollForCompletion(initialResponse.id, pollingConfig);
-        // Handle terminal statuses
-        return this.handleCompletedResponse(completedResponse);
+        // Safety net — should not be reached
+        throw new Error("Background review request failed after retries");
+    }
+    async createBackgroundRequestWithRetry(prompt, instructions, config) {
+        const maxRetries = 3;
+        const initialDelayMs = 5000;
+        const maxDelayMs = 20000;
+        const backoffMultiplier = 2;
+        let currentDelay = initialDelayMs;
+        let lastError;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                return await this.client.responses.create({
+                    model: this.deployment,
+                    instructions: instructions,
+                    input: prompt,
+                    reasoning: { effort: config.reasoningEffort },
+                    text: {
+                        format: zodTextFormat(CodeReviewCommentArray, "review_comments"),
+                    },
+                    background: true,
+                    store: true,
+                });
+            }
+            catch (error) {
+                lastError = error;
+                const statusCode = error && typeof error === "object" && "status" in error
+                    ? error.status
+                    : undefined;
+                warning(`Background request creation failed${statusCode ? ` (HTTP ${statusCode})` : ""}: ${formatError(error)}`);
+                if (!this.isRetryableError(error)) {
+                    throw error;
+                }
+                if (attempt >= maxRetries) {
+                    warning(`Background request creation failed after ${maxRetries + 1} attempts`);
+                    break;
+                }
+                warning(`Retrying request creation (attempt ${attempt + 2}/${maxRetries + 1})...`);
+                await this.sleep(currentDelay);
+                currentDelay = Math.min(currentDelay * backoffMultiplier, maxDelayMs);
+            }
+        }
+        if (lastError instanceof Error)
+            throw lastError;
+        throw new Error(`Background request creation failed after ${maxRetries + 1} attempts: ${formatError(lastError)}`);
     }
     async pollForCompletion(responseId, config) {
         const startTime = Date.now();
@@ -55289,7 +56023,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
                 info(`[${new Date().toISOString()}] Status check #${attempts}: ${response.status} (${elapsedSec}s elapsed)`);
                 if (isTerminalStatus(response.status)) {
                     info(`Review reached terminal status '${response.status}' after ${elapsedSec} seconds (${attempts} status checks)`);
-                    return response;
+                    return { response, pollingAttempts: attempts };
                 }
                 // Wait before next poll with exponential backoff
                 await this.sleep(currentInterval);
@@ -55350,6 +56084,34 @@ If you have no comments, return an empty comments array. Respond in JSON format.
             return retryableCodes.includes(status);
         }
         return false;
+    }
+    isRetryableBackgroundFailure(response) {
+        const error = response.error;
+        if (!error)
+            return false; // No error details — unknown failure, don't retry
+        // Retryable error codes from the Responses API
+        if (error.code === "server_error" || error.code === "rate_limit_exceeded") {
+            return true;
+        }
+        // Generic Azure transient error message
+        if (error.message &&
+            /an error occurred while processing your request/i.test(error.message)) {
+            return true;
+        }
+        return false;
+    }
+    logBackgroundFailureDetails(response, elapsedMs, pollingAttempts, level = "error") {
+        const log = level === "warning" ? warning : error;
+        log(`Background request ${response.id} failed`);
+        log(`Status: ${response.status}`);
+        log(`Error: ${JSON.stringify(response.error)}`);
+        if (response.incomplete_details) {
+            log(`Incomplete details: ${JSON.stringify(response.incomplete_details)}`);
+        }
+        log(`Elapsed: ${Math.round(elapsedMs / 1000)}s, polling attempts: ${pollingAttempts}`);
+        if (response.usage) {
+            log(`Token usage: ${JSON.stringify(response.usage)}`);
+        }
     }
     sleep(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
@@ -56011,7 +56773,7 @@ __webpack_unused_export__ = defaultContentType
 /******/ // module cache are used so entry inlining is disabled
 /******/ // startup
 /******/ // Load entry module and return exports
-/******/ var __webpack_exports__ = __nccwpck_require__(__nccwpck_require__.s = 5651);
+/******/ var __webpack_exports__ = __nccwpck_require__(__nccwpck_require__.s = 8833);
 /******/ var __webpack_exports__run = __webpack_exports__.e;
 /******/ export { __webpack_exports__run as run };
 /******/ 

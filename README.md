@@ -98,7 +98,7 @@ jobs:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Recommended Setup (gpt-5.2 with high reasoning)
+### Recommended Setup (gpt-5.4 with high reasoning)
 
 ```yaml
 - uses: propstreet/reviewer@v3
@@ -124,10 +124,10 @@ jobs:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Background Mode (for gpt-5.2-pro)
+### Background Mode (for pro models and xhigh reasoning)
 
-When using gpt-5.2-pro, reviews typically take 15-20 minutes. Background mode handles this
-with automatic polling:
+When using pro models or `xhigh` reasoning effort, reviews can take 15+ minutes. Background mode handles this
+with automatic polling and retry:
 
 ```yaml
 - uses: propstreet/reviewer@v3
@@ -146,7 +146,8 @@ Background mode features:
 - Uses `background: true` parameter in the Responses API
 - Automatic exponential backoff polling (1.5x multiplier, max 30s intervals)
 - Automatic request cancellation on timeout
-- Detailed progress logging in GitHub Actions
+- Automatic retry on transient failures (up to 3 retries with exponential backoff)
+- Detailed progress and failure logging in GitHub Actions
 
 ## Azure OpenAI Setup
 
@@ -168,13 +169,14 @@ The `reasoningEffort` input controls how much reasoning the model applies:
 
 | Model | `reasoningEffort` | Use Case |
 |-------|-------------------|----------|
-| **gpt-5.2** | `high` | **Recommended default** - Best quality reviews |
-| gpt-5.2 | `xhigh` | Maximum reasoning depth (highest latency/cost) |
+| **gpt-5.4** | `high` | **Recommended** - Latest frontier model, 1M context |
+| gpt-5.4 | `xhigh` | Maximum reasoning depth (requires `backgroundMode: enabled`) |
+| gpt-5.4-pro | `high` | Most thorough reviews (requires `backgroundMode: enabled`) |
+| gpt-5.2 | `high` | Previous frontier model, 400K context |
 | gpt-5.2 | `medium` | Faster reviews, good quality |
 | gpt-5.2 | `minimal` | Quick reviews, lower latency |
-| gpt-5.2-pro | `high` | Most thorough reviews (15-20 min, requires `backgroundMode: enabled`) |
 
-We recommend **gpt-5.2 with `reasoningEffort: high`** for the best balance of quality and speed.
+We recommend **gpt-5.4 with `reasoningEffort: high`** for the best balance of quality and speed. Use `backgroundMode: enabled` for `xhigh` reasoning or pro models.
 
 ## Severity Levels
 

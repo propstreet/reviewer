@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.1] - 2026-03-08
+
+### Fixed
+- **Background mode retry logic** - Background requests that fail with transient Azure errors (server_error, rate_limit_exceeded, or the generic "An error occurred" message) now automatically retry the entire request up to 3 times with exponential backoff (5s → 10s → 20s). Previously, transient failures caused immediate abort with no retry.
+- **Background request creation retry** - The initial `responses.create()` call in background mode now retries on transient HTTP errors (408/429/500/502/503/504), matching the existing synchronous mode behavior.
+
+### Added
+- **Enhanced background failure logging** - When a background request fails, detailed diagnostics are now logged: response ID (for Azure support tickets), full error object with code, elapsed time, polling attempts, and token usage.
+
+### Changed
+- **Updated dependencies** - `openai` SDK updated to v6.27.0 (resolves `xhigh` type errors), along with minor/patch updates to `@types/node`, `globals`, `minimatch`, `typescript-eslint`, and other dev dependencies.
+- **Updated docs** - README updated with gpt-5.4 as recommended model and background retry documentation.
+
 ## [3.5.0] - 2026-01-29
 
 ### Added

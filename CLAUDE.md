@@ -43,7 +43,11 @@ npm run view-prompts     # View prompt evaluation results in browser
 
 **Token Management**: `reviewer.packCommit()` uses `gpt-tokenizer` to fit as many patches as possible within the token limit, skipping files that would exceed it.
 
-**Background Mode**: For slow models (15+ min), `azureOpenAIService` uses OpenAI's `background: true` parameter with exponential backoff polling.
+**Background Mode**: For slow models (15+ min), `azureOpenAIService` uses OpenAI's `background: true` parameter with exponential backoff polling. Has two layers of retry logic:
+- **HTTP-level retries** (`createBackgroundRequestWithRetry`): Retries `responses.create()` on transient HTTP errors (408/429/500/502/503/504) with exponential backoff (5s initial, max 20s, 3 retries).
+- **Application-level retries** (`runBackgroundRequest`): When a background request reaches `failed` terminal status with a transient error (`server_error`, `rate_limit_exceeded`, or Azure's generic error message), retries the entire background request flow (new create → poll → handle) with exponential backoff (5s initial, max 20s, 3 retries).
+- **`isRetryableBackgroundFailure()`** checks `response.error.code` and `response.error.message` to distinguish transient failures from permanent ones (e.g., `invalid_prompt`).
+- **`logBackgroundFailureDetails()`** logs response ID, full error object, elapsed time, polling attempts, and token usage for diagnostics.
 
 ## Development Workflow
 

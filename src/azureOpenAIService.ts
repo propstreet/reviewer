@@ -152,50 +152,158 @@ If you have no comments, return an empty comments array. Respond in JSON format.
     config: ReviewPromptConfig
   ): Promise<ReviewResult> {
     const pollingConfig = config.backgroundPolling!;
+    const maxRetries = 3;
+    const initialRetryDelayMs = 5000;
+    const maxRetryDelayMs = 20000;
+    const retryBackoffMultiplier = 2;
+    let currentRetryDelay = initialRetryDelayMs;
 
-    core.info("Starting background review request...");
-    core.info(
-      `Maximum wait time: ${Math.round(pollingConfig.maxWaitTimeMs / 60000)} minutes`
-    );
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        core.warning(
+          `Retrying background request (attempt ${attempt + 1}/${maxRetries + 1}) after ${Math.round(currentRetryDelay / 1000)}s delay...`
+        );
+        await this.sleep(currentRetryDelay);
+        currentRetryDelay = Math.min(
+          currentRetryDelay * retryBackoffMultiplier,
+          maxRetryDelayMs
+        );
+      }
 
-    // Create background request with store: true (required for background mode)
-    const initialResponse = await this.client.responses.create({
-      model: this.deployment,
-      instructions: instructions,
-      input: prompt,
-      reasoning: { effort: config.reasoningEffort },
-      text: {
-        format: zodTextFormat(CodeReviewCommentArray, "review_comments"),
-      },
-      background: true,
-      store: true,
-    });
-
-    core.info(`Background request initiated: ${initialResponse.id}`);
-    core.info(`Initial status: ${initialResponse.status}`);
-
-    // Check if already in terminal state (fast completion or immediate failure)
-    if (isTerminalStatus(initialResponse.status)) {
+      const startTime = Date.now();
+      core.info("Starting background review request...");
       core.info(
-        `Request reached terminal status '${initialResponse.status}' immediately, skipping polling`
+        `Maximum wait time: ${Math.round(pollingConfig.maxWaitTimeMs / 60000)} minutes`
       );
-      return this.handleCompletedResponse(initialResponse);
+
+      // Create background request with retry for HTTP-level errors
+      const initialResponse = await this.createBackgroundRequestWithRetry(
+        prompt,
+        instructions,
+        config
+      );
+
+      core.info(`Background request initiated: ${initialResponse.id}`);
+      core.info(`Initial status: ${initialResponse.status}`);
+
+      let finalResponse: OpenAIResponse;
+      let pollingAttempts = 0;
+
+      // Check if already in terminal state (fast completion or immediate failure)
+      if (isTerminalStatus(initialResponse.status)) {
+        core.info(
+          `Request reached terminal status '${initialResponse.status}' immediately, skipping polling`
+        );
+        finalResponse = initialResponse;
+      } else {
+        // Poll until completion
+        const pollResult = await this.pollForCompletion(
+          initialResponse.id,
+          pollingConfig
+        );
+        finalResponse = pollResult.response;
+        pollingAttempts = pollResult.pollingAttempts;
+      }
+
+      const elapsedMs = Date.now() - startTime;
+
+      // On failure, check retryability first, then log appropriately
+      if (finalResponse.status === "failed") {
+        const isRetryable = this.isRetryableBackgroundFailure(finalResponse);
+
+        if (attempt < maxRetries && isRetryable) {
+          // Transient failure — log at warning level to avoid false error annotations
+          this.logBackgroundFailureDetails(
+            finalResponse,
+            elapsedMs,
+            pollingAttempts,
+            "warning"
+          );
+          continue;
+        }
+
+        // Non-retryable or retries exhausted — log at error level
+        this.logBackgroundFailureDetails(
+          finalResponse,
+          elapsedMs,
+          pollingAttempts,
+          "error"
+        );
+      }
+
+      // Handle terminal status (returns result or throws)
+      return this.handleCompletedResponse(finalResponse);
     }
 
-    // Poll until completion
-    const completedResponse = await this.pollForCompletion(
-      initialResponse.id,
-      pollingConfig
-    );
+    // Safety net — should not be reached
+    throw new Error("Background review request failed after retries");
+  }
 
-    // Handle terminal statuses
-    return this.handleCompletedResponse(completedResponse);
+  private async createBackgroundRequestWithRetry(
+    prompt: string,
+    instructions: string,
+    config: ReviewPromptConfig
+  ): Promise<OpenAIResponse> {
+    const maxRetries = 3;
+    const initialDelayMs = 5000;
+    const maxDelayMs = 20000;
+    const backoffMultiplier = 2;
+    let currentDelay = initialDelayMs;
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.client.responses.create({
+          model: this.deployment,
+          instructions: instructions,
+          input: prompt,
+          reasoning: { effort: config.reasoningEffort },
+          text: {
+            format: zodTextFormat(CodeReviewCommentArray, "review_comments"),
+          },
+          background: true,
+          store: true,
+        });
+      } catch (error) {
+        lastError = error;
+
+        const statusCode =
+          error && typeof error === "object" && "status" in error
+            ? (error as { status: number }).status
+            : undefined;
+        core.warning(
+          `Background request creation failed${statusCode ? ` (HTTP ${statusCode})` : ""}: ${formatError(error)}`
+        );
+
+        if (!this.isRetryableError(error)) {
+          throw error;
+        }
+
+        if (attempt >= maxRetries) {
+          core.warning(
+            `Background request creation failed after ${maxRetries + 1} attempts`
+          );
+          break;
+        }
+
+        core.warning(
+          `Retrying request creation (attempt ${attempt + 2}/${maxRetries + 1})...`
+        );
+        await this.sleep(currentDelay);
+        currentDelay = Math.min(currentDelay * backoffMultiplier, maxDelayMs);
+      }
+    }
+
+    if (lastError instanceof Error) throw lastError;
+    throw new Error(
+      `Background request creation failed after ${maxRetries + 1} attempts: ${formatError(lastError)}`
+    );
   }
 
   private async pollForCompletion(
     responseId: string,
     config: BackgroundPollingConfig
-  ): Promise<OpenAIResponse> {
+  ): Promise<{ response: OpenAIResponse; pollingAttempts: number }> {
     const startTime = Date.now();
     let currentInterval = config.initialIntervalMs;
     let attempts = 0;
@@ -243,7 +351,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
           core.info(
             `Review reached terminal status '${response.status}' after ${elapsedSec} seconds (${attempts} status checks)`
           );
-          return response;
+          return { response, pollingAttempts: attempts };
         }
 
         // Wait before next poll with exponential backoff
@@ -317,6 +425,47 @@ If you have no comments, return an empty comments array. Respond in JSON format.
       return retryableCodes.includes(status);
     }
     return false;
+  }
+
+  private isRetryableBackgroundFailure(response: OpenAIResponse): boolean {
+    const error = response.error;
+    if (!error) return false; // No error details — unknown failure, don't retry
+
+    // Retryable error codes from the Responses API
+    if (error.code === "server_error" || error.code === "rate_limit_exceeded") {
+      return true;
+    }
+
+    // Generic Azure transient error message
+    if (
+      error.message &&
+      /an error occurred while processing your request/i.test(error.message)
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private logBackgroundFailureDetails(
+    response: OpenAIResponse,
+    elapsedMs: number,
+    pollingAttempts: number,
+    level: "warning" | "error" = "error"
+  ): void {
+    const log = level === "warning" ? core.warning : core.error;
+    log(`Background request ${response.id} failed`);
+    log(`Status: ${response.status}`);
+    log(`Error: ${JSON.stringify(response.error)}`);
+    if (response.incomplete_details) {
+      log(`Incomplete details: ${JSON.stringify(response.incomplete_details)}`);
+    }
+    log(
+      `Elapsed: ${Math.round(elapsedMs / 1000)}s, polling attempts: ${pollingAttempts}`
+    );
+    if (response.usage) {
+      log(`Token usage: ${JSON.stringify(response.usage)}`);
+    }
   }
 
   private sleep(ms: number): Promise<void> {
