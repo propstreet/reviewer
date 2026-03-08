@@ -5,12 +5,14 @@ import {
   type BackgroundPollingConfig,
 } from "./azureOpenAIService.js";
 import OpenAI from "openai";
+import * as core from "@actions/core";
 
 // Mock @actions/core
 vi.mock("@actions/core", () => ({
   info: vi.fn(),
   debug: vi.fn(),
   warning: vi.fn(),
+  error: vi.fn(),
   startGroup: vi.fn(),
   endGroup: vi.fn(),
 }));
@@ -625,6 +627,274 @@ describe("AzureOpenAIService", () => {
 
       expect(mockRetrieve).toHaveBeenCalledTimes(2);
       expect(result.comments).toHaveLength(0);
+    });
+  });
+
+  describe("Background Mode Retry Logic", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const backgroundPollingConfig: BackgroundPollingConfig = {
+      enabled: true,
+      maxWaitTimeMs: 60000,
+      initialIntervalMs: 10,
+      maxIntervalMs: 100,
+      backoffMultiplier: 1.5,
+    };
+
+    const mockConfigWithBackground: ReviewPromptConfig = {
+      reasoningEffort: "high",
+      backgroundPolling: backgroundPollingConfig,
+    };
+
+    it("should retry on transient server_error in background mode", async () => {
+      mockCreate
+        .mockResolvedValueOnce({ id: "resp_fail1", status: "queued" })
+        .mockResolvedValueOnce({ id: "resp_ok", status: "queued" });
+
+      mockRetrieve
+        .mockResolvedValueOnce({
+          id: "resp_fail1",
+          status: "failed",
+          error: {
+            code: "server_error",
+            message: "An error occurred while processing your request",
+          },
+        })
+        .mockResolvedValueOnce({
+          id: "resp_ok",
+          status: "completed",
+          output_text: JSON.stringify({ comments: [] }),
+        });
+
+      const service = new AzureOpenAIService(mockConfig);
+      const resultPromise = service.runReviewPrompt(
+        mockInput,
+        mockConfigWithBackground
+      );
+
+      await vi.advanceTimersByTimeAsync(10000);
+
+      const result = await resultPromise;
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(result.comments).toHaveLength(0);
+    });
+
+    it("should retry on rate_limit_exceeded in background mode", async () => {
+      mockCreate
+        .mockResolvedValueOnce({ id: "resp_rl", status: "queued" })
+        .mockResolvedValueOnce({ id: "resp_ok", status: "queued" });
+
+      mockRetrieve
+        .mockResolvedValueOnce({
+          id: "resp_rl",
+          status: "failed",
+          error: {
+            code: "rate_limit_exceeded",
+            message: "Rate limit exceeded",
+          },
+        })
+        .mockResolvedValueOnce({
+          id: "resp_ok",
+          status: "completed",
+          output_text: JSON.stringify({ comments: [] }),
+        });
+
+      const service = new AzureOpenAIService(mockConfig);
+      const resultPromise = service.runReviewPrompt(
+        mockInput,
+        mockConfigWithBackground
+      );
+
+      await vi.advanceTimersByTimeAsync(10000);
+
+      const result = await resultPromise;
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(result.comments).toHaveLength(0);
+    });
+
+    it("should retry on generic Azure error message", async () => {
+      mockCreate
+        .mockResolvedValueOnce({ id: "resp_az", status: "queued" })
+        .mockResolvedValueOnce({ id: "resp_ok", status: "queued" });
+
+      mockRetrieve
+        .mockResolvedValueOnce({
+          id: "resp_az",
+          status: "failed",
+          error: {
+            code: "unknown_code",
+            message:
+              "An error occurred while processing your request. You can retry...",
+          },
+        })
+        .mockResolvedValueOnce({
+          id: "resp_ok",
+          status: "completed",
+          output_text: JSON.stringify({ comments: [] }),
+        });
+
+      const service = new AzureOpenAIService(mockConfig);
+      const resultPromise = service.runReviewPrompt(
+        mockInput,
+        mockConfigWithBackground
+      );
+
+      await vi.advanceTimersByTimeAsync(10000);
+
+      const result = await resultPromise;
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(result.comments).toHaveLength(0);
+    });
+
+    it("should not retry on non-retryable background failure", async () => {
+      mockCreate.mockResolvedValueOnce({
+        id: "resp_np",
+        status: "queued",
+      });
+
+      mockRetrieve.mockResolvedValueOnce({
+        id: "resp_np",
+        status: "failed",
+        error: { code: "invalid_prompt", message: "Invalid prompt" },
+      });
+
+      const service = new AzureOpenAIService(mockConfig);
+
+      await expect(
+        service.runReviewPrompt(mockInput, mockConfigWithBackground)
+      ).rejects.toThrow("Review request failed: Invalid prompt");
+
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it("should exhaust background retries and throw", async () => {
+      mockCreate.mockResolvedValue({
+        id: "resp_exhaust",
+        status: "queued",
+      });
+
+      mockRetrieve.mockResolvedValue({
+        id: "resp_exhaust",
+        status: "failed",
+        error: { code: "server_error", message: "Server error" },
+      });
+
+      const service = new AzureOpenAIService(mockConfig);
+
+      let caughtError: unknown;
+      const resultPromise = service
+        .runReviewPrompt(mockInput, mockConfigWithBackground)
+        .catch((e) => {
+          caughtError = e;
+        });
+
+      // Advance through all retry delays (5s + 10s + 20s = 35s)
+      await vi.advanceTimersByTimeAsync(40000);
+      await resultPromise;
+
+      expect(caughtError).toBeInstanceOf(Error);
+      expect((caughtError as Error).message).toContain(
+        "Review request failed: Server error"
+      );
+      // Should have tried 4 times (initial + 3 retries)
+      expect(mockCreate).toHaveBeenCalledTimes(4);
+    });
+
+    it("should retry create call on HTTP 429 error", async () => {
+      mockCreate
+        .mockRejectedValueOnce({ status: 429, message: "Rate limit" })
+        .mockResolvedValueOnce({ id: "resp_ok", status: "queued" });
+
+      mockRetrieve.mockResolvedValueOnce({
+        id: "resp_ok",
+        status: "completed",
+        output_text: JSON.stringify({ comments: [] }),
+      });
+
+      const service = new AzureOpenAIService(mockConfig);
+      const resultPromise = service.runReviewPrompt(
+        mockInput,
+        mockConfigWithBackground
+      );
+
+      await vi.advanceTimersByTimeAsync(10000);
+
+      const result = await resultPromise;
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(result.comments).toHaveLength(0);
+    });
+
+    it("should not retry create call on HTTP 400 error", async () => {
+      mockCreate.mockRejectedValue({ status: 400, message: "Bad request" });
+
+      const service = new AzureOpenAIService(mockConfig);
+
+      await expect(
+        service.runReviewPrompt(mockInput, mockConfigWithBackground)
+      ).rejects.toEqual({ status: 400, message: "Bad request" });
+
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it("should log detailed failure information on background failure", async () => {
+      mockCreate.mockResolvedValueOnce({
+        id: "resp_log",
+        status: "queued",
+      });
+
+      mockRetrieve.mockResolvedValueOnce({
+        id: "resp_log",
+        status: "failed",
+        error: { code: "invalid_prompt", message: "Invalid prompt content" },
+        usage: { input_tokens: 5000, output_tokens: 0 },
+      });
+
+      const service = new AzureOpenAIService(mockConfig);
+
+      try {
+        await service.runReviewPrompt(mockInput, mockConfigWithBackground);
+      } catch {
+        // Expected to throw
+      }
+
+      expect(core.error).toHaveBeenCalledWith(
+        expect.stringContaining("resp_log")
+      );
+      expect(core.error).toHaveBeenCalledWith(
+        expect.stringContaining("invalid_prompt")
+      );
+      expect(core.error).toHaveBeenCalledWith(expect.stringContaining("5000"));
+    });
+
+    it("should log create call failure with HTTP status code", async () => {
+      mockCreate.mockRejectedValue({
+        status: 503,
+        message: "Service unavailable",
+      });
+
+      const service = new AzureOpenAIService(mockConfig);
+
+      let caughtError: unknown;
+      const resultPromise = service
+        .runReviewPrompt(mockInput, mockConfigWithBackground)
+        .catch((e) => {
+          caughtError = e;
+        });
+
+      // Advance through create retry delays (5s + 10s + 20s = 35s)
+      await vi.advanceTimersByTimeAsync(40000);
+      await resultPromise;
+
+      expect(caughtError).toBeDefined();
+      expect(core.warning).toHaveBeenCalledWith(
+        expect.stringContaining("HTTP 503")
+      );
     });
   });
 });
