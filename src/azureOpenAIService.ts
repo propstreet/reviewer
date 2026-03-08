@@ -286,8 +286,9 @@ If you have no comments, return an empty comments array. Respond in JSON format.
       }
     }
 
-    throw (
-      lastError ?? new Error("Background request creation failed after retries")
+    if (lastError instanceof Error) throw lastError;
+    throw new Error(
+      `Background request creation failed after ${maxRetries + 1} attempts: ${formatError(lastError)}`
     );
   }
 
