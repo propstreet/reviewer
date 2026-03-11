@@ -972,6 +972,79 @@ commit diff
     expect(core.info).toHaveBeenCalledWith("Posted summary comment.");
   });
 
+  it("should not fail review when summary comment posting fails (no issues path)", async () => {
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1000
+    );
+
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue({
+      comments: [],
+    });
+
+    vi.mocked(GitHubService.prototype.postSummaryComment).mockRejectedValue(
+      new Error("API rate limit")
+    );
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    // Should not throw even though postSummaryComment fails
+    const result = await reviewService.review(reviewOptions);
+
+    expect(result).toBe(false);
+    expect(core.warning).toHaveBeenCalledWith(
+      "Failed to post summary comment: API rate limit"
+    );
+  });
+
+  it("should not fail review when summary comment posting fails (issues path)", async () => {
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1234
+    );
+
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue({
+      comments: [
+        {
+          sha: "head-sha",
+          file: "test.ts",
+          line: 1,
+          side: "RIGHT" as const,
+          start_line: 1,
+          start_side: "RIGHT" as const,
+          comment: "Test comment",
+          severity: "info" as const,
+        },
+      ],
+    });
+
+    vi.mocked(GitHubService.prototype.postReviewComments).mockResolvedValue({
+      reviewChanges: 0,
+      reviewComments: 1,
+      issueComments: 0,
+    });
+
+    vi.mocked(GitHubService.prototype.postSummaryComment).mockRejectedValue(
+      new Error("Network error")
+    );
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    // Should not throw even though postSummaryComment fails
+    const result = await reviewService.review(reviewOptions);
+
+    expect(result).toBe(true);
+    expect(core.warning).toHaveBeenCalledWith(
+      "Failed to post summary comment: Network error"
+    );
+  });
+
   it("should post summary comment when AI returns no suggestions", async () => {
     const { isWithinTokenLimit } =
       await import("gpt-tokenizer/encoding/o200k_base");
@@ -1109,5 +1182,35 @@ describe("generateSummaryComment", () => {
     });
 
     expect(result).toContain("Powered by Pro PR Reviewer");
+  });
+
+  it("should select deterministic clean message when messageIndex is provided", () => {
+    const noIssues = {
+      reviewChanges: 0,
+      reviewComments: 0,
+      issueComments: 0,
+    };
+
+    const msg0 = generateSummaryComment(noIssues, 0);
+    const msg1 = generateSummaryComment(noIssues, 1);
+    const msg2 = generateSummaryComment(noIssues, 2);
+    // Index wraps around
+    const msg3 = generateSummaryComment(noIssues, 3);
+
+    expect(msg0).toContain("sparkling clean");
+    expect(msg1).toContain("Flawless Victory");
+    expect(msg2).toContain("Perfect Score");
+    expect(msg3).toBe(msg0); // wraps around
+  });
+
+  it("should ignore messageIndex when issues are found", () => {
+    const result = generateSummaryComment(
+      { reviewChanges: 1, reviewComments: 0, issueComments: 0 },
+      0
+    );
+
+    // Should still be a normal issues summary, not a clean message
+    expect(result).toContain("Review Complete");
+    expect(result).toContain("**1** issue");
   });
 });

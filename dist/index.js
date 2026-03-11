@@ -39570,16 +39570,18 @@ const shouldExcludeFile = (filename, patterns) => {
     }
     return false;
 };
-function generateSummaryComment(result) {
+function generateSummaryComment(result, messageIndex) {
     const totalIssues = result.reviewChanges + result.reviewComments + result.issueComments;
     if (totalIssues === 0) {
-        // Pick a random clean-code message
         const cleanMessages = [
             "## \u2728\uD83C\uDF89 Wow, this code is sparkling clean! \uD83C\uDF89\u2728\n\nI went through every nook and cranny and couldn't find a single issue. Either you're a coding genius or I need new glasses \uD83E\uDD13\uD83D\uDD0D\n\n\uD83D\uDE80 Ship it! This PR is ready to go! \uD83D\uDEA2\u2728",
             "## \uD83C\uDFC6 Flawless Victory! \uD83C\uDFC6\n\nZero issues found. Nada. Zilch. Nothing. \uD83E\uDD2F\n\nThis code is so clean it makes a fresh install look messy \uD83E\uDDF9\u2728\n\n\uD83D\uDC4F Great work! LGTM! \uD83D\uDE80",
             "## \uD83C\uDF1F Perfect Score! \uD83C\uDF1F\n\nI reviewed this PR and found... absolutely nothing wrong \uD83D\uDE31\n\nYou're making my job too easy! \uD83D\uDE04\uD83D\uDCAA\n\n\u2705 All clear, captain! Ready for liftoff! \uD83D\uDE80\uD83C\uDF15",
         ];
-        return cleanMessages[Math.floor(Math.random() * cleanMessages.length)];
+        const idx = messageIndex !== undefined
+            ? messageIndex % cleanMessages.length
+            : Math.floor(Math.random() * cleanMessages.length);
+        return cleanMessages[idx];
     }
     // Build summary with issue breakdown
     let summary = "## \uD83D\uDD0D Review Complete! Here's the damage report \uD83D\uDCCB\n\n";
@@ -39776,8 +39778,13 @@ class ReviewService {
                 reviewComments: 0,
                 issueComments: 0,
             });
-            await this.githubService.postSummaryComment(summaryBody);
-            info("Posted summary comment (no issues found).");
+            try {
+                await this.githubService.postSummaryComment(summaryBody);
+                info("Posted summary comment (no issues found).");
+            }
+            catch (err) {
+                warning(`Failed to post summary comment: ${err instanceof Error ? err.message : String(err)}`);
+            }
             return false;
         }
         info(`Got ${response.comments.length} suggestions from AI.`);
@@ -39787,8 +39794,13 @@ class ReviewService {
         info(`Posted ${result.reviewComments} comments and requested ${result.reviewChanges} changes.`);
         // Post summary comment with the outcome
         const summaryBody = generateSummaryComment(result);
-        await this.githubService.postSummaryComment(summaryBody);
-        info("Posted summary comment.");
+        try {
+            await this.githubService.postSummaryComment(summaryBody);
+            info("Posted summary comment.");
+        }
+        catch (err) {
+            warning(`Failed to post summary comment: ${err instanceof Error ? err.message : String(err)}`);
+        }
         return true;
     }
 }

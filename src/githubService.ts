@@ -230,7 +230,7 @@ export class GitHubService {
     };
   }
 
-  async postSummaryComment(body: string) {
+  async postSummaryComment(body: string): Promise<void> {
     await this.octokit.rest.issues.createComment({
       owner: this.config.owner,
       repo: this.config.repo,
