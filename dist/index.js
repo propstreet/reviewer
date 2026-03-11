@@ -39570,6 +39570,54 @@ const shouldExcludeFile = (filename, patterns) => {
     }
     return false;
 };
+function generateSummaryComment(result) {
+    const totalIssues = result.reviewChanges + result.reviewComments + result.issueComments;
+    if (totalIssues === 0) {
+        // Pick a random clean-code message
+        const cleanMessages = [
+            "## \u2728\uD83C\uDF89 Wow, this code is sparkling clean! \uD83C\uDF89\u2728\n\nI went through every nook and cranny and couldn't find a single issue. Either you're a coding genius or I need new glasses \uD83E\uDD13\uD83D\uDD0D\n\n\uD83D\uDE80 Ship it! This PR is ready to go! \uD83D\uDEA2\u2728",
+            "## \uD83C\uDFC6 Flawless Victory! \uD83C\uDFC6\n\nZero issues found. Nada. Zilch. Nothing. \uD83E\uDD2F\n\nThis code is so clean it makes a fresh install look messy \uD83E\uDDF9\u2728\n\n\uD83D\uDC4F Great work! LGTM! \uD83D\uDE80",
+            "## \uD83C\uDF1F Perfect Score! \uD83C\uDF1F\n\nI reviewed this PR and found... absolutely nothing wrong \uD83D\uDE31\n\nYou're making my job too easy! \uD83D\uDE04\uD83D\uDCAA\n\n\u2705 All clear, captain! Ready for liftoff! \uD83D\uDE80\uD83C\uDF15",
+        ];
+        return cleanMessages[Math.floor(Math.random() * cleanMessages.length)];
+    }
+    // Build summary with issue breakdown
+    let summary = "## \uD83D\uDD0D Review Complete! Here's the damage report \uD83D\uDCCB\n\n";
+    if (totalIssues === 1) {
+        summary += "Found **1** issue. Not bad, not bad at all! \uD83D\uDC4D\n\n";
+    }
+    else if (totalIssues <= 3) {
+        summary += `Found **${totalIssues}** issues. Just a few things to tidy up! \uD83E\uDDF9\n\n`;
+    }
+    else if (totalIssues <= 10) {
+        summary += `Found **${totalIssues}** issues. We've got some work to do! \uD83D\uDCAA\uD83D\uDE05\n\n`;
+    }
+    else {
+        summary += `Found **${totalIssues}** issues. Buckle up, buttercup! \uD83C\uDF3B\uD83D\uDE48\n\n`;
+    }
+    // Breakdown
+    const parts = [];
+    if (result.reviewChanges > 0) {
+        parts.push(`\u274C **${result.reviewChanges}** changes requested`);
+    }
+    if (result.reviewComments > 0) {
+        parts.push(`\uD83D\uDCAC **${result.reviewComments}** comments`);
+    }
+    if (result.issueComments > 0) {
+        parts.push(`\uD83D\uDCDD **${result.issueComments}** general comments`);
+    }
+    summary += parts.join(" | ") + "\n\n";
+    if (result.reviewChanges > 0) {
+        summary +=
+            "\uD83D\uDEA8 Some changes were requested \u2014 please take a look and address them before merging! \uD83D\uDE4F\n";
+    }
+    else {
+        summary +=
+            "\uD83D\uDCA1 Just some suggestions \u2014 nothing blocking the merge! \uD83C\uDF89\n";
+    }
+    summary += "\n---\n*\uD83E\uDD16 Powered by Pro PR Reviewer*";
+    return summary;
+}
 class ReviewService {
     githubService;
     azureService;
@@ -39722,6 +39770,14 @@ class ReviewService {
         });
         if (!response?.comments || response.comments.length === 0) {
             info("No suggestions from AI.");
+            // Post a clean summary comment
+            const summaryBody = generateSummaryComment({
+                reviewChanges: 0,
+                reviewComments: 0,
+                issueComments: 0,
+            });
+            await this.githubService.postSummaryComment(summaryBody);
+            info("Posted summary comment (no issues found).");
             return false;
         }
         info(`Got ${response.comments.length} suggestions from AI.`);
@@ -39729,6 +39785,10 @@ class ReviewService {
         const result = await this.githubService.postReviewComments(response.comments, options.changesThreshold, pr.patches // Use cumulative PR diff for validation (matches GitHub's HEAD validation)
         );
         info(`Posted ${result.reviewComments} comments and requested ${result.reviewChanges} changes.`);
+        // Post summary comment with the outcome
+        const summaryBody = generateSummaryComment(result);
+        await this.githubService.postSummaryComment(summaryBody);
+        info("Posted summary comment.");
         return true;
     }
 }
@@ -40013,6 +40073,14 @@ class GitHubService {
             reviewComments: infoComments.length,
             issueComments: issueComments.length,
         };
+    }
+    async postSummaryComment(body) {
+        await this.octokit.rest.issues.createComment({
+            owner: this.config.owner,
+            repo: this.config.repo,
+            issue_number: this.config.pullNumber,
+            body,
+        });
     }
     async getPrDetails() {
         const prResponse = await this.octokit.rest.pulls.get({

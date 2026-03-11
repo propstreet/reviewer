@@ -961,4 +961,30 @@ describe("GitHubService", () => {
       );
     });
   });
+
+  describe("postSummaryComment", () => {
+    it("should post an issue comment with the given body", async () => {
+      const mockCreateComment = vi.fn().mockResolvedValue({});
+
+      const mockOctokit = {
+        rest: {
+          issues: {
+            createComment: mockCreateComment,
+          },
+        },
+      };
+
+      (github.getOctokit as MockType).mockReturnValue(mockOctokit);
+
+      const service = new GitHubService(mockConfig);
+      await service.postSummaryComment("Test summary body");
+
+      expect(mockCreateComment).toHaveBeenCalledExactlyOnceWith({
+        owner: mockConfig.owner,
+        repo: mockConfig.repo,
+        issue_number: mockConfig.pullNumber,
+        body: "Test summary body",
+      });
+    });
+  });
 });

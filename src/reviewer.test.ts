@@ -1,7 +1,12 @@
 import * as core from "@actions/core";
 import { AzureOpenAIService } from "./azureOpenAIService.js";
 import { GitHubService } from "./githubService.js";
-import { ReviewService, ReviewOptions, shouldExcludeFile } from "./reviewer.js";
+import {
+  ReviewService,
+  ReviewOptions,
+  shouldExcludeFile,
+  generateSummaryComment,
+} from "./reviewer.js";
 
 // Mock types
 //type MockType = ReturnType<typeof vi.fn>;
@@ -134,6 +139,10 @@ describe("reviewer", () => {
 
     vi.mocked(GitHubService.prototype.commitBelongsToPR).mockResolvedValue(
       true
+    );
+
+    vi.mocked(GitHubService.prototype.postSummaryComment).mockResolvedValue(
+      undefined
     );
   });
 
@@ -916,5 +925,189 @@ commit diff
 
     // Verify compareCommits was only called once (no extra call for validation)
     expect(GitHubService.prototype.compareCommits).toHaveBeenCalledTimes(1);
+  });
+
+  it("should post summary comment after successful review with issues", async () => {
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1234
+    );
+
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue({
+      comments: [
+        {
+          sha: "head-sha",
+          file: "test.ts",
+          line: 1,
+          side: "RIGHT" as const,
+          start_line: 1,
+          start_side: "RIGHT" as const,
+          comment: "Test comment",
+          severity: "info" as const,
+        },
+      ],
+    });
+
+    vi.mocked(GitHubService.prototype.postReviewComments).mockResolvedValue({
+      reviewChanges: 1,
+      reviewComments: 2,
+      issueComments: 1,
+    });
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review(reviewOptions);
+
+    // Verify postSummaryComment was called
+    expect(GitHubService.prototype.postSummaryComment).toHaveBeenCalledTimes(1);
+    const summaryArg = vi.mocked(GitHubService.prototype.postSummaryComment)
+      .mock.calls[0][0];
+    expect(summaryArg).toContain("Review Complete");
+    expect(summaryArg).toContain("4");
+    expect(summaryArg).toContain("changes requested");
+
+    expect(core.info).toHaveBeenCalledWith("Posted summary comment.");
+  });
+
+  it("should post summary comment when AI returns no suggestions", async () => {
+    const { isWithinTokenLimit } =
+      await import("gpt-tokenizer/encoding/o200k_base");
+    vi.mocked(isWithinTokenLimit).mockImplementation(
+      (_input: unknown, _tokenLimit: number) => 1000
+    );
+
+    vi.mocked(AzureOpenAIService.prototype.runReviewPrompt).mockResolvedValue({
+      comments: [],
+    });
+
+    const reviewService = new ReviewService(
+      mockedGithubService,
+      mockedAzureService
+    );
+    await reviewService.review(reviewOptions);
+
+    // Verify postSummaryComment was called with a clean message
+    expect(GitHubService.prototype.postSummaryComment).toHaveBeenCalledTimes(1);
+    expect(core.info).toHaveBeenCalledWith(
+      "Posted summary comment (no issues found)."
+    );
+  });
+});
+
+describe("generateSummaryComment", () => {
+  it("should return a clean-code message when no issues found", () => {
+    const result = generateSummaryComment({
+      reviewChanges: 0,
+      reviewComments: 0,
+      issueComments: 0,
+    });
+
+    // Should be one of the three clean messages
+    expect(result).toMatch(/Flawless Victory|sparkling clean|Perfect Score/);
+  });
+
+  it("should handle single issue", () => {
+    const result = generateSummaryComment({
+      reviewChanges: 1,
+      reviewComments: 0,
+      issueComments: 0,
+    });
+
+    expect(result).toContain("**1** issue");
+    expect(result).toContain("Not bad");
+    expect(result).toContain("changes requested");
+    expect(result).toContain("changes were requested");
+  });
+
+  it("should handle a few issues (2-3)", () => {
+    const result = generateSummaryComment({
+      reviewChanges: 1,
+      reviewComments: 1,
+      issueComments: 1,
+    });
+
+    expect(result).toContain("**3** issues");
+    expect(result).toContain("tidy up");
+  });
+
+  it("should handle moderate issues (4-10)", () => {
+    const result = generateSummaryComment({
+      reviewChanges: 3,
+      reviewComments: 3,
+      issueComments: 1,
+    });
+
+    expect(result).toContain("**7** issues");
+    expect(result).toContain("work to do");
+  });
+
+  it("should handle many issues (>10)", () => {
+    const result = generateSummaryComment({
+      reviewChanges: 5,
+      reviewComments: 5,
+      issueComments: 5,
+    });
+
+    expect(result).toContain("**15** issues");
+    expect(result).toContain("Buckle up");
+  });
+
+  it("should show non-blocking message when no changes requested", () => {
+    const result = generateSummaryComment({
+      reviewChanges: 0,
+      reviewComments: 3,
+      issueComments: 0,
+    });
+
+    expect(result).toContain("nothing blocking the merge");
+    expect(result).not.toContain("changes were requested");
+  });
+
+  it("should show blocking message when changes requested", () => {
+    const result = generateSummaryComment({
+      reviewChanges: 2,
+      reviewComments: 0,
+      issueComments: 0,
+    });
+
+    expect(result).toContain("changes were requested");
+    expect(result).toContain("address them before merging");
+  });
+
+  it("should include breakdown parts", () => {
+    const result = generateSummaryComment({
+      reviewChanges: 2,
+      reviewComments: 3,
+      issueComments: 1,
+    });
+
+    expect(result).toContain("**2** changes requested");
+    expect(result).toContain("**3** comments");
+    expect(result).toContain("**1** general comments");
+  });
+
+  it("should only show relevant breakdown parts", () => {
+    const result = generateSummaryComment({
+      reviewChanges: 0,
+      reviewComments: 5,
+      issueComments: 0,
+    });
+
+    expect(result).not.toContain("changes requested");
+    expect(result).toContain("**5** comments");
+    expect(result).not.toContain("general comments");
+  });
+
+  it("should include powered by footer when issues found", () => {
+    const result = generateSummaryComment({
+      reviewChanges: 1,
+      reviewComments: 0,
+      issueComments: 0,
+    });
+
+    expect(result).toContain("Powered by Pro PR Reviewer");
   });
 });

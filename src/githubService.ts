@@ -230,6 +230,15 @@ export class GitHubService {
     };
   }
 
+  async postSummaryComment(body: string) {
+    await this.octokit.rest.issues.createComment({
+      owner: this.config.owner,
+      repo: this.config.repo,
+      issue_number: this.config.pullNumber,
+      body,
+    });
+  }
+
   async getPrDetails(): Promise<PrDetails> {
     const prResponse = await this.octokit.rest.pulls.get({
       owner: this.config.owner,
