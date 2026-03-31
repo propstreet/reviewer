@@ -532,6 +532,70 @@ describe("AzureOpenAIService", () => {
       ).rejects.toThrow("Review request incomplete: max_tokens");
     });
 
+    it("should treat unknown status as terminal (fail fast, not poll until timeout)", async () => {
+      mockCreate.mockResolvedValue({
+        id: "resp_unknown",
+        status: "queued",
+      });
+
+      // API returns a status we don't recognize — should stop polling immediately
+      mockRetrieve.mockResolvedValue({
+        id: "resp_unknown",
+        status: "some_new_status",
+      });
+
+      const service = new AzureOpenAIService(mockConfig);
+
+      await expect(
+        service.runReviewPrompt(mockInput, mockConfigWithBackground)
+      ).rejects.toThrow(
+        "Review request ended with unexpected status 'some_new_status'"
+      );
+
+      // Should have polled only once, not looped until timeout
+      expect(mockRetrieve).toHaveBeenCalledTimes(1);
+      expect(mockCancel).not.toHaveBeenCalled();
+    });
+
+    it("should treat null status from retrieve as terminal", async () => {
+      mockCreate.mockResolvedValue({
+        id: "resp_null",
+        status: "queued",
+      });
+
+      mockRetrieve.mockResolvedValue({
+        id: "resp_null",
+        status: null,
+      });
+
+      const service = new AzureOpenAIService(mockConfig);
+
+      await expect(
+        service.runReviewPrompt(mockInput, mockConfigWithBackground)
+      ).rejects.toThrow("Review request ended with unexpected status 'null'");
+
+      expect(mockRetrieve).toHaveBeenCalledTimes(1);
+    });
+
+    it("should skip polling when initial create returns unknown terminal status", async () => {
+      // API returns an unrecognized status immediately on create
+      mockCreate.mockResolvedValue({
+        id: "resp_instant_unknown",
+        status: "expired",
+      });
+
+      const service = new AzureOpenAIService(mockConfig);
+
+      await expect(
+        service.runReviewPrompt(mockInput, mockConfigWithBackground)
+      ).rejects.toThrow(
+        "Review request ended with unexpected status 'expired'"
+      );
+
+      // Should never have polled — the initial response was already terminal
+      expect(mockRetrieve).not.toHaveBeenCalled();
+    });
+
     it("should timeout and cancel request after max wait time", async () => {
       mockCreate.mockResolvedValue({
         id: "resp_timeout",

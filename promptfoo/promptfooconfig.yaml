@@ -17,6 +17,24 @@ prompts:
   - file://./prompts/review-reasoning.js
 
 providers:
+  - id: openai:responses:gpt-5.4
+    label: gpt-54-none
+    config:
+      temperature: 1
+      max_output_tokens: 16000
+      tool_choice: auto
+      reasoning:
+        effort: none
+  - id: azure:responses:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
+    label: gpt-5-none
+    config:
+      apiHost: "{{env.AZURE_OPENAI_HOST}}"
+      reasoning:
+        effort: "none"
+      verbosity: "low"
+      temperature: 1
+      max_output_tokens: 10000
+      apiVersion: "preview"
   - id: azure:responses:{{env.AZURE_OPENAI_REASONING_DEPLOYMENT}}
     label: gpt-5-low
     config:

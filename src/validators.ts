@@ -1,5 +1,6 @@
 /** Valid reasoning effort levels for AI models */
 const REASONING_EFFORTS = [
+  "none",
   "minimal",
   "low",
   "medium",
