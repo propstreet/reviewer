@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] - 2026-03-31
+
+### Added
+- **`none` reasoning effort level** - Support for `none` reasoning effort (gpt-5.1+), which disables reasoning entirely for fastest responses. The legacy `minimal` level (gpt-5 only) is still accepted.
+
+### Fixed
+- **Background polling resilience** - Flipped polling from terminal-status whitelist to non-terminal whitelist (`queued`, `in_progress`). Unknown or unexpected statuses now fail fast instead of polling until timeout, per OpenAI docs.
+- **Unknown terminal status handling** - Added defensive guard in `handleCompletedResponse` for statuses that aren't `completed`, `failed`, `cancelled`, or `incomplete`, producing a clear error message.
+
+### Changed
+- **GitHub Actions runtime** - Upgraded from `node20` to `node24`.
+- **Updated dependencies** - `openai` SDK updated to v6.33.0, along with minor/patch updates to `@types/node`, `minimatch`, `vitest`, `@vitest/coverage-v8`, `typescript-eslint`, and `@eslint/js`.
+
 ## [3.5.1] - 2026-03-08
 
 ### Fixed

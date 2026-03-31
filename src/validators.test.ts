@@ -15,6 +15,7 @@ import {
 
 describe("isValidReasoningEffort", () => {
   it("should accept all valid reasoning effort levels", () => {
+    expect(isValidReasoningEffort("none")).toBe(true);
     expect(isValidReasoningEffort("minimal")).toBe(true);
     expect(isValidReasoningEffort("low")).toBe(true);
     expect(isValidReasoningEffort("medium")).toBe(true);

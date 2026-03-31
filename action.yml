@@ -5,7 +5,7 @@ branding:
 description: "Uses Azure OpenAI to review diffs, then posts code review comments on GitHub PRs."
 author: "Propstreet"
 runs:
-  using: "node20"
+  using: "node24"
   main: "dist/index.js" # compiled output
 
 inputs:
@@ -30,8 +30,9 @@ inputs:
     default: "error"
   reasoningEffort:
     description: >
-      Reasoning effort level (minimal, low, medium, high, or xhigh).
-      Some models support extended levels like 'xhigh' for maximum reasoning depth.
+      Reasoning effort level (none, minimal, low, medium, high, or xhigh).
+      'none' disables reasoning (gpt-5.1+); 'minimal' is the legacy equivalent (gpt-5 only).
+      'xhigh' enables maximum reasoning depth on supported models.
       Using unsupported levels may cause API errors or increase latency/cost.
       For review purposes 'high' is recommended.
     required: false

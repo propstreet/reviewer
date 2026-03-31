@@ -5,7 +5,7 @@ A GitHub Action that uses Azure OpenAI to automatically review pull request diff
 ## Features
 
 - **Azure OpenAI Responses API** - Uses the latest v1 API with structured output
-- **Reasoning models support** - Works with GPT-5-Codex, GPT-5, o4-mini, o3, and other reasoning models
+- **Reasoning models support** - Works with GPT-5.4, GPT-5.4-Pro, and other reasoning models
 - **Background mode** - Handles long-running requests (15+ minutes) with automatic polling
 - **Multi-line comments** - Can highlight ranges of code, not just single lines
 - **Custom instructions** - Append your own guidelines to the review prompt
@@ -59,7 +59,7 @@ jobs:
 | Input | Default | Description |
 |-------|---------|-------------|
 | `severity` | `error` | Minimum severity to request changes (`info`, `warning`, `error`) |
-| `reasoningEffort` | `medium` | Reasoning effort level (`minimal`, `low`, `medium`, `high`, `xhigh`) |
+| `reasoningEffort` | `medium` | Reasoning effort level (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`) |
 | `tokenLimit` | `50000` | Maximum tokens to send (o1 supports up to 200,000) |
 | `commitLimit` | `100` | Maximum commits to include in diff |
 | `exclude` | | Comma-separated glob patterns to exclude files |
@@ -111,7 +111,7 @@ jobs:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Fast Reviews (minimal reasoning)
+### Fast Reviews (no reasoning)
 
 ```yaml
 - uses: propstreet/reviewer@v3
@@ -119,7 +119,7 @@ jobs:
     azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
     azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
     azureOpenAIDeployment: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
-    reasoningEffort: minimal
+    reasoningEffort: none
   env:
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -134,7 +134,7 @@ with automatic polling and retry:
   with:
     azureOpenAIKey: ${{ secrets.AZURE_OPENAI_API_KEY }}
     azureOpenAIEndpoint: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-    azureOpenAIDeployment: gpt-5.2-pro
+    azureOpenAIDeployment: gpt-5.4-pro
     reasoningEffort: high
     backgroundMode: enabled
     backgroundMaxWait: "30" # minutes (1-60)
@@ -171,10 +171,8 @@ The `reasoningEffort` input controls how much reasoning the model applies:
 |-------|-------------------|----------|
 | **gpt-5.4** | `high` | **Recommended** - Latest frontier model, 1M context |
 | gpt-5.4 | `xhigh` | Maximum reasoning depth (requires `backgroundMode: enabled`) |
+| gpt-5.4 | `none` | Fastest reviews, no reasoning overhead |
 | gpt-5.4-pro | `high` | Most thorough reviews (requires `backgroundMode: enabled`) |
-| gpt-5.2 | `high` | Previous frontier model, 400K context |
-| gpt-5.2 | `medium` | Faster reviews, good quality |
-| gpt-5.2 | `minimal` | Quick reviews, lower latency |
 
 We recommend **gpt-5.4 with `reasoningEffort: high`** for the best balance of quality and speed. Use `backgroundMode: enabled` for `xhigh` reasoning or pro models.
 

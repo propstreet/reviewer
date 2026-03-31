@@ -25,20 +25,20 @@ export interface ReviewPromptConfig {
   backgroundPolling?: BackgroundPollingConfig;
 }
 
-const TERMINAL_STATUSES = [
-  "completed",
-  "failed",
-  "cancelled",
-  "incomplete",
-] as const;
+// OpenAI Responses API non-terminal statuses (the only two that mean "keep polling").
+// Per OpenAI docs: "Keep polling while the request is in the queued or in_progress state.
+// When it leaves these states, it has reached a final (terminal) state."
+// Using a non-terminal whitelist (instead of a terminal whitelist) ensures that any
+// unknown/unexpected status is treated as terminal — fail fast instead of polling until timeout.
+const NON_TERMINAL_STATUSES = ["queued", "in_progress"] as const;
 
-type TerminalStatus = (typeof TERMINAL_STATUSES)[number];
+type NonTerminalStatus = (typeof NON_TERMINAL_STATUSES)[number];
 
-function isTerminalStatus(
+function isStillPolling(
   status: string | null | undefined
-): status is TerminalStatus {
+): status is NonTerminalStatus {
   if (!status) return false;
-  return TERMINAL_STATUSES.includes(status as TerminalStatus);
+  return NON_TERMINAL_STATUSES.includes(status as NonTerminalStatus);
 }
 
 export class AzureOpenAIService {
@@ -190,7 +190,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
       let pollingAttempts = 0;
 
       // Check if already in terminal state (fast completion or immediate failure)
-      if (isTerminalStatus(initialResponse.status)) {
+      if (!isStillPolling(initialResponse.status)) {
         core.info(
           `Request reached terminal status '${initialResponse.status}' immediately, skipping polling`
         );
@@ -347,7 +347,7 @@ If you have no comments, return an empty comments array. Respond in JSON format.
           `[${new Date().toISOString()}] Status check #${attempts}: ${response.status} (${elapsedSec}s elapsed)`
         );
 
-        if (isTerminalStatus(response.status)) {
+        if (!isStillPolling(response.status)) {
           core.info(
             `Review reached terminal status '${response.status}' after ${elapsedSec} seconds (${attempts} status checks)`
           );
@@ -379,6 +379,13 @@ If you have no comments, return an empty comments array. Respond in JSON format.
     if (response.status === "incomplete") {
       const reason = response.incomplete_details?.reason || "Unknown reason";
       throw new Error(`Review request incomplete: ${reason}`);
+    }
+
+    if (response.status !== "completed") {
+      // Defensive: unknown terminal status — fail clearly instead of silently parsing
+      throw new Error(
+        `Review request ended with unexpected status '${response.status}'`
+      );
     }
 
     // Use SDK convenience property for text output
