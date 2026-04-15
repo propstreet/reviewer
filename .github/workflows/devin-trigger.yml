@@ -30,9 +30,10 @@ concurrency:
 
 jobs:
   devin:
-    uses: propstreet/github-workflows/.github/workflows/devin-trigger.yml@v1
+    uses: propstreet/github-workflows/.github/workflows/devin-trigger.yml@v2
     secrets:
       DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+      DEVIN_ORG_ID:  ${{ secrets.DEVIN_ORG_ID }}
     with:
       playbook_id: ${{ vars.DEVIN_ISSUE_PLAYBOOK_ID }}
       issue_number: ${{ github.event.inputs.issue_number && fromJson(github.event.inputs.issue_number) || 0 }}

@@ -21,6 +21,7 @@ concurrency:
 
 jobs:
   monitor:
-    uses: propstreet/github-workflows/.github/workflows/devin-monitor.yml@v1
+    uses: propstreet/github-workflows/.github/workflows/devin-monitor.yml@v2
     secrets:
       DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+      DEVIN_ORG_ID:  ${{ secrets.DEVIN_ORG_ID }}
