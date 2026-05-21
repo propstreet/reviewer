@@ -304,3 +304,5 @@ Key changes:
 ## License
 
 MIT
+
+<!-- Declarative environment verified by Devin on 2026-05-21. -->
